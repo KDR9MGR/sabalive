@@ -6,6 +6,7 @@ import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
+import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
@@ -59,11 +60,13 @@ class ProfileScreen extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _stat('Followers', compactCount(user.followers)),
+                    _stat(context, 'Followers', compactCount(user.followers),
+                        () => AppNav.followList(context, user.id, followers: true)),
                     _divider(),
-                    _stat('Following', compactCount(user.following)),
+                    _stat(context, 'Following', compactCount(user.following),
+                        () => AppNav.followList(context, user.id, followers: false)),
                     _divider(),
-                    _stat('Fans', compactCount(user.fans)),
+                    _stat(context, 'Fans', compactCount(user.fans), null),
                   ],
                 ),
               ),
@@ -94,7 +97,7 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 20),
               _walletStrip(context, wallet),
               const SizedBox(height: 18),
-              _badges(context),
+              _badges(context, user),
               const SizedBox(height: 10),
               _menu(context),
             ],
@@ -156,16 +159,23 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _stat(String label, String value) => Column(
-        children: [
-          Text(value,
-              style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16)),
-          Text(label,
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-        ],
+  Widget _stat(
+          BuildContext context, String label, String value, VoidCallback? onTap) =>
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          children: [
+            Text(value,
+                style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16)),
+            Text(label,
+                style:
+                    const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          ],
+        ),
       );
 
   Widget _divider() =>
@@ -226,13 +236,13 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _badges(BuildContext context) {
+  Widget _badges(BuildContext context, AppUser user) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
-          child: Text('Badges & Frames',
+          child: Text('Badges',
               style: TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w600,
@@ -240,23 +250,37 @@ class ProfileScreen extends StatelessWidget {
         ),
         SizedBox(
           height: 62,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: Mock.badges.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, i) => Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: AppColors.tints[i % AppColors.tints.length],
+          child: FutureBuilder<List<({String emoji, String name})>>(
+            future: SocialRepository().userBadges(user.id),
+            builder: (context, snap) {
+              final badges = snap.data ?? const [];
+              if (snap.connectionState == ConnectionState.done && badges.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text('No badges yet — earn them by streaming & gifting.',
+                      style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                );
+              }
+              return ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: badges.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, i) => Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: AppColors.tints[i % AppColors.tints.length],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  alignment: Alignment.center,
+                  child:
+                      Text(badges[i].emoji, style: const TextStyle(fontSize: 24)),
                 ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              alignment: Alignment.center,
-              child: Text(Mock.badges[i], style: const TextStyle(fontSize: 24)),
-            ),
+              );
+            },
           ),
         ),
       ],
@@ -265,14 +289,19 @@ class ProfileScreen extends StatelessWidget {
 
   Widget _menu(BuildContext context) {
     final items = <(IconData, String, VoidCallback)>[
+      (Icons.bar_chart_rounded, 'Creator Dashboard',
+          () => AppNav.hostDashboard(context)),
       (Icons.account_balance_wallet_rounded, 'Wallet & Earnings',
           () => AppNav.wallet(context)),
+      (Icons.storefront_rounded, 'Coin Reseller',
+          () => AppNav.sellCoins(context)),
       (Icons.notifications_none_rounded, 'Notifications',
           () => AppNav.notifications(context)),
-      (Icons.workspace_premium_rounded, 'Level & Badges', () {}),
-      (Icons.shield_outlined, 'Privacy & Safety', () {}),
+      (Icons.shield_outlined, 'Privacy & Safety',
+          () => AppNav.settings(context)),
       (Icons.settings_outlined, 'Settings', () => AppNav.settings(context)),
-      (Icons.help_outline_rounded, 'Help & Support', () {}),
+      (Icons.help_outline_rounded, 'Help & Support',
+          () => AppNav.settings(context)),
       (Icons.logout_rounded, 'Sign Out',
           () => context.read<AuthController>().signOut()),
     ];

@@ -95,11 +95,13 @@ class SocialRow extends StatelessWidget {
           ),
         );
 
+    // Facebook isn't in the row — no provider configured on Supabase for it
+    // and no product need yet. Add it back (with the provider configured)
+    // if that changes.
     return Row(
       children: [
         btn('Google', Icons.g_mobiledata_rounded, const Color(0xFFEA4335)),
         btn('Apple', Icons.apple_rounded, Colors.white),
-        btn('Facebook', Icons.facebook_rounded, const Color(0xFF1877F2)),
       ],
     );
   }

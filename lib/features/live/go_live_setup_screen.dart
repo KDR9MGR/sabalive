@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/aurora_background.dart';
 import '../../core/widgets/gradient_button.dart';
+import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
+import '../../data/models.dart';
+import '../../services/agora_service.dart';
+import '../../state/auth_controller.dart';
+import '../../state/live_streams_controller.dart';
 import '../../theme/app_colors.dart';
 import 'live_broadcast_screen.dart';
+import 'pk_battle_screen.dart';
 
 class GoLiveSetupScreen extends StatefulWidget {
   const GoLiveSetupScreen({super.key});
@@ -16,8 +24,10 @@ class GoLiveSetupScreen extends StatefulWidget {
 
 class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
   final _title = TextEditingController(text: 'Chill Sunday Vibes');
-  String _category = 'Chat & Talk';
+  String _category = 'Chatting';
   String _audience = 'Everyone';
+  bool _starting = false;
+  LiveMode _mode = LiveMode.video;
 
   @override
   void dispose() {
@@ -62,20 +72,49 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
     );
   }
 
-  void _start() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LiveBroadcastScreen(
-          title: _title.text.trim().isEmpty ? 'Live now' : _title.text.trim(),
-          category: _category,
+  Future<void> _start() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final liveStreams = context.read<LiveStreamsController>();
+    setState(() => _starting = true);
+    try {
+      final granted = await AgoraService.instance.requestBroadcastPermissions();
+      if (!granted) {
+        throw Exception('Camera and microphone access are required to go live');
+      }
+
+      final title = _title.text.trim().isEmpty ? 'Live now' : _title.text.trim();
+      final stream = await liveStreams.createStream(
+        title: title,
+        category: _category,
+      );
+      final token = await AgoraService.instance.fetchToken(
+        channelName: stream.id,
+        asBroadcaster: true,
+      );
+
+      if (!mounted) return;
+      navigator.pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => switch (_mode) {
+            LiveMode.pk => PkBattleScreen(stream: stream, token: token),
+            LiveMode.audio =>
+              LiveBroadcastScreen(stream: stream, token: token, audioOnly: true),
+            LiveMode.video =>
+              LiveBroadcastScreen(stream: stream, token: token),
+          },
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final me = context.watch<AuthController>().user ?? Mock.me;
     return Scaffold(
       body: AuroraBackground(
         child: SafeArea(
@@ -98,7 +137,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                 Stack(
                   alignment: Alignment.bottomRight,
                   children: [
-                    AppAvatar(name: Mock.me.name, size: 104, ring: true),
+                    AppAvatar(name: me.name, size: 104, ring: true),
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: const BoxDecoration(
@@ -110,7 +149,14 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
+                SegmentedTabs(
+                  tabs: const ['Video', 'Audio', 'PK'],
+                  index: _mode.index,
+                  onChanged: (i) =>
+                      setState(() => _mode = LiveMode.values[i]),
+                ),
+                const SizedBox(height: 20),
                 _label('Stream Title'),
                 TextField(
                   controller: _title,
@@ -128,7 +174,19 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                     () {}),
                 const Spacer(),
                 GradientButton(
-                    label: 'Start Live', icon: Icons.podcasts_rounded, onPressed: _start),
+                  label: switch (_mode) {
+                    LiveMode.pk => 'Start PK Battle',
+                    LiveMode.audio => 'Start Audio Room',
+                    LiveMode.video => 'Start Live',
+                  },
+                  icon: switch (_mode) {
+                    LiveMode.pk => Icons.bolt_rounded,
+                    LiveMode.audio => Icons.mic_rounded,
+                    LiveMode.video => Icons.podcasts_rounded,
+                  },
+                  loading: _starting,
+                  onPressed: _start,
+                ),
                 const SizedBox(height: 12),
                 OutlinePillButton(
                   label: 'Schedule for later',

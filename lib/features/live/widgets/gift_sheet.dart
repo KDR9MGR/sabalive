@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gradient_button.dart';
-import '../../../data/mock_data.dart';
 import '../../../data/models.dart';
 import '../../../router/app_nav.dart';
 import '../../../state/wallet_controller.dart';
@@ -32,16 +31,24 @@ class _GiftSheetState extends State<_GiftSheet> {
   int _tab = 0;
   int _selected = 0;
 
-  List<Gift> get _list => switch (_tab) {
-        1 => Mock.gifts.reversed.toList(),
-        2 => Mock.gifts.where((g) => g.effect).toList(),
-        _ => Mock.gifts,
+  List<Gift> _list(List<Gift> catalog) => switch (_tab) {
+        1 => catalog.reversed.toList(),
+        2 => catalog.where((g) => g.effect).toList(),
+        _ => catalog,
       };
 
   @override
   Widget build(BuildContext context) {
     final wallet = context.watch<WalletController>();
-    final gifts = _list;
+    final gifts = _list(wallet.gifts);
+
+    if (gifts.isEmpty) {
+      return const SizedBox(
+        height: 220,
+        child: Center(child: CircularProgressIndicator(color: AppColors.primaryBright)),
+      );
+    }
+
     final gift = gifts[_selected.clamp(0, gifts.length - 1)];
     final canAfford = wallet.canAfford(gift.price);
 

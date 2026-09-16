@@ -1,34 +1,152 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
-import '../../data/mock_data.dart';
+import '../../data/calls_repository.dart';
+import '../../data/messages_repository.dart';
 import '../../data/models.dart';
+import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
+import '../calls/call_screen.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.user});
+  const ChatScreen({
+    super.key,
+    required this.user,
+    required this.conversationId,
+  });
+
   final AppUser user;
+  final String conversationId;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _messages = Mock.thread();
+  final _repo = MessagesRepository();
   final _controller = TextEditingController();
+  final _scroll = ScrollController();
+
+  final _messages = <Bubble>[];
+  final _pendingOutgoing = <String>[]; // bodies we optimistically appended
+  RealtimeChannel? _channel;
+  bool _loading = true;
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _channel = _repo.subscribeMessages(widget.conversationId, _onRealtime);
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _scroll.dispose();
+    final channel = _channel;
+    if (channel != null) Supabase.instance.client.removeChannel(channel);
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _load() async {
+    try {
+      final history = await _repo.messages(widget.conversationId);
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(history);
+        _loading = false;
+        _error = null;
+      });
+      _jumpToBottom();
+      unawaited(_repo.markRead(widget.conversationId));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = friendlyError(e);
+      });
+    }
+  }
+
+  void _onRealtime(Bubble bubble) {
+    if (!mounted) return;
+    // Drop the echo of a message we already appended optimistically.
+    if (bubble.fromMe) {
+      final i = _pendingOutgoing.indexOf(bubble.text);
+      if (i != -1) {
+        _pendingOutgoing.removeAt(i);
+        return;
+      }
+    }
+    // Group realtime rows don't carry the sender's name — reload to fill it in.
+    if (_isGroup && !bubble.fromMe && bubble.senderName.isEmpty) {
+      unawaited(_load());
+      return;
+    }
+    setState(() => _messages.add(bubble));
+    _jumpToBottom();
+    if (!bubble.fromMe) unawaited(_repo.markRead(widget.conversationId));
+  }
+
+  Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _sending) return;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() {
-      _messages.add(Bubble(text, true));
+      _sending = true;
+      _messages.add(Bubble(text, true, time: _now()));
+      _pendingOutgoing.add(text);
       _controller.clear();
+    });
+    _jumpToBottom();
+    try {
+      await _repo.send(widget.conversationId, text);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messages.removeLast();
+        _pendingOutgoing.remove(text);
+        _controller.text = text;
+      });
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  String _now() {
+    final d = DateTime.now();
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  bool get _isGroup => widget.user.username == '@group';
+
+  Future<void> _startCall(CallKind kind) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      final call = await CallsRepository().startCall(widget.user, kind: kind);
+      await navigator.push(MaterialPageRoute(
+        builder: (_) => CallScreen(call: call, outgoing: true),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
+  }
+
+  void _jumpToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
     });
   }
 
@@ -37,54 +155,93 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Row(
-          children: [
-            AppAvatar(name: widget.user.name, size: 36),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.user.name,
-                    style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15)),
-                const Text('Online',
-                    style: TextStyle(fontSize: 11, color: AppColors.success)),
-              ],
-            ),
-          ],
+        title: GestureDetector(
+          onTap: widget.user.username == '@group'
+              ? null
+              : () => AppNav.userProfile(context, widget.user),
+          child: Row(
+            children: [
+              AppAvatar(name: widget.user.name, size: 36),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.user.name,
+                      style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15)),
+                  Text(widget.user.username == '@group' ? 'Group' : widget.user.username,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textMuted)),
+                ],
+              ),
+            ],
+          ),
         ),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.call_rounded)),
-          IconButton(
-              onPressed: () {}, icon: const Icon(Icons.videocam_rounded)),
+          if (!_isGroup) ...[
+            IconButton(
+                onPressed: () => _startCall(CallKind.audio),
+                icon: const Icon(Icons.call_rounded)),
+            IconButton(
+                onPressed: () => _startCall(CallKind.video),
+                icon: const Icon(Icons.videocam_rounded)),
+          ],
           IconButton(
               onPressed: () {}, icon: const Icon(Icons.more_vert_rounded)),
         ],
       ),
       body: Column(
         children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              itemCount: _messages.length + 1,
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: 12),
-                      child: Text('Today',
-                          style: TextStyle(
-                              fontSize: 11, color: AppColors.textMuted)),
-                    ),
-                  );
-                }
-                return _bubble(_messages[i - 1]);
-              },
-            ),
-          ),
+          Expanded(child: _body()),
           _inputBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _body() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return _centered(_error!, action: _load);
+    }
+    if (_messages.isEmpty) {
+      return _centered('No messages yet. Say hello 👋');
+    }
+    return ListView.builder(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      itemCount: _messages.length + 1,
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text('Today',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            ),
+          );
+        }
+        return _bubble(_messages[i - 1]);
+      },
+    );
+  }
+
+  Widget _centered(String text, {VoidCallback? action}) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          if (action != null) ...[
+            const SizedBox(height: 10),
+            TextButton(onPressed: action, child: const Text('Retry')),
+          ],
         ],
       ),
     );
@@ -129,9 +286,23 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
+    final showSender = _isGroup && !mine && b.senderName.isNotEmpty;
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+      child: Column(
+        crossAxisAlignment:
+            mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (showSender)
+            Padding(
+              padding: const EdgeInsets.only(left: 6, top: 4),
+              child: Text(b.senderName,
+                  style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryBright)),
+            ),
+          Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.72),
@@ -155,13 +326,17 @@ class _ChatScreenState extends State<ChatScreen> {
                     fontSize: 13.5,
                     height: 1.35,
                     color: mine ? Colors.white : AppColors.textPrimary)),
-            const SizedBox(height: 2),
-            Text(b.time,
-                style: TextStyle(
-                    fontSize: 9,
-                    color: mine ? Colors.white70 : AppColors.textMuted)),
+            if (b.time.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(b.time,
+                  style: TextStyle(
+                      fontSize: 9,
+                      color: mine ? Colors.white70 : AppColors.textMuted)),
+            ],
           ],
         ),
+          ),
+        ],
       ),
     );
   }
@@ -193,6 +368,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: TextField(
                       controller: _controller,
                       style: const TextStyle(fontSize: 13.5),
+                      textInputAction: TextInputAction.send,
                       decoration: const InputDecoration(
                         isDense: true,
                         border: InputBorder.none,
@@ -217,8 +393,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 gradient: AppColors.primaryGradient,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.send_rounded,
-                  color: Colors.white, size: 20),
+              child: _sending
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded,
+                      color: Colors.white, size: 20),
             ),
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/pills.dart';
@@ -6,6 +7,8 @@ import '../../core/widgets/saba_logo.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/mock_data.dart';
 import '../../router/app_nav.dart';
+import '../../state/live_streams_controller.dart';
+import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import '../live/widgets/live_card.dart';
 
@@ -22,16 +25,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final realStreams = context.watch<LiveStreamsController>().streams;
+    // Show real streams when anyone is live; fall back to the demo grid so the
+    // screen isn't empty during the alpha when few people are streaming.
+    final usingReal = realStreams.isNotEmpty;
+    final source = usingReal ? realStreams : Mock.liveStreams;
     final streams = _cat == 0
-        ? Mock.liveStreams
-        : Mock.liveStreams
-            .where((s) => s.category == _cats[_cat])
-            .toList();
+        ? source
+        : source.where((s) => s.category == _cats[_cat]).toList();
+    final trending = source;
 
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: CustomScrollView(
+        child: RefreshIndicator(
+          onRefresh: () =>
+              context.read<LiveStreamsController>().refresh(),
+          child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _header(context)),
             SliverToBoxAdapter(child: _banner(context)),
@@ -45,28 +55,39 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 18)),
             SliverToBoxAdapter(
-              child: SectionHeader(title: 'Live Now', onAction: () {}),
+              child: SectionHeader(
+                  title: usingReal ? '🔴 Live Now' : 'Live Now',
+                  onAction: () => AppNav.search(context)),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverGrid(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.82,
+            if (streams.isEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20, 20, 20, 20),
+                  child: Text('No live rooms in this category right now.',
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
                 ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => LiveCard(
-                    stream: streams[i],
-                    onTap: () => AppNav.watchLive(context, streams[i]),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverGrid(
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.82,
                   ),
-                  childCount: streams.length,
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) => LiveCard(
+                      stream: streams[i],
+                      onTap: () => AppNav.watchLive(context, streams[i]),
+                    ),
+                    childCount: streams.length,
+                  ),
                 ),
               ),
-            ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
             SliverToBoxAdapter(
               child: SectionHeader(title: 'Categories', onAction: () {}),
@@ -77,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
             SliverToBoxAdapter(
               child: SectionHeader(
                 title: 'Trending Now',
-                onAction: () {},
+                onAction: () => AppNav.search(context),
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 4)),
@@ -86,17 +107,17 @@ class _HomeScreenState extends State<HomeScreen> {
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, i) => LiveListTile(
-                    stream: Mock.liveStreams[i],
+                    stream: trending[i],
                     rank: i + 1,
-                    onTap: () =>
-                        AppNav.watchLive(context, Mock.liveStreams[i]),
+                    onTap: () => AppNav.watchLive(context, trending[i]),
                   ),
-                  childCount: 4,
+                  childCount: trending.length < 4 ? trending.length : 4,
                 ),
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 120)),
           ],
+          ),
         ),
       ),
     );
@@ -109,8 +130,10 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const SabaLogo(size: 34, glow: false),
           const Spacer(),
-          _iconBtn(Icons.search_rounded, () {}),
-          _iconBtn(Icons.emoji_events_rounded, () {}, color: AppColors.gold),
+          _iconBtn(Icons.search_rounded, () => AppNav.search(context)),
+          _iconBtn(Icons.emoji_events_rounded,
+              () => context.read<SessionController>().tab = 3,
+              color: AppColors.gold),
           _iconBtn(Icons.notifications_none_rounded,
               () => AppNav.notifications(context)),
         ],
@@ -199,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _categoryStrip() {
     return SizedBox(
-      height: 96,
+      height: 108,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),

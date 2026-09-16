@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/models.dart';
@@ -105,15 +106,14 @@ class WalletScreen extends StatelessWidget {
     );
   }
 
-  void _withdraw(BuildContext context, WalletController wallet) async {
-    final ok = wallet.withdraw(5000);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok
-            ? 'Withdrawal of 5,000 diamonds requested'
-            : 'Not enough diamonds to withdraw'),
-      ),
-    );
+  Future<void> _withdraw(BuildContext context, WalletController wallet) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await wallet.withdraw(5000);
+      messenger.showSnackBar(const SnackBar(content: Text('Withdrawal of 5,000 diamonds requested')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
   }
 
   Widget _miniStat(IconData icon, Color color, String label, String value) {
@@ -148,6 +148,7 @@ class WalletScreen extends StatelessWidget {
       TxType.giftReceived => (Icons.card_giftcard_rounded, AppColors.gold),
       TxType.giftSent => (Icons.send_rounded, AppColors.magenta),
       TxType.withdraw => (Icons.account_balance_rounded, AppColors.diamond),
+      TxType.grant => (Icons.volunteer_activism_rounded, AppColors.success),
     };
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),

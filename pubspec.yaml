@@ -2,7 +2,7 @@ name: sabalive
 description: "SABALIVE - Social live-streaming, video/audio chat and virtual-gifting app."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.11.3
@@ -14,6 +14,11 @@ dependencies:
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
   smooth_page_indicator: ^1.2.0+3
+  supabase_flutter: ^2.8.0
+  agora_rtc_engine: ^6.6.4
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.5.5
+  video_player: ^2.9.2
 
 dev_dependencies:
   flutter_test:
@@ -35,13 +40,13 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   image_path: "assets/images/app_icon.png"
-  background_color_ios: "#0B0716"
-  adaptive_icon_background: "#0B0716"
+  background_color_ios: "#FFFFFF"
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/images/app_icon_foreground.png"
   web:
     generate: true
     image_path: "assets/images/app_icon.png"
-    background_color: "#0B0716"
+    background_color: "#FFFFFF"
     theme_color: "#9B3DF5"
 
 flutter:
@@ -49,6 +54,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/video/
 
   fonts:
     - family: Poppins

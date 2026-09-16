@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../config/feature_flags.dart';
+import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/pills.dart';
 import '../../state/auth_controller.dart';
@@ -30,11 +32,32 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    await context.read<AuthController>().loginWithPassword(_id.text, _password.text);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<AuthController>().loginWithPassword(_id.text, _password.text);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
   }
 
-  void _social(String provider) {
-    context.read<AuthController>().loginWithSocial(provider);
+  Future<void> _social(String provider) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<AuthController>().loginWithSocial(provider);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
+  }
+
+  void _loginWithOtp() {
+    final phone = _id.text.trim();
+    if (phone.isEmpty || phone.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter your phone number above first')),
+      );
+      return;
+    }
+    Navigator.pushNamed(context, AuthRoutes.otp, arguments: OtpArgs(phone: phone));
   }
 
   @override
@@ -109,16 +132,14 @@ class _LoginScreenState extends State<LoginScreen> {
           OutlinePillButton(
             label: 'Login with OTP',
             icon: Icons.sms_outlined,
-            onPressed: () => Navigator.pushNamed(
-              context,
-              AuthRoutes.otp,
-              arguments: const OtpArgs(phone: '+91 98765 43210'),
-            ),
+            onPressed: _loginWithOtp,
           ),
-          const SizedBox(height: 22),
-          const OrDivider(),
-          const SizedBox(height: 16),
-          SocialRow(onTap: _social),
+          if (FeatureFlags.socialLoginEnabled) ...[
+            const SizedBox(height: 22),
+            const OrDivider(),
+            const SizedBox(height: 16),
+            SocialRow(onTap: _social),
+          ],
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,

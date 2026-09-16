@@ -183,20 +183,8 @@ class Mock {
     ),
   ];
 
-  static const List<Gift> gifts = [
-    Gift('Rose', '🌹', 10),
-    Gift('Heart', '💖', 20),
-    Gift('Fire', '🔥', 50),
-    Gift('Diamond', '💎', 100),
-    Gift('Crown', '👑', 200),
-    Gift('Car', '🚗', 500, effect: true),
-    Gift('Rocket', '🚀', 1000, effect: true),
-    Gift('Yacht', '🛥️', 2000, effect: true),
-    Gift('Castle', '🏰', 5000, effect: true),
-    Gift('Unicorn', '🦄', 3000, effect: true),
-    Gift('Galaxy', '🌌', 8000, effect: true),
-    Gift('Phoenix', '🦅', 12000, effect: true),
-  ];
+  // Gifts are now real catalog data — see WalletController.gifts, backed by
+  // the `gifts` table (supabase/seed.sql).
 
   static List<ChatMessagePreview> conversations() => [
         ChatMessagePreview(
@@ -277,14 +265,8 @@ class Mock {
         WalletTx(TxType.giftSent, 'Crown to Rocky Mike', -200, '24 Apr, 09:00 PM'),
       ];
 
-  static const List<CoinPack> coinPacks = [
-    CoinPack(100, '₹99'),
-    CoinPack(550, '₹499', bonus: 50),
-    CoinPack(1180, '₹999', bonus: 180, popular: true),
-    CoinPack(2500, '₹1,999', bonus: 500),
-    CoinPack(6000, '₹4,499', bonus: 1500),
-    CoinPack(12000, '₹8,999', bonus: 3500),
-  ];
+  // Coin packages are now real catalog data — see WalletController.coinPacks,
+  // backed by the `coin_packages` table (supabase/seed.sql).
 
   static List<AppNotification> notifications() => [
         AppNotification(Icons.favorite_rounded, const Color(0xFFF5279B),

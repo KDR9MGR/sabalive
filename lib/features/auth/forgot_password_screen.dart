@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/pills.dart';
 import '../../state/auth_controller.dart';
@@ -26,8 +27,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> _send() async {
-    await context.read<AuthController>().resetPassword(_target.text);
-    if (mounted) setState(() => _sent = true);
+    final messenger = ScaffoldMessenger.of(context);
+    if (_tab == 1) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Password reset by mobile number is coming soon — use email for now')),
+      );
+      return;
+    }
+    try {
+      await context.read<AuthController>().resetPassword(_target.text);
+      if (mounted) setState(() => _sent = true);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
   }
 
   @override

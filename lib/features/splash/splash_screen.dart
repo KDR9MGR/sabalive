@@ -1,11 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 
-import '../../core/widgets/aurora_background.dart';
-import '../../core/widgets/saba_logo.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 
+/// Brand intro video (baked to 1.5× in `assets/video/splash.mp4`). When it
+/// finishes — or after a hard timeout, or if it can't load — the app moves on.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -13,82 +16,76 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2600),
-  )..forward();
+class _SplashScreenState extends State<SplashScreen> {
+  VideoPlayerController? _controller;
+  Timer? _failsafe;
+  bool _advanced = false;
 
   @override
   void initState() {
     super.initState();
-    _c.addStatusListener((s) {
-      if (s == AnimationStatus.completed && mounted) {
-        context.read<AuthController>().completeSplash();
-      }
-    });
+    // Never hang on the splash even if the video stalls.
+    _failsafe = Timer(const Duration(seconds: 16), _advance);
+    _start();
+  }
+
+  Future<void> _start() async {
+    try {
+      final c = VideoPlayerController.asset('assets/video/splash.mp4');
+      _controller = c;
+      await c.initialize();
+      await c.setVolume(1);
+      await c.setLooping(false);
+      c.addListener(_onTick);
+      if (!mounted) return;
+      setState(() {});
+      await c.play();
+    } catch (_) {
+      _advance();
+    }
+  }
+
+  void _onTick() {
+    final c = _controller;
+    if (c == null) return;
+    final v = c.value;
+    if (v.isInitialized &&
+        !v.isPlaying &&
+        v.position >= v.duration - const Duration(milliseconds: 120)) {
+      _advance();
+    }
+  }
+
+  void _advance() {
+    if (_advanced || !mounted) return;
+    _advanced = true;
+    context.read<AuthController>().completeSplash();
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _failsafe?.cancel();
+    _controller?.removeListener(_onTick);
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = _controller;
+    final ready = c != null && c.value.isInitialized;
     return Scaffold(
-      body: AuroraBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              const Spacer(flex: 3),
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.7, end: 1),
-                duration: const Duration(milliseconds: 900),
-                curve: Curves.easeOutBack,
-                builder: (context, v, child) =>
-                    Transform.scale(scale: v, child: Opacity(opacity: v.clamp(0, 1), child: child)),
-                child: SabaLogo(
-                  size: MediaQuery.of(context).size.width * 0.62,
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: _advance, // let impatient users skip
+        child: SizedBox.expand(
+          // stretch the clip to fill the whole screen (no letterbox bars)
+          child: ready
+              ? VideoPlayer(c)
+              : const Center(
+                  child: CircularProgressIndicator(
+                      color: AppColors.primaryBright),
                 ),
-              ),
-              const SizedBox(height: 24),
-              Text('Go Live. Be a Star!',
-                  style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 10),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  'Broadcast, connect and grow your fans worldwide.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textSecondary, height: 1.5),
-                ),
-              ),
-              const Spacer(flex: 3),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48),
-                child: AnimatedBuilder(
-                  animation: _c,
-                  builder: (context, _) => ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: _c.value,
-                      minHeight: 6,
-                      backgroundColor: AppColors.surface,
-                      valueColor:
-                          const AlwaysStoppedAnimation(AppColors.primaryBright),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              const Text('Made for Live. Made for You. 💜',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-              const SizedBox(height: 20),
-            ],
-          ),
         ),
       ),
     );

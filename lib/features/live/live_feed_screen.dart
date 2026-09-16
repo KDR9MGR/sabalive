@@ -45,11 +45,10 @@ class _LiveFeedScreenState extends State<LiveFeedScreen> {
                     Text('Live', style: Theme.of(context).textTheme.headlineSmall),
                     const Spacer(),
                     IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.emoji_events_rounded,
-                            color: AppColors.gold)),
+                        onPressed: () => AppNav.games(context),
+                        icon: const Icon(Icons.sports_esports_rounded)),
                     IconButton(
-                        onPressed: () {},
+                        onPressed: () => AppNav.search(context),
                         icon: const Icon(Icons.search_rounded)),
                     IconButton(
                         onPressed: () => AppNav.notifications(context),

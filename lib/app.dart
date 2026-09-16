@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'features/auth/auth_flow.dart';
+import 'features/calls/incoming_call_banner.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/main_shell.dart';
 import 'features/splash/splash_screen.dart';
 import 'state/auth_controller.dart';
+import 'state/calls_controller.dart';
+import 'state/live_streams_controller.dart';
 import 'state/session_controller.dart';
 import 'state/wallet_controller.dart';
 import 'theme/app_theme.dart';
@@ -20,6 +23,8 @@ class SabaLiveApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthController()),
         ChangeNotifierProvider(create: (_) => WalletController()),
         ChangeNotifierProvider(create: (_) => SessionController()),
+        ChangeNotifierProvider(create: (_) => LiveStreamsController()),
+        ChangeNotifierProvider(create: (_) => CallsController()),
       ],
       child: MaterialApp(
         title: 'SABALIVE',
@@ -44,10 +49,15 @@ class _RootGate extends StatelessWidget {
       AuthStatus.authenticated => const MainShell(),
     };
 
-    return AnimatedSwitcher(
+    final switcher = AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       switchInCurve: Curves.easeOut,
       child: KeyedSubtree(key: ValueKey(status), child: child),
+    );
+
+    if (status != AuthStatus.authenticated) return switcher;
+    return Stack(
+      children: [switcher, const IncomingCallBanner()],
     );
   }
 }

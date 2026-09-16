@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../config/feature_flags.dart';
+import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/gradient_button.dart';
-import '../../data/mock_data.dart';
+import '../../data/models.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 
@@ -25,23 +27,39 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
     (Icons.payments_rounded, 'Wallet / PayPal'),
   ];
 
-  void _pay() {
-    final pack = Mock.coinPacks[_selected];
-    context.read<WalletController>().buyCoins(pack);
+  bool _paying = false;
+
+  Future<void> _pay(CoinPack pack) async {
+    if (_paying) return;
     final messenger = ScaffoldMessenger.of(context);
-    Navigator.pop(context);
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-            'Added ${withThousands(pack.coins + pack.bonus)} coins to your wallet'),
-      ),
-    );
+    final navigator = Navigator.of(context);
+    setState(() => _paying = true);
+    try {
+      await context.read<WalletController>().buyCoins(pack);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text('${withThousands(pack.coins + pack.bonus)} coins added'),
+      ));
+      navigator.pop();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final wallet = context.watch<WalletController>();
-    final pack = Mock.coinPacks[_selected];
+    final packs = wallet.coinPacks;
+
+    if (packs.isEmpty) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: AppColors.primaryBright)),
+      );
+    }
+
+    final pack = packs[_selected.clamp(0, packs.length - 1)];
 
     return Scaffold(
       appBar: AppBar(
@@ -82,9 +100,9 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
                     crossAxisSpacing: 12,
                     childAspectRatio: 1.15,
                   ),
-                  itemCount: Mock.coinPacks.length,
+                  itemCount: packs.length,
                   itemBuilder: (context, i) {
-                    final p = Mock.coinPacks[i];
+                    final p = packs[i];
                     final sel = i == _selected;
                     return GestureDetector(
                       onTap: () => setState(() => _selected = i),
@@ -145,51 +163,53 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 24),
-                const Text('Payment Method',
-                    style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14)),
-                const SizedBox(height: 10),
-                for (final (i, m) in _methods.indexed)
-                  GestureDetector(
-                    onTap: () => setState(() => _method = i),
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: _method == i
-                              ? AppColors.primaryBright
-                              : AppColors.stroke,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(m.$1,
-                              size: 20, color: AppColors.primaryBright),
-                          const SizedBox(width: 12),
-                          Text(m.$2,
-                              style: const TextStyle(
-                                  fontSize: 13.5, fontWeight: FontWeight.w500)),
-                          const Spacer(),
-                          Icon(
-                            _method == i
-                                ? Icons.radio_button_checked_rounded
-                                : Icons.radio_button_unchecked_rounded,
+                if (FeatureFlags.paymentMethodsEnabled) ...[
+                  const SizedBox(height: 24),
+                  const Text('Payment Method',
+                      style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14)),
+                  const SizedBox(height: 10),
+                  for (final (i, m) in _methods.indexed)
+                    GestureDetector(
+                      onTap: () => setState(() => _method = i),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: AppColors.card,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
                             color: _method == i
                                 ? AppColors.primaryBright
-                                : AppColors.textMuted,
-                            size: 20,
+                                : AppColors.stroke,
                           ),
-                        ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(m.$1,
+                                size: 20, color: AppColors.primaryBright),
+                            const SizedBox(width: 12),
+                            Text(m.$2,
+                                style: const TextStyle(
+                                    fontSize: 13.5, fontWeight: FontWeight.w500)),
+                            const Spacer(),
+                            Icon(
+                              _method == i
+                                  ? Icons.radio_button_checked_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                              color: _method == i
+                                  ? AppColors.primaryBright
+                                  : AppColors.textMuted,
+                              size: 20,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                ],
               ],
             ),
           ),
@@ -203,7 +223,8 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
             child: GradientButton(
               label: 'Pay ${pack.price}  ·  ${withThousands(pack.coins + pack.bonus)} coins',
               icon: Icons.lock_rounded,
-              onPressed: _pay,
+              loading: _paying,
+              onPressed: () => _pay(pack),
             ),
           ),
         ],

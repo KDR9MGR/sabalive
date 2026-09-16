@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/mock_data.dart';
@@ -32,18 +33,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  void _save() {
-    context.read<AuthController>().updateProfile(
-          name: _name.text.trim(),
-          username: '@${_username.text.trim()}',
-          bio: _bio.text.trim(),
-          location: _location.text.trim(),
-        );
+  Future<void> _save() async {
     final messenger = ScaffoldMessenger.of(context);
-    Navigator.pop(context);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Profile updated')),
-    );
+    final navigator = Navigator.of(context);
+    try {
+      await context.read<AuthController>().updateProfile(
+            name: _name.text.trim(),
+            username: '@${_username.text.trim()}',
+            bio: _bio.text.trim(),
+            location: _location.text.trim(),
+          );
+      navigator.pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Profile updated')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
   }
 
   @override

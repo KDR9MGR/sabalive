@@ -12,13 +12,16 @@ import '../profile/profile_screen.dart';
 class MainShell extends StatelessWidget {
   const MainShell({super.key});
 
+  // "Live" sits in the centre slot — the prominent raised button.
   static const _tabs = [
     _TabDef('Home', Icons.home_rounded, Icons.home_outlined),
-    _TabDef('Live', Icons.podcasts_rounded, Icons.podcasts_rounded),
     _TabDef('Messages', Icons.chat_bubble_rounded, Icons.chat_bubble_outline_rounded),
+    _TabDef('Live', Icons.podcasts_rounded, Icons.podcasts_rounded),
     _TabDef('Rankings', Icons.emoji_events_rounded, Icons.emoji_events_outlined),
     _TabDef('Profile', Icons.person_rounded, Icons.person_outline_rounded),
   ];
+
+  static const _liveIndex = 2;
 
   @override
   Widget build(BuildContext context) {
@@ -31,8 +34,8 @@ class MainShell extends StatelessWidget {
         index: index,
         children: const [
           HomeScreen(),
-          LiveFeedScreen(),
           MessagesScreen(),
+          LiveFeedScreen(),
           RankingsScreen(),
           ProfileScreen(),
         ],
@@ -74,7 +77,7 @@ class _BottomBar extends StatelessWidget {
       child: Row(
         children: List.generate(tabs.length, (i) {
           final selected = i == index;
-          final isLive = i == 1;
+          final isLive = i == MainShell._liveIndex;
           return Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,

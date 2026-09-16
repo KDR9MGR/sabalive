@@ -3,7 +3,7 @@
     "short_name": "sabalive",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0B0716",
+    "background_color": "#FFFFFF",
     "theme_color": "#9B3DF5",
     "description": "A new Flutter project.",
     "orientation": "portrait-primary",

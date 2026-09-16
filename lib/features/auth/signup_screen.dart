@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
-import 'auth_flow.dart';
 import 'widgets/auth_scaffold.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -45,14 +45,43 @@ class _SignupScreenState extends State<SignupScreen> {
       _rules.where((r) => r.$2).length / _rules.length;
 
   bool get _canSubmit =>
-      _agree && _name.text.isNotEmpty && _email.text.contains('@') && _strength == 1;
+      _agree &&
+      _name.text.isNotEmpty &&
+      _username.text.trim().isNotEmpty &&
+      _email.text.contains('@') &&
+      _strength == 1;
 
   Future<void> _submit() async {
-    await context.read<AuthController>().signUp(
-          name: _name.text,
-          email: _email.text,
-          username: _username.text,
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      final needsConfirmation = await context.read<AuthController>().signUp(
+            name: _name.text,
+            email: _email.text,
+            username: _username.text,
+            password: _password.text,
+          );
+      if (needsConfirmation && mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: AppColors.bgElevated,
+            title: const Text('Confirm your email'),
+            content: Text(
+                'We sent a confirmation link to ${_email.text.trim()}. '
+                'Tap it, then come back and log in.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK')),
+            ],
+          ),
         );
+        if (mounted) navigator.pop();
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
   }
 
   @override
@@ -157,13 +186,6 @@ class _SignupScreenState extends State<SignupScreen> {
             loading: busy,
             enabled: _canSubmit,
             onPressed: _submit,
-          ),
-          const SizedBox(height: 12),
-          OutlinePillButton(
-            label: 'Verify by OTP instead',
-            icon: Icons.sms_outlined,
-            onPressed: () => Navigator.pushNamed(context, AuthRoutes.otp,
-                arguments: const OtpArgs(phone: '+91 98765 43210', purpose: 'signup')),
           ),
           const SizedBox(height: 20),
           Center(

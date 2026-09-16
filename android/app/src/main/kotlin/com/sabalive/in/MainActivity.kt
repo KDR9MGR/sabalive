@@ -1,4 +1,4 @@
-package com.example.sabalive
+package com.sabalive.`in`
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/otp_input.dart';
 import '../../state/auth_controller.dart';
@@ -30,7 +31,19 @@ class _OtpScreenState extends State<OtpScreen> {
   void initState() {
     super.initState();
     _startTimer();
-    context.read<AuthController>().requestOtp(_phone);
+    _requestOtp();
+  }
+
+  Future<void> _requestOtp() async {
+    try {
+      await context.read<AuthController>().requestOtp(_phone);
+    } catch (e) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      });
+    }
   }
 
   void _startTimer() {
@@ -52,14 +65,25 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   Future<void> _verify() async {
-    final ok = await context.read<AuthController>().verifyOtp(_code);
-    if (!mounted) return;
-    if (ok) {
-      setState(() => _verified = true);
-    } else {
+    if (_code.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter the 6-digit code to continue')),
       );
+      return;
+    }
+    try {
+      final ok = await context.read<AuthController>().verifyOtp(_code);
+      if (!mounted) return;
+      if (ok) {
+        setState(() => _verified = true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That code didn\'t work — try again')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 
@@ -112,7 +136,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       : TextButton(
                           onPressed: () {
                             _startTimer();
-                            context.read<AuthController>().requestOtp(_phone);
+                            _requestOtp();
                           },
                           child: const Text('Resend OTP',
                               style: TextStyle(color: AppColors.primaryBright)),
