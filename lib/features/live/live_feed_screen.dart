@@ -51,6 +51,10 @@ class _LiveFeedScreenState extends State<LiveFeedScreen> {
                             onPressed: () => AppNav.search(context),
                             icon: const Icon(Icons.search_rounded)),
                         IconButton(
+                            onPressed: () => session.tab = 3,
+                            icon: const Icon(Icons.emoji_events_rounded,
+                                color: AppColors.gold)),
+                        IconButton(
                             onPressed: () => AppNav.notifications(context),
                             icon: const Icon(Icons.notifications_none_rounded)),
                       ],
