@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -46,6 +47,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   RealtimeChannel? _chatChannel;
   String? _joinError;
   bool _reconnecting = false;
+  Timer? _waitTimer;
+  bool _waitingTooLong = false;
 
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
@@ -64,9 +67,21 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     if (_isReal) {
       _joinReal();
       _loadRealChat();
+      _logViewerJoin();
     } else {
       _chat.addAll(Mock.liveChat());
     }
+  }
+
+  /// Logs presence in `live_stream_viewers`, which a trigger uses to keep
+  /// `live_streams.viewer_count` accurate — Agora's own onUserJoined isn't
+  /// reliable for this: its Live Broadcasting profile doesn't report
+  /// audience-role joins to other participants (by design, for scale), so
+  /// the host was never actually finding out a viewer had shown up.
+  Future<void> _logViewerJoin() async {
+    try {
+      await supabase.rpc('join_live_stream', params: {'p_stream_id': widget.stream.id});
+    } catch (_) {/* best-effort — a missed count beats a broken screen */}
   }
 
   Future<void> _joinReal() async {
@@ -79,7 +94,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       engine.registerEventHandler(
         RtcEngineEventHandler(
           onUserJoined: (connection, remoteUid, elapsed) {
-            if (mounted) setState(() => _remoteUid = remoteUid);
+            _waitTimer?.cancel();
+            if (mounted) {
+              setState(() {
+                _remoteUid = remoteUid;
+                _waitingTooLong = false;
+              });
+            }
           },
           onUserOffline: (connection, remoteUid, reason) {
             if (mounted && _remoteUid == remoteUid)
@@ -110,9 +131,25 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         options: const ChannelMediaOptions(
           channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
           clientRoleType: ClientRoleType.clientRoleAudience,
+          // Left unset (null) these default to "on" per Agora's docs, but
+          // that default has been unreliable across native platform-channel
+          // serialization in some SDK builds — audience joins the channel
+          // fine but never actually receives the host's tracks. Explicit
+          // beats implicit here.
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: true,
+          publishCameraTrack: false,
+          publishMicrophoneTrack: false,
         ),
       );
       if (mounted) setState(() => _engine = engine);
+      // Joined the channel fine, but if no remote user shows up in a
+      // reasonable window, that's a real signal worth surfacing distinctly
+      // from "still connecting" — most likely the host has ended, or (if
+      // this keeps happening) a join/subscribe bug worth another look.
+      _waitTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted && _remoteUid == null) setState(() => _waitingTooLong = true);
+      });
     } catch (e) {
       if (mounted) setState(() => _joinError = friendlyError(e));
     }
@@ -196,10 +233,16 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
   @override
   void dispose() {
+    _waitTimer?.cancel();
     _msgController.dispose();
     _burstCtl.dispose();
     _chatChannel?.unsubscribe();
-    if (_isReal) AgoraService.instance.release();
+    if (_isReal) {
+      AgoraService.instance.release();
+      unawaited(
+        supabase.rpc('leave_live_stream', params: {'p_stream_id': widget.stream.id}),
+      );
+    }
     super.dispose();
   }
 
@@ -377,7 +420,17 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                     style: const TextStyle(color: Colors.white70),
                   ),
                 )
-              : const CircularProgressIndicator(color: AppColors.primaryBright),
+              : _waitingTooLong
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        "Still nothing from the host — they may have ended, "
+                        "or there's a connection issue.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    )
+                  : const CircularProgressIndicator(color: AppColors.primaryBright),
         ),
       );
     }

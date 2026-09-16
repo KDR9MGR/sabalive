@@ -31,6 +31,7 @@ class PkBattleScreen extends StatefulWidget {
 
 class _PkBattleScreenState extends State<PkBattleScreen> {
   RealtimeChannel? _chatChannel;
+  RealtimeChannel? _viewerChannel;
   int _viewers = 0;
   bool _reconnecting = false;
 
@@ -59,6 +60,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     super.initState();
     _join();
     _subscribeChat();
+    _subscribeViewerCount();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -85,12 +87,6 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     try {
       final engine = await AgoraService.instance.ensureEngine();
       engine.registerEventHandler(RtcEngineEventHandler(
-        onUserJoined: (c, uid, e) {
-          if (mounted) setState(() => _viewers++);
-        },
-        onUserOffline: (c, uid, r) {
-          if (mounted) setState(() => _viewers = (_viewers - 1).clamp(0, 1 << 30));
-        },
         onError: (err, msg) {},
         onConnectionStateChanged: (connection, state, reason) {
           if (mounted) {
@@ -132,6 +128,29 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
             value: widget.stream.id,
           ),
           callback: (payload) => _appendRow(payload.newRecord),
+        )
+        .subscribe();
+  }
+
+  /// See the same note in live_broadcast_screen.dart — Agora's
+  /// onUserJoined/onUserOffline doesn't report audience-role joins in Live
+  /// Broadcasting mode, so viewer count comes from the DB instead.
+  void _subscribeViewerCount() {
+    _viewerChannel = supabase
+        .channel('pk-viewers-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'live_streams',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final count = payload.newRecord['viewer_count'] as int?;
+            if (mounted && count != null) setState(() => _viewers = count);
+          },
         )
         .subscribe();
   }
@@ -245,6 +264,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     _heartbeat?.cancel();
     _input.dispose();
     _chatChannel?.unsubscribe();
+    _viewerChannel?.unsubscribe();
     AgoraService.instance.release();
     super.dispose();
   }

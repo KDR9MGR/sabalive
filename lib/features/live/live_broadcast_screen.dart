@@ -44,6 +44,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   int _viewers = 0;
   final List<LiveChatLine> _chat = [];
   RealtimeChannel? _chatChannel;
+  RealtimeChannel? _viewerChannel;
   String? _error;
   bool _reconnecting = false;
 
@@ -68,6 +69,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     super.initState();
     _join();
     _subscribeChat();
+    _subscribeViewerCount();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
     });
@@ -86,12 +88,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     try {
       final engine = await AgoraService.instance.ensureEngine();
       engine.registerEventHandler(RtcEngineEventHandler(
-        onUserJoined: (connection, remoteUid, elapsed) {
-          if (mounted) setState(() => _viewers++);
-        },
-        onUserOffline: (connection, remoteUid, reason) {
-          if (mounted) setState(() => _viewers = (_viewers - 1).clamp(0, 1 << 30));
-        },
         onError: (err, msg) {
           if (mounted) setState(() => _error = msg);
         },
@@ -141,6 +137,32 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         .subscribe();
   }
 
+  /// Viewer count comes from the DB, not Agora's onUserJoined/onUserOffline
+  /// — Agora's Live Broadcasting profile doesn't report audience-role joins
+  /// to other participants (by design, for scale to large audiences), so
+  /// those callbacks never actually fired for real viewers. Each watch
+  /// screen logs its own presence via join_live_stream/leave_live_stream,
+  /// and a trigger keeps live_streams.viewer_count accurate from that.
+  void _subscribeViewerCount() {
+    _viewerChannel = supabase
+        .channel('live-viewers-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'live_streams',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final count = payload.newRecord['viewer_count'] as int?;
+            if (mounted && count != null) setState(() => _viewers = count);
+          },
+        )
+        .subscribe();
+  }
+
   Future<void> _appendChatRow(Map<String, dynamic> row) async {
     final senderId = row['sender_id'] as String;
     final profileRow =
@@ -179,6 +201,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     _heartbeat?.cancel();
     _input.dispose();
     _chatChannel?.unsubscribe();
+    _viewerChannel?.unsubscribe();
     AgoraService.instance.release();
     super.dispose();
   }
