@@ -13,9 +13,10 @@ import '../profile/profile_screen.dart';
 class MainShell extends StatelessWidget {
   const MainShell({super.key});
 
-  // "Live" sits in the centre slot — the prominent raised button. "Games"
-  // sits right next to it but isn't one of the IndexedStack pages below —
-  // it pushes its own screen instead of swapping tabs.
+  // "Live" sits in the centre slot — the prominent raised button. While
+  // Live is the active tab, Games takes over the Rankings slot next to it
+  // (pushes its own screen rather than swapping tabs); every other tab
+  // shows Rankings there as normal.
   static const _tabs = [
     _TabDef('Home', Icons.home_rounded, Icons.home_outlined),
     _TabDef('Messages', Icons.chat_bubble_rounded, Icons.chat_bubble_outline_rounded),
@@ -25,6 +26,7 @@ class MainShell extends StatelessWidget {
   ];
 
   static const _liveIndex = 2;
+  static const _rankingsIndex = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -79,23 +81,23 @@ class _BottomBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (var i = 0; i < tabs.length; i++) ...[
-            _item(
-              icon: index == i ? tabs[i].active : tabs[i].inactive,
-              label: tabs[i].label,
-              selected: index == i,
-              raised: i == MainShell._liveIndex,
-              onTap: () => onTap(i),
-            ),
-            if (i == MainShell._liveIndex)
+          for (var i = 0; i < tabs.length; i++)
+            if (i == MainShell._rankingsIndex && index == MainShell._liveIndex)
               _item(
                 icon: Icons.sports_esports_rounded,
                 label: 'Games',
                 selected: false,
                 raised: false,
                 onTap: () => AppNav.games(context),
+              )
+            else
+              _item(
+                icon: index == i ? tabs[i].active : tabs[i].inactive,
+                label: tabs[i].label,
+                selected: index == i,
+                raised: i == MainShell._liveIndex,
+                onTap: () => onTap(i),
               ),
-          ],
         ],
       ),
     );
