@@ -7,6 +7,7 @@ import '../../core/widgets/saba_logo.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/mock_data.dart';
 import '../../router/app_nav.dart';
+import '../../state/auth_controller.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
@@ -25,11 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final realStreams = context.watch<LiveStreamsController>().streams;
-    // Show real streams when anyone is live; fall back to the demo grid so the
-    // screen isn't empty during the alpha when few people are streaming.
-    final usingReal = realStreams.isNotEmpty;
-    final source = usingReal ? realStreams : Mock.liveStreams;
+    final source = context.watch<LiveStreamsController>().streams;
     final streams = _cat == 0
         ? source
         : source.where((s) => s.category == _cats[_cat]).toList();
@@ -56,16 +53,20 @@ class _HomeScreenState extends State<HomeScreen> {
             const SliverToBoxAdapter(child: SizedBox(height: 18)),
             SliverToBoxAdapter(
               child: SectionHeader(
-                  title: usingReal ? '🔴 Live Now' : 'Live Now',
+                  title: source.isNotEmpty ? '🔴 Live Now' : 'Live Now',
                   onAction: () => AppNav.search(context)),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
             if (streams.isEmpty)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, 20, 20, 20),
-                  child: Text('No live rooms in this category right now.',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                  child: Text(
+                    source.isEmpty
+                        ? "No one's live right now — be the first!"
+                        : 'No live rooms in this category right now.',
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  ),
                 ),
               )
             else
@@ -94,27 +95,29 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
             SliverToBoxAdapter(child: _categoryStrip()),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            SliverToBoxAdapter(
-              child: SectionHeader(
-                title: 'Trending Now',
-                onAction: () => AppNav.search(context),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 4)),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => LiveListTile(
-                    stream: trending[i],
-                    rank: i + 1,
-                    onTap: () => AppNav.watchLive(context, trending[i]),
-                  ),
-                  childCount: trending.length < 4 ? trending.length : 4,
+            if (trending.isNotEmpty) ...[
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              SliverToBoxAdapter(
+                child: SectionHeader(
+                  title: 'Trending Now',
+                  onAction: () => AppNav.search(context),
                 ),
               ),
-            ),
+              const SliverToBoxAdapter(child: SizedBox(height: 4)),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) => LiveListTile(
+                      stream: trending[i],
+                      rank: i + 1,
+                      onTap: () => AppNav.watchLive(context, trending[i]),
+                    ),
+                    childCount: trending.length < 4 ? trending.length : 4,
+                  ),
+                ),
+              ),
+            ],
             const SliverToBoxAdapter(child: SizedBox(height: 120)),
           ],
           ),
@@ -129,6 +132,15 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         children: [
           const SabaLogo(size: 34, glow: false),
+          const SizedBox(width: 10),
+          const Text('SABA LIVE',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                letterSpacing: 0.4,
+                color: AppColors.textPrimary,
+              )),
           const Spacer(),
           _iconBtn(Icons.search_rounded, () => AppNav.search(context)),
           _iconBtn(Icons.emoji_events_rounded,
@@ -150,6 +162,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _banner(BuildContext context) {
+    final name = context.watch<AuthController>().user?.name;
+    final greeting = (name == null || name.isEmpty)
+        ? 'Welcome back'
+        : 'Welcome back, ${name.split(' ').first}';
+
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       padding: const EdgeInsets.all(18),
@@ -170,21 +187,21 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Weekend Live Party',
-                    style: TextStyle(
+                Text(greeting,
+                    style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w700,
                       fontSize: 18,
                       color: Colors.white,
                     )),
                 const SizedBox(height: 4),
-                Text('Join the celebration & win big rewards!',
+                Text('Go live or find someone to watch right now',
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.85),
                         fontSize: 12.5)),
                 const SizedBox(height: 12),
                 GestureDetector(
-                  onTap: () {},
+                  onTap: () => AppNav.goLive(context),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 8),
@@ -192,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text('Join Now',
+                    child: const Text('Go Live',
                         style: TextStyle(
                           fontFamily: 'Poppins',
                           fontWeight: FontWeight.w600,
@@ -212,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
               color: Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.celebration_rounded,
+            child: const Icon(Icons.waving_hand_rounded,
                 color: Colors.white, size: 34),
           ),
         ],

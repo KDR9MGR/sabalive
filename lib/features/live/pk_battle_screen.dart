@@ -51,6 +51,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   Duration _left = const Duration(minutes: 3);
   Timer? _timer;
   Timer? _oppTrickle;
+  Timer? _heartbeat;
   bool _finished = false;
 
   @override
@@ -72,6 +73,11 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     // opponent gets the occasional gift so the bar actually moves
     _oppTrickle = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && !_finished) setState(() => _scoreB += 10 + (_scoreA ~/ 20));
+    });
+    // Keeps the underlying stream row from being auto-ended as stale.
+    final liveStreams = context.read<LiveStreamsController>();
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
+      liveStreams.heartbeat(widget.stream.id);
     });
   }
 
@@ -236,6 +242,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   void dispose() {
     _timer?.cancel();
     _oppTrickle?.cancel();
+    _heartbeat?.cancel();
     _input.dispose();
     _chatChannel?.unsubscribe();
     AgoraService.instance.release();

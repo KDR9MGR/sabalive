@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../router/app_nav.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import '../home/home_screen.dart';
@@ -12,7 +13,9 @@ import '../profile/profile_screen.dart';
 class MainShell extends StatelessWidget {
   const MainShell({super.key});
 
-  // "Live" sits in the centre slot — the prominent raised button.
+  // "Live" sits in the centre slot — the prominent raised button. "Games"
+  // sits right next to it but isn't one of the IndexedStack pages below —
+  // it pushes its own screen instead of swapping tabs.
   static const _tabs = [
     _TabDef('Home', Icons.home_rounded, Icons.home_outlined),
     _TabDef('Messages', Icons.chat_bubble_rounded, Icons.chat_bubble_outline_rounded),
@@ -75,66 +78,88 @@ class _BottomBar extends StatelessWidget {
         border: const Border(top: BorderSide(color: AppColors.stroke)),
       ),
       child: Row(
-        children: List.generate(tabs.length, (i) {
-          final selected = i == index;
-          final isLive = i == MainShell._liveIndex;
-          return Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
+        children: [
+          for (var i = 0; i < tabs.length; i++) ...[
+            _item(
+              icon: index == i ? tabs[i].active : tabs[i].inactive,
+              label: tabs[i].label,
+              selected: index == i,
+              raised: i == MainShell._liveIndex,
               onTap: () => onTap(i),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: isLive ? 44 : 40,
-                    height: isLive ? 44 : 34,
-                    decoration: BoxDecoration(
-                      gradient: isLive
-                          ? AppColors.primaryGradient
-                          : selected
-                              ? LinearGradient(colors: [
-                                  AppColors.primary.withValues(alpha: 0.18),
-                                  AppColors.magenta.withValues(alpha: 0.18),
-                                ])
-                              : null,
-                      borderRadius: BorderRadius.circular(isLive ? 16 : 12),
-                      boxShadow: isLive
-                          ? [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.5),
-                                blurRadius: 16,
-                                offset: const Offset(0, 6),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: Icon(
-                      selected ? tabs[i].active : tabs[i].inactive,
-                      size: isLive ? 24 : 22,
-                      color: isLive
-                          ? Colors.white
-                          : selected
-                              ? AppColors.primaryBright
-                              : AppColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    tabs[i].label,
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 10,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                      color: selected
-                          ? AppColors.primaryBright
-                          : AppColors.textMuted,
-                    ),
-                  ),
-                ],
+            ),
+            if (i == MainShell._liveIndex)
+              _item(
+                icon: Icons.sports_esports_rounded,
+                label: 'Games',
+                selected: false,
+                raised: false,
+                onTap: () => AppNav.games(context),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _item({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required bool raised,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: raised ? 44 : 40,
+              height: raised ? 44 : 34,
+              decoration: BoxDecoration(
+                gradient: raised
+                    ? AppColors.primaryGradient
+                    : selected
+                        ? LinearGradient(colors: [
+                            AppColors.primary.withValues(alpha: 0.18),
+                            AppColors.magenta.withValues(alpha: 0.18),
+                          ])
+                        : null,
+                borderRadius: BorderRadius.circular(raised ? 16 : 12),
+                boxShadow: raised
+                    ? [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.5),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Icon(
+                icon,
+                size: raised ? 24 : 22,
+                color: raised
+                    ? Colors.white
+                    : selected
+                        ? AppColors.primaryBright
+                        : AppColors.textMuted,
               ),
             ),
-          );
-        }),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? AppColors.primaryBright : AppColors.textMuted,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

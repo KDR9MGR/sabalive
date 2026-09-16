@@ -61,6 +61,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   int _seatCount = 8;
   final Set<int> _lockedSeats = {};
 
+  Timer? _heartbeat;
+
   @override
   void initState() {
     super.initState();
@@ -71,6 +73,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     });
     Future.delayed(const Duration(seconds: 12), () {
       if (mounted) setState(() => _showWarning = false);
+    });
+    // Keeps the stream row from being auto-ended as stale while this
+    // screen is genuinely up and broadcasting.
+    final liveStreams = context.read<LiveStreamsController>();
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
+      liveStreams.heartbeat(widget.stream.id);
     });
   }
 
@@ -168,6 +176,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _heartbeat?.cancel();
     _input.dispose();
     _chatChannel?.unsubscribe();
     AgoraService.instance.release();

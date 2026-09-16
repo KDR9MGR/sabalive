@@ -57,6 +57,16 @@ class LiveStreamsController extends ChangeNotifier {
     return LiveStream.fromRow(row, AppUser.fromRow(profileRow));
   }
 
+  /// Keeps a stream from being auto-ended by `end_stale_live_streams` —
+  /// call every ~30s while actually broadcasting. A host that force-quits
+  /// or loses connection stops sending these, so the stream gets cleaned up
+  /// within ~90s instead of sitting at status='live' forever.
+  Future<void> heartbeat(String id) async {
+    try {
+      await supabase.rpc('heartbeat_stream', params: {'p_stream_id': id});
+    } catch (_) {/* best-effort; a missed beat or two is fine */}
+  }
+
   Future<void> endStream(String id) async {
     await supabase.from('live_streams').update({
       'status': 'ended',

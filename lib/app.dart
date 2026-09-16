@@ -10,6 +10,7 @@ import 'state/auth_controller.dart';
 import 'state/calls_controller.dart';
 import 'state/live_streams_controller.dart';
 import 'state/session_controller.dart';
+import 'state/theme_config_controller.dart';
 import 'state/wallet_controller.dart';
 import 'theme/app_theme.dart';
 
@@ -25,12 +26,19 @@ class SabaLiveApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SessionController()),
         ChangeNotifierProvider(create: (_) => LiveStreamsController()),
         ChangeNotifierProvider(create: (_) => CallsController()),
+        ChangeNotifierProvider(create: (_) => ThemeConfigController()),
       ],
-      child: MaterialApp(
-        title: 'SABALIVE',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark,
-        home: const _RootGate(),
+      child: Consumer<ThemeConfigController>(
+        builder: (context, themeConfig, _) => MaterialApp(
+          title: 'SABALIVE',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.dark(
+            primary: themeConfig.primary,
+            secondary: themeConfig.secondary,
+            fontFamilyOverride: themeConfig.fontFamily,
+          ),
+          home: const _RootGate(),
+        ),
       ),
     );
   }
