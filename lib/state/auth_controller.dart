@@ -46,6 +46,14 @@ class AuthController extends ChangeNotifier {
     // Session exists (sign-in, token refresh, restored on cold start, or —
     // importantly — the OAuth deep-link returning after Google/Apple).
     await _refreshProfile(session.user.id);
+    // While still on the splash screen, a restored session fires here
+    // almost immediately after boot — leave the first navigation away from
+    // it to completeSplash() (driven by the intro video finishing, its
+    // timeout, or a tap-to-skip), which already re-checks currentSession
+    // itself. Without this guard the splash gets cut short for any
+    // returning, already-logged-in user as soon as the profile fetch above
+    // resolves.
+    if (_status == AuthStatus.unknown) return;
     if (!_awaitingOtpFinish && _status != AuthStatus.authenticated) {
       _status = AuthStatus.authenticated;
       notifyListeners();
