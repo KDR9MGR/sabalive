@@ -17,6 +17,7 @@ class SeatRoom extends StatelessWidget {
     required this.onSeatTap,
     this.onAddSeat,
     this.onRemoveSeat,
+    this.occupants = const {},
   });
   final AppUser host;
   final String? error;
@@ -25,6 +26,9 @@ class SeatRoom extends StatelessWidget {
   final void Function(int seat) onSeatTap;
   final VoidCallback? onAddSeat;
   final VoidCallback? onRemoveSeat;
+  /// Who's actually sitting where, keyed by seat number (1-based). Empty by
+  /// default so callers that don't track occupancy render exactly as before.
+  final Map<int, AppUser> occupants;
 
   @override
   Widget build(BuildContext context) {
@@ -83,30 +87,46 @@ class SeatRoom extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Container(
-                              width: 58,
-                              height: 58,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha: 0.06),
-                                border: Border.all(
+                            if (occupants[i] case final occupant?)
+                              Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: AppColors.primaryGradient,
+                                ),
+                                child: AppAvatar(name: occupant.name, size: 54),
+                              )
+                            else
+                              Container(
+                                width: 58,
+                                height: 58,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withValues(alpha: 0.06),
+                                  border: Border.all(
+                                      color: lockedSeats.contains(i)
+                                          ? AppColors.gold.withValues(alpha: 0.7)
+                                          : Colors.white.withValues(alpha: 0.18)),
+                                ),
+                                child: Icon(
+                                    lockedSeats.contains(i)
+                                        ? Icons.lock_rounded
+                                        : Icons.mic_none_rounded,
                                     color: lockedSeats.contains(i)
-                                        ? AppColors.gold.withValues(alpha: 0.7)
-                                        : Colors.white.withValues(alpha: 0.18)),
+                                        ? AppColors.gold
+                                        : Colors.white38,
+                                    size: 22),
                               ),
-                              child: Icon(
-                                  lockedSeats.contains(i)
-                                      ? Icons.lock_rounded
-                                      : Icons.mic_none_rounded,
-                                  color: lockedSeats.contains(i)
-                                      ? AppColors.gold
-                                      : Colors.white38,
-                                  size: 22),
-                            ),
                             const SizedBox(height: 4),
-                            Text('Seat $i',
-                                style: const TextStyle(
-                                    fontSize: 9.5, color: Colors.white38)),
+                            SizedBox(
+                              width: 58,
+                              child: Text(occupants[i]?.name ?? 'Seat $i',
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 9.5, color: Colors.white38)),
+                            ),
                           ],
                         ),
                       ),

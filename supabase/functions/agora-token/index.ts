@@ -70,6 +70,37 @@ Deno.serve(async (req) => {
 
   const role = body.role === "subscriber" ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
 
+  // Publisher tokens let the holder actually broadcast into the channel.
+  // For a channel that's a real live_streams row, only that stream's host
+  // or someone currently holding a claimed seat on it may publish — every
+  // other authenticated user used to get a publisher token for any channel
+  // name with no check at all. A channelName that ISN'T a live_streams id
+  // (e.g. a 1:1 call's "call-<uuid>" channel) simply won't match any row
+  // here and falls through unchanged.
+  if (role === RtcRole.PUBLISHER) {
+    const { data: stream } = await userClient
+      .from("live_streams")
+      .select("host_id")
+      .eq("id", channelName)
+      .maybeSingle();
+    if (stream) {
+      const isHost = stream.host_id === user.id;
+      let isSeated = false;
+      if (!isHost) {
+        const { data: seat } = await userClient
+          .from("live_stream_seats")
+          .select("seat_number")
+          .eq("live_stream_id", channelName)
+          .eq("occupant_id", user.id)
+          .maybeSingle();
+        isSeated = !!seat;
+      }
+      if (!isHost && !isSeated) {
+        return json({ error: "Not authorized to publish to this stream" }, 403);
+      }
+    }
+  }
+
   const token = RtcTokenBuilder.buildTokenWithUid(
     APP_ID,
     APP_CERTIFICATE,

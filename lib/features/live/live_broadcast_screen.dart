@@ -59,9 +59,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   bool _showPip = true;
   Offset _pipPos = const Offset(-1, -1); // resolved on first layout
 
-  // audio-room seat controls (host only, local for the alpha)
+  // audio-room seat controls — seat count stays host-local, occupancy and
+  // locks are real (live_stream_seats / live_streams.locked_seats)
   int _seatCount = 8;
-  final Set<int> _lockedSeats = {};
+  Set<int> _lockedSeats = {};
+  final Map<int, AppUser> _seatOccupants = {};
+  RealtimeChannel? _seatsChannel;
 
   Timer? _heartbeat;
 
@@ -71,6 +74,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     _join();
     _subscribeChat();
     _subscribeViewerCount();
+    if (widget.audioOnly) _subscribeSeats();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
     });
@@ -158,7 +162,74 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           ),
           callback: (payload) {
             final count = payload.newRecord['viewer_count'] as int?;
-            if (mounted && count != null) setState(() => _viewers = count);
+            final locked = payload.newRecord['locked_seats'] as List?;
+            if (!mounted) return;
+            setState(() {
+              if (count != null) _viewers = count;
+              if (locked != null) {
+                _lockedSeats = locked.cast<int>().toSet();
+              }
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  /// Live seat occupancy — who's actually sitting where, kept in sync across
+  /// the host and every viewer via the same live_stream_seats row set.
+  Future<void> _subscribeSeats() async {
+    final rows = await supabase
+        .from('live_stream_seats')
+        .select('seat_number, profiles!live_stream_seats_occupant_id_fkey(*)')
+        .eq('live_stream_id', widget.stream.id);
+    if (mounted) {
+      setState(() {
+        for (final r in rows as List) {
+          final profileRow = r['profiles'] as Map<String, dynamic>?;
+          if (profileRow != null) {
+            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(profileRow);
+          }
+        }
+      });
+    }
+    _seatsChannel = supabase
+        .channel('live-seats-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) async {
+            final seat = payload.newRecord['seat_number'] as int;
+            final occupantId = payload.newRecord['occupant_id'] as String;
+            final profileRow = await supabase
+                .from('profiles')
+                .select()
+                .eq('id', occupantId)
+                .maybeSingle();
+            if (mounted && profileRow != null) {
+              setState(() => _seatOccupants[seat] = AppUser.fromRow(profileRow));
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final seat = payload.oldRecord['seat_number'] as int?;
+            if (mounted && seat != null) {
+              setState(() => _seatOccupants.remove(seat));
+            }
           },
         )
         .subscribe();
@@ -203,6 +274,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     _input.dispose();
     _chatChannel?.unsubscribe();
     _viewerChannel?.unsubscribe();
+    _seatsChannel?.unsubscribe();
     AgoraService.instance.release();
     super.dispose();
   }
@@ -452,6 +524,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         }
       });
       _snack('Seat $seat ${locked ? 'unlocked' : 'locked'}');
+      unawaited(supabase.rpc('set_seat_lock', params: {
+        'p_stream_id': widget.stream.id,
+        'p_seat': seat,
+        'p_locked': !locked,
+      }));
     } else if (choice == 'invite') {
       _soon('Seat invites');
     }
@@ -508,6 +585,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               error: _error,
               seatCount: _seatCount,
               lockedSeats: _lockedSeats,
+              occupants: _seatOccupants,
               onSeatTap: _seatMenu,
               onAddSeat: _seatCount >= 12
                   ? null

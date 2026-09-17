@@ -20,6 +20,7 @@ class AgoraService {
   static final AgoraService instance = AgoraService._();
 
   RtcEngine? _engine;
+  bool _asBroadcaster = false;
 
   Future<RtcEngine> ensureEngine() async {
     final existing = _engine;
@@ -55,10 +56,14 @@ class AgoraService {
     required String channelName,
     required bool asBroadcaster,
   }) {
+    _asBroadcaster = asBroadcaster;
     engine.registerEventHandler(RtcEngineEventHandler(
       onTokenPrivilegeWillExpire: (connection, token) async {
         try {
-          final fresh = await fetchToken(channelName: channelName, asBroadcaster: asBroadcaster);
+          // Reads _asBroadcaster live rather than the captured param, so a
+          // mid-session switchRole() call (e.g. claiming a seat) is honored
+          // on the next renewal instead of silently reverting the role.
+          final fresh = await fetchToken(channelName: channelName, asBroadcaster: _asBroadcaster);
           await engine.renewToken(fresh.token);
         } catch (_) {
           // Best-effort — if this fails the SDK will surface a connection
@@ -66,6 +71,58 @@ class AgoraService {
         }
       },
     ));
+  }
+
+  /// Switches an already-joined client between audience and broadcaster —
+  /// e.g. a viewer claiming/releasing an audio-room seat — without leaving
+  /// the channel. Agora's documented pattern for this: a fresh role-scoped
+  /// token, renewToken, setClientRole, then updateChannelMediaOptions to
+  /// actually flip the publish flag (setClientRole alone doesn't). Falls
+  /// back to a full leave+rejoin if any step fails, so a seat claim never
+  /// ends up silently not publishing.
+  Future<void> switchRole(
+    RtcEngine engine, {
+    required String channelName,
+    required bool asBroadcaster,
+  }) async {
+    try {
+      final fresh = await fetchToken(channelName: channelName, asBroadcaster: asBroadcaster);
+      await engine.renewToken(fresh.token);
+      await engine.setClientRole(
+        role: asBroadcaster
+            ? ClientRoleType.clientRoleBroadcaster
+            : ClientRoleType.clientRoleAudience,
+      );
+      await engine.updateChannelMediaOptions(
+        ChannelMediaOptions(publishMicrophoneTrack: asBroadcaster),
+      );
+      if (asBroadcaster) {
+        await engine.enableLocalAudio(true);
+        await engine.muteLocalAudioStream(false);
+      } else {
+        await engine.muteLocalAudioStream(true);
+      }
+      _asBroadcaster = asBroadcaster;
+    } catch (_) {
+      final fresh = await fetchToken(channelName: channelName, asBroadcaster: asBroadcaster);
+      await engine.leaveChannel();
+      await engine.joinChannel(
+        token: fresh.token,
+        channelId: fresh.channelName,
+        uid: fresh.uid,
+        options: ChannelMediaOptions(
+          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+          clientRoleType: asBroadcaster
+              ? ClientRoleType.clientRoleBroadcaster
+              : ClientRoleType.clientRoleAudience,
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: true,
+          publishCameraTrack: false,
+          publishMicrophoneTrack: asBroadcaster,
+        ),
+      );
+      _asBroadcaster = asBroadcaster;
+    }
   }
 
   /// Camera + microphone are only needed to broadcast, not to watch.

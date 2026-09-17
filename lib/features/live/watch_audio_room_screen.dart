@@ -27,10 +27,10 @@ import 'widgets/seat_room.dart';
 /// Viewer of an audio room — same proven audience-join + chat/gift/like
 /// chrome as [WatchLiveScreen] (lib/features/live/watch_live_screen.dart),
 /// swapping the video canvas for the same [SeatRoom] visual the host sees.
-/// Seat occupancy itself isn't synced across devices yet (host-side seat
-/// state is local-only, per live_broadcast_screen.dart) — this shows the
-/// room's shape (host + seat grid), not live per-seat occupancy; tapping a
-/// seat is a placeholder, not a join-seat request.
+/// Seat occupancy is real and live (live_stream_seats) — tapping an empty,
+/// unlocked seat claims it instantly (self-serve, no host approval) and
+/// switches this client's Agora role to broadcaster so it actually
+/// publishes microphone audio; tapping your own seat releases it.
 class WatchAudioRoomScreen extends StatefulWidget {
   const WatchAudioRoomScreen({super.key, required this.stream});
   final LiveStream stream;
@@ -56,6 +56,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   Timer? _waitTimer;
   bool _waitingTooLong = false;
 
+  RtcEngine? _engine;
+  final Map<int, AppUser> _seatOccupants = {};
+  Set<int> _lockedSeats = {};
+  RealtimeChannel? _seatsChannel;
+  RealtimeChannel? _seatStreamChannel;
+  bool _seatBusy = false;
+
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
@@ -74,6 +81,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
+      _subscribeSeats();
     } else {
       _chat.addAll(Mock.liveChat());
     }
@@ -85,9 +93,96 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     } catch (_) {/* best-effort — a missed count beats a broken screen */}
   }
 
+  /// Live seat occupancy + locks — mirrors the host's own subscription in
+  /// live_broadcast_screen.dart so both sides see the identical room state.
+  Future<void> _subscribeSeats() async {
+    final rows = await supabase
+        .from('live_stream_seats')
+        .select('seat_number, profiles!live_stream_seats_occupant_id_fkey(*)')
+        .eq('live_stream_id', widget.stream.id);
+    final streamRow = await supabase
+        .from('live_streams')
+        .select('locked_seats')
+        .eq('id', widget.stream.id)
+        .maybeSingle();
+    if (mounted) {
+      setState(() {
+        for (final r in rows as List) {
+          final profileRow = r['profiles'] as Map<String, dynamic>?;
+          if (profileRow != null) {
+            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(profileRow);
+          }
+        }
+        final locked = streamRow?['locked_seats'] as List?;
+        if (locked != null) _lockedSeats = locked.cast<int>().toSet();
+      });
+    }
+    _seatsChannel = supabase
+        .channel('live-seats-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) async {
+            final seat = payload.newRecord['seat_number'] as int;
+            final occupantId = payload.newRecord['occupant_id'] as String;
+            final profileRow = await supabase
+                .from('profiles')
+                .select()
+                .eq('id', occupantId)
+                .maybeSingle();
+            if (mounted && profileRow != null) {
+              setState(() => _seatOccupants[seat] = AppUser.fromRow(profileRow));
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final seat = payload.oldRecord['seat_number'] as int?;
+            if (mounted && seat != null) {
+              setState(() => _seatOccupants.remove(seat));
+            }
+          },
+        )
+        .subscribe();
+    _seatStreamChannel = supabase
+        .channel('live-seatlocks-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'live_streams',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final locked = payload.newRecord['locked_seats'] as List?;
+            if (mounted && locked != null) {
+              setState(() => _lockedSeats = locked.cast<int>().toSet());
+            }
+          },
+        )
+        .subscribe();
+  }
+
   Future<void> _joinReal() async {
     try {
       final engine = await AgoraService.instance.ensureEngine();
+      _engine = engine;
       final token = await AgoraService.instance.fetchToken(
         channelName: widget.stream.id,
         asBroadcaster: false,
@@ -229,10 +324,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _msgController.dispose();
     _burstCtl.dispose();
     _chatChannel?.unsubscribe();
+    _seatsChannel?.unsubscribe();
+    _seatStreamChannel?.unsubscribe();
     if (_isReal) {
       AgoraService.instance.release();
       unawaited(
         supabase.rpc('leave_live_stream', params: {'p_stream_id': widget.stream.id}),
+      );
+      unawaited(
+        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
       );
     }
     super.dispose();
@@ -253,10 +353,61 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     context.read<SessionController>().toggleLike(widget.stream.id);
   }
 
-  void _seatTap(int seat) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Seat requests are coming soon')),
-    );
+  Future<void> _seatTap(int seat) async {
+    if (!_isReal || _seatBusy) return;
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return;
+    final occupant = _seatOccupants[seat];
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (occupant?.id == myId) {
+      setState(() => _seatBusy = true);
+      try {
+        await supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id});
+        final engine = _engine;
+        if (engine != null) {
+          await AgoraService.instance.switchRole(
+            engine,
+            channelName: widget.stream.id,
+            asBroadcaster: false,
+          );
+        }
+        if (mounted) setState(() => _seatOccupants.remove(seat));
+      } catch (e) {
+        if (mounted) messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      } finally {
+        if (mounted) setState(() => _seatBusy = false);
+      }
+      return;
+    }
+    if (occupant != null) {
+      messenger.showSnackBar(SnackBar(content: Text('Seat $seat is taken')));
+      return;
+    }
+    if (_lockedSeats.contains(seat)) {
+      messenger.showSnackBar(SnackBar(content: Text('Seat $seat is locked')));
+      return;
+    }
+
+    setState(() => _seatBusy = true);
+    try {
+      await supabase.rpc('claim_seat', params: {
+        'p_stream_id': widget.stream.id,
+        'p_seat': seat,
+      });
+      final engine = _engine;
+      if (engine != null) {
+        await AgoraService.instance.switchRole(
+          engine,
+          channelName: widget.stream.id,
+          asBroadcaster: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _seatBusy = false);
+    }
   }
 
   Future<void> _send() async {
@@ -334,7 +485,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                         "or there's a connection issue."
                     : null),
             seatCount: 8,
-            lockedSeats: const {},
+            lockedSeats: _lockedSeats,
+            occupants: _seatOccupants,
             onSeatTap: _seatTap,
           ),
           const DecoratedBox(

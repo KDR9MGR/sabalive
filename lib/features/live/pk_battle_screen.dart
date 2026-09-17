@@ -16,6 +16,7 @@ import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_tray.dart';
+import 'widgets/pk_score_bar.dart';
 
 /// Host-side PK battle room. Your side (audio) + room chat + gift tray are
 /// real; the opponent and the tug-of-war score are a local practice battle
@@ -55,12 +56,20 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   Timer? _heartbeat;
   bool _finished = false;
 
+  // Mirrors this screen's own score/timer to viewers — see
+  // watch_pk_battle_screen.dart. Doesn't change how the scores above are
+  // computed, only exposes their current values.
+  RealtimeChannel? _scoreChannel;
+  Timer? _scoreHeartbeat;
+
   @override
   void initState() {
     super.initState();
     _join();
     _subscribeChat();
     _subscribeViewerCount();
+    _scoreChannel = supabase.channel('pk-score-${widget.stream.id}')..subscribe();
+    _scoreHeartbeat = Timer.periodic(const Duration(seconds: 4), (_) => _broadcastScore());
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -68,13 +77,17 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         if (_left <= Duration.zero && !_finished) {
           _left = Duration.zero;
           _finished = true;
+          _broadcastScore();
           _showResult();
         }
       });
     });
     // opponent gets the occasional gift so the bar actually moves
     _oppTrickle = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted && !_finished) setState(() => _scoreB += 10 + (_scoreA ~/ 20));
+      if (mounted && !_finished) {
+        setState(() => _scoreB += 10 + (_scoreA ~/ 20));
+        _broadcastScore();
+      }
     });
     // Keeps the underlying stream row from being auto-ended as stale.
     final liveStreams = context.read<LiveStreamsController>();
@@ -155,6 +168,15 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         .subscribe();
   }
 
+  void _broadcastScore() {
+    _scoreChannel?.sendBroadcastMessage(event: 'score', payload: {
+      'scoreA': _scoreA,
+      'scoreB': _scoreB,
+      'secondsLeft': _left.inSeconds,
+      'finished': _finished,
+    });
+  }
+
   Future<void> _appendRow(Map<String, dynamic> row) async {
     final senderId = row['sender_id'] as String?;
     final prof = senderId == null
@@ -169,6 +191,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
       _chat.add(LiveChatLine(sender, row['body'] as String? ?? '', gift: isGift));
       if (isGift) _scoreA += 20; // gifts in the room back the host
     });
+    if (isGift) _broadcastScore();
   }
 
   Future<void> _send() async {
@@ -198,6 +221,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         _chat.add(LiveChatLine(
             widget.stream.host, 'sent ${g.name} ${g.emoji}', gift: true));
       });
+      _broadcastScore();
     } catch (e) {
       if (mounted) _toast(friendlyError(e));
     }
@@ -262,23 +286,17 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     _timer?.cancel();
     _oppTrickle?.cancel();
     _heartbeat?.cancel();
+    _scoreHeartbeat?.cancel();
     _input.dispose();
     _chatChannel?.unsubscribe();
     _viewerChannel?.unsubscribe();
+    _scoreChannel?.unsubscribe();
     AgoraService.instance.release();
     super.dispose();
   }
 
-  String get _clock {
-    final m = _left.inMinutes.toString().padLeft(2, '0');
-    final s = (_left.inSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final total = (_scoreA + _scoreB).clamp(1, 1 << 30);
-    final ratioA = _scoreA / total;
     final arenaH = MediaQuery.of(context).size.height * 0.42;
 
     return Scaffold(
@@ -296,9 +314,8 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
               height: arenaH,
               child: _arena(),
             ),
-            _tugBar(ratioA),
-            const SizedBox(height: 8),
-            _scoreRow(),
+            PkScoreBar(
+                scoreA: _scoreA, scoreB: _scoreB, secondsLeft: _left.inSeconds),
             const SizedBox(height: 6),
             Expanded(child: _chatFeed()),
             GiftTray(onSelect: _onGift),
@@ -530,126 +547,6 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
           const SizedBox(height: 3),
           Text(locked ? 'Locked' : label,
               style: const TextStyle(fontSize: 9, color: Colors.white70)),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────── tug bar + scores
-  Widget _tugBar(double ratioA) {
-    return LayoutBuilder(builder: (context, c) {
-      final w = c.maxWidth;
-      return SizedBox(
-        height: 26,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Row(children: [
-              Expanded(
-                flex: (ratioA * 1000).round().clamp(1, 999),
-                child: Container(
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                        colors: [Color(0xFFFF2D55), Color(0xFFFF7A9C)]),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: ((1 - ratioA) * 1000).round().clamp(1, 999),
-                child: Container(
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                        colors: [Color(0xFF9CC6FF), Color(0xFF2D6BFF)]),
-                  ),
-                ),
-              ),
-            ]),
-            const Positioned(
-                left: 4,
-                child: Text('🥊', style: TextStyle(fontSize: 18))),
-            const Positioned(
-                right: 4,
-                child: Text('🥊', style: TextStyle(fontSize: 18))),
-            Positioned(
-              left: (w * ratioA - 9).clamp(0.0, w - 18),
-              child: const Icon(Icons.diamond_rounded,
-                  color: AppColors.primaryBright, size: 18),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _scoreRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Expanded(child: _scorePanel(_scoreA, AppColors.live)),
-          const SizedBox(width: 8),
-          Column(
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  gradient: AppColors.goldGradient,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text('VS',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                        color: Color(0xFF3A1A5E))),
-              ),
-              const SizedBox(height: 3),
-              Text(_clock,
-                  style: const TextStyle(fontSize: 11, color: Colors.white70)),
-            ],
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: _scorePanel(_scoreB, AppColors.diamond)),
-        ],
-      ),
-    );
-  }
-
-  Widget _scorePanel(int score, Color tint) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: [
-          for (final m in const ['🥇', '🥈', '🥉'])
-            Padding(
-              padding: const EdgeInsets.only(right: 2),
-              child: Container(
-                width: 22,
-                height: 22,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-                child: Text(m, style: const TextStyle(fontSize: 11)),
-              ),
-            ),
-          const Spacer(),
-          const Icon(Icons.diamond_rounded, size: 12, color: AppColors.diamond),
-          const SizedBox(width: 3),
-          Text(compactCount(score),
-              style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  color: Colors.white)),
         ],
       ),
     );

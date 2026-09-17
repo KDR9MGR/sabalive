@@ -17,18 +17,19 @@ import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/pk_score_bar.dart';
 
 /// Viewer of a PK battle — same proven audience-join + chat/gift chrome as
 /// [WatchAudioRoomScreen]/[WatchLiveScreen], with a PK-themed shell instead
 /// of the seat grid or video canvas.
 ///
-/// Deliberately does not show a tug-of-war score bar: on the host's own
-/// screen (pk_battle_screen.dart) that score is local-only state — never
-/// written anywhere a viewer could read it from, and not something this fix
-/// touches (real PK matchmaking/scoring is a separate, already-flagged gap).
-/// Showing a second, independently-fake number here would be worse than
-/// showing none. This screen shows the real host feed, real chat, real
-/// gifts, and a PK-styled header — not a fabricated synced score.
+/// The score/timer aren't independently computed here — pk_battle_screen.dart
+/// (the host) is the source of truth and broadcasts its own current numbers
+/// over Realtime (no real PK matchmaking/scoring backend exists; that's a
+/// separate, already-flagged gap), and this screen just mirrors whatever it
+/// last heard. Before the first broadcast arrives, or if the host goes quiet,
+/// no bar (or a frozen last-known one) is shown rather than a second,
+/// independently-fake number.
 class WatchPkBattleScreen extends StatefulWidget {
   const WatchPkBattleScreen({super.key, required this.stream});
   final LiveStream stream;
@@ -51,6 +52,14 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   Timer? _waitTimer;
   bool _waitingTooLong = false;
 
+  int? _scoreA;
+  int? _scoreB;
+  int? _secondsLeft;
+  bool _scoreFinished = false;
+  bool _scoreStale = false;
+  RealtimeChannel? _scoreChannel;
+  Timer? _scoreTimeoutTimer;
+
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
@@ -68,9 +77,36 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
+      _subscribeScore();
     } else {
       _chat.addAll(Mock.liveChat());
     }
+  }
+
+  /// Mirrors pk_battle_screen.dart's own score/timer — see that file's
+  /// _broadcastScore(). A stale timer (3x the host's ~4s heartbeat) covers
+  /// the host disconnecting or going quiet without a final message.
+  void _subscribeScore() {
+    _scoreChannel = supabase
+        .channel('pk-score-${widget.stream.id}')
+        .onBroadcast(
+          event: 'score',
+          callback: (payload) {
+            _scoreTimeoutTimer?.cancel();
+            if (!mounted) return;
+            setState(() {
+              _scoreA = payload['scoreA'] as int?;
+              _scoreB = payload['scoreB'] as int?;
+              _secondsLeft = payload['secondsLeft'] as int?;
+              _scoreFinished = payload['finished'] as bool? ?? false;
+              _scoreStale = false;
+            });
+            _scoreTimeoutTimer = Timer(const Duration(seconds: 12), () {
+              if (mounted) setState(() => _scoreStale = true);
+            });
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _logViewerJoin() async {
@@ -217,9 +253,11 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   @override
   void dispose() {
     _waitTimer?.cancel();
+    _scoreTimeoutTimer?.cancel();
     _msgController.dispose();
     _burstCtl.dispose();
     _chatChannel?.unsubscribe();
+    _scoreChannel?.unsubscribe();
     if (_isReal) {
       AgoraService.instance.release();
       unawaited(
@@ -402,6 +440,19 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           else if (_isReal)
             const Text("You're watching live — audio is playing",
                 style: TextStyle(color: Colors.white54, fontSize: 11.5)),
+          if (_scoreA != null && _scoreB != null && _secondsLeft != null) ...[
+            const SizedBox(height: 16),
+            PkScoreBar(
+                scoreA: _scoreA!, scoreB: _scoreB!, secondsLeft: _secondsLeft!),
+            if (_scoreStale) ...[
+              const SizedBox(height: 6),
+              Text(
+                  _scoreFinished
+                      ? 'Battle ended'
+                      : 'Score sync paused',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            ],
+          ],
         ],
       ),
     );
