@@ -169,7 +169,7 @@ class Mock {
       likes: 760,
       gifts: 430,
       tags: ['#pk', '#battle'],
-      pk: true,
+      mode: LiveMode.pk,
     ),
     LiveStream(
       id: 's6',

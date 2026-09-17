@@ -44,13 +44,22 @@ class LiveStreamsController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<LiveStream> createStream({required String title, required String category}) async {
+  Future<LiveStream> createStream({
+    required String title,
+    required String category,
+    required LiveMode mode,
+  }) async {
     final uid = supabase.auth.currentUser?.id;
     if (uid == null) throw Exception('You must be signed in to go live');
 
     final row = await supabase
         .from('live_streams')
-        .insert({'host_id': uid, 'title': title, 'category': category})
+        .insert({
+          'host_id': uid,
+          'title': title,
+          'category': category,
+          'mode': mode.name,
+        })
         .select()
         .single();
     final profileRow = await supabase.from('profiles').select().eq('id', uid).single();

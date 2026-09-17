@@ -70,7 +70,7 @@ class LiveStream {
     this.likes = 0,
     this.gifts = 0,
     this.tags = const [],
-    this.pk = false,
+    this.mode = LiveMode.video,
   });
 
   factory LiveStream.fromRow(Map<String, dynamic> row, AppUser host) => LiveStream(
@@ -81,7 +81,7 @@ class LiveStream {
         viewers: row['viewer_count'] as int? ?? 0,
         likes: row['like_count'] as int? ?? 0,
         gifts: row['gift_coin_total'] as int? ?? 0,
-        pk: row['is_pk'] as bool? ?? false,
+        mode: LiveMode.values.byName(row['mode'] as String? ?? 'video'),
       );
 
   final String id;
@@ -92,7 +92,9 @@ class LiveStream {
   int likes;
   int gifts;
   final List<String> tags;
-  final bool pk;
+  final LiveMode mode;
+
+  bool get pk => mode == LiveMode.pk;
 }
 
 class Gift {

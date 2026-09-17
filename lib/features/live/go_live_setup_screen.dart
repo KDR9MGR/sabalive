@@ -87,6 +87,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
       final stream = await liveStreams.createStream(
         title: title,
         category: _category,
+        mode: _mode,
       );
       final token = await AgoraService.instance.fetchToken(
         channelName: stream.id,

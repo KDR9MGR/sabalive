@@ -8,7 +8,9 @@ import '../features/common/access_code_screen.dart';
 import '../features/games/games_screen.dart';
 import '../features/host/host_dashboard_screen.dart';
 import '../features/live/go_live_setup_screen.dart';
+import '../features/live/watch_audio_room_screen.dart';
 import '../features/live/watch_live_screen.dart';
+import '../features/live/watch_pk_battle_screen.dart';
 import '../features/messages/chat_screen.dart';
 import '../features/messages/new_group_screen.dart';
 import '../features/profile/edit_profile_screen.dart';
@@ -33,7 +35,14 @@ class AppNav {
   }
 
   static Future<void> watchLive(BuildContext context, LiveStream stream) =>
-      _push(context, WatchLiveScreen(stream: stream));
+      _push(
+        context,
+        switch (stream.mode) {
+          LiveMode.video => WatchLiveScreen(stream: stream),
+          LiveMode.audio => WatchAudioRoomScreen(stream: stream),
+          LiveMode.pk => WatchPkBattleScreen(stream: stream),
+        },
+      );
 
   /// Routes through the host-code gate; only lands on go-live setup once the
   /// user has (or unlocks) agency host access.
