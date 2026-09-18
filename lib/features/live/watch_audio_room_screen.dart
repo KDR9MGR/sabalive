@@ -40,7 +40,7 @@ class WatchAudioRoomScreen extends StatefulWidget {
 }
 
 class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final bool _isReal = isRealId(widget.stream.id);
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
@@ -76,6 +76,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _likes = widget.stream.likes;
     _burstCtl.addStatusListener((s) {
       if (s == AnimationStatus.completed && mounted) {
@@ -376,8 +377,29 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     );
   }
 
+  /// dispose() alone only covers a clean in-app exit (back/close button).
+  /// Backgrounding or the OS killing the app skips dispose() on iOS and
+  /// often on Android too, so without this a seat stays occupied — visible
+  /// to the host and everyone else — until the ~90-150s stale-presence
+  /// cron sweep catches it. Releasing on pause also matches reality here:
+  /// this app has no background-audio mode, so a backgrounded seat holder
+  /// stops actually publishing anyway.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isReal &&
+        _mySeat != null &&
+        (state == AppLifecycleState.paused ||
+            state == AppLifecycleState.detached)) {
+      unawaited(
+        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
+      );
+      _mySeat = null;
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _waitTimer?.cancel();
     _heartbeat?.cancel();
     _msgController.dispose();
@@ -794,8 +816,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     return Container(
       constraints: const BoxConstraints(maxHeight: 220),
       padding: const EdgeInsets.only(left: 14, right: 6),
+      // shrinkWrap: without it, a Scrollable always claims its full 220px
+      // box for hit-testing (so a drag can start anywhere in it), even when
+      // there are only a couple of chat lines — silently swallowing taps on
+      // the seat grid underneath wherever this empty space overlaps it.
       child: ListView.builder(
         reverse: true,
+        shrinkWrap: true,
         padding: EdgeInsets.zero,
         itemCount: _chat.length,
         itemBuilder: (context, i) {

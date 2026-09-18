@@ -112,10 +112,10 @@ class AppNav {
   static Future<void> kyc(BuildContext context) =>
       _push(context, const KycScreen());
 
-  /// Finds [host]'s current live stream and opens the watch screen.
+  /// Finds [host]'s current live stream and opens the watch screen, routed
+  /// by the stream's actual mode (video/audio/pk) — same as [watchLive].
   static Future<void> watchHostLive(BuildContext context, AppUser host) async {
     final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
     final stream = await SocialRepository().liveStreamForHost(host.id);
     if (stream == null) {
       messenger.showSnackBar(
@@ -123,9 +123,8 @@ class AppNav {
       );
       return;
     }
-    await navigator.push(
-      MaterialPageRoute(builder: (_) => WatchLiveScreen(stream: stream)),
-    );
+    if (!context.mounted) return;
+    await watchLive(context, stream);
   }
 
   static Future<void> search(BuildContext context) =>

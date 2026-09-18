@@ -34,7 +34,7 @@ class WatchLiveScreen extends StatefulWidget {
 }
 
 class _WatchLiveScreenState extends State<WatchLiveScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final bool _isReal = isRealId(widget.stream.id);
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
@@ -78,6 +78,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _likes = widget.stream.likes;
     _hostAgoraUid = widget.stream.hostAgoraUid;
     _burstCtl.addStatusListener((s) {
@@ -499,8 +500,25 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     );
   }
 
+  /// See the same note in watch_audio_room_screen.dart — dispose() alone
+  /// only covers a clean in-app exit; backgrounding/kill skips it, leaving
+  /// a seat stuck occupied until the stale-presence cron sweep.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isReal &&
+        _mySeat != null &&
+        (state == AppLifecycleState.paused ||
+            state == AppLifecycleState.detached)) {
+      unawaited(
+        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
+      );
+      _mySeat = null;
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _waitTimer?.cancel();
     _heartbeat?.cancel();
     _msgController.dispose();
@@ -877,8 +895,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     return Container(
       constraints: const BoxConstraints(maxHeight: 220),
       padding: const EdgeInsets.only(left: 14, right: 6),
+      // shrinkWrap — see the same note in watch_audio_room_screen.dart: an
+      // un-shrinkwrapped Scrollable claims its whole box for hit-testing
+      // regardless of content, which can swallow taps meant for whatever
+      // sits underneath it.
       child: ListView.builder(
         reverse: true,
+        shrinkWrap: true,
         padding: EdgeInsets.zero,
         itemCount: _chat.length,
         itemBuilder: (context, i) {
