@@ -18,6 +18,7 @@ import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_tray.dart';
+import 'widgets/pk_arena.dart';
 import 'widgets/pk_opponent_picker_sheet.dart';
 import 'widgets/pk_score_bar.dart';
 
@@ -429,11 +430,25 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
             ConnectionBanner(reconnecting: _reconnecting),
             _topBar(),
             const SizedBox(height: 6),
-            _subRow(),
+            PkArenaHeader(giftTotal: widget.stream.gifts, statusLabel: _statusLabel),
             const SizedBox(height: 8),
             SizedBox(
               height: arenaH,
-              child: _arena(),
+              child: PkArena(
+                hostA: widget.stream.host,
+                hostB: _opponentUser,
+                seatsPerSide: _seatsPerSide,
+                lockedSeats: _lockedSeats,
+                onSeatTap: (key) => setState(() {
+                  if (_lockedSeats.contains(key)) {
+                    _lockedSeats.remove(key);
+                  } else {
+                    _lockedSeats.add(key);
+                  }
+                }),
+                onAddSeat: () => setState(() => _seatsPerSide++),
+                bottomBar: _battleActionBar(),
+              ),
             ),
             if (battle?.isLive == true)
               PkScoreBar(
@@ -487,68 +502,13 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     );
   }
 
-  Widget _subRow() {
-    final label = switch (_battle?.status) {
-      null => 'Waiting for opponent',
-      'invited' => 'Invite sent',
-      'accepted' => 'Starting…',
-      'live' => 'Live battle',
-      _ => 'PK Battle',
-    };
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('🎁', style: TextStyle(fontSize: 12)),
-              SizedBox(width: 4),
-              Text('0',
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white)),
-            ]),
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(label,
-                style: const TextStyle(fontSize: 10, color: Colors.white70)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────── arena
-  Widget _arena() {
-    return Stack(
-      children: [
-        Row(
-          children: [
-            Expanded(child: _corner(true)),
-            Expanded(child: _corner(false)),
-          ],
-        ),
-        Positioned(
-          left: 12,
-          right: 12,
-          bottom: 8,
-          child: _battleActionBar(),
-        ),
-      ],
-    );
-  }
+  String get _statusLabel => switch (_battle?.status) {
+        null => 'Waiting for opponent',
+        'invited' => 'Invite sent',
+        'accepted' => 'Starting…',
+        'live' => 'Live battle',
+        _ => 'PK Battle',
+      };
 
   Widget _battleActionBar() {
     final battle = _battle;
@@ -621,115 +581,6 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         child: Text(label,
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5)),
-      ),
-    );
-  }
-
-  Widget _corner(bool left) {
-    final AppUser? user = left ? widget.stream.host : _opponentUser;
-    final glow = left ? AppColors.live : AppColors.diamond;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: left
-              ? [const Color(0xFFB1122B), const Color(0xFF3A0A16)]
-              : [const Color(0xFF11489B), const Color(0xFF0A1B3A)],
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: glow, width: 3),
-              boxShadow: [BoxShadow(color: glow.withValues(alpha: 0.6), blurRadius: 18)],
-            ),
-            child: user != null
-                ? AppAvatar(name: user.name, size: 72)
-                : Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.08)),
-                    child: const Icon(Icons.person_outline_rounded,
-                        color: Colors.white38, size: 32),
-                  ),
-          ),
-          const SizedBox(height: 6),
-          Text(user?.name ?? (left ? '' : 'Waiting…'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: Colors.white)),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 14,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              for (var i = 1; i <= _seatsPerSide; i++)
-                _seat(left ? 'L$i' : 'R$i', 'No. $i'),
-              if (_seatsPerSide < 4)
-                GestureDetector(
-                  onTap: () => setState(() => _seatsPerSide++),
-                  child: Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                    child: const Icon(Icons.add_rounded,
-                        color: Colors.white, size: 20),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _seat(String key, String label) {
-    final locked = _lockedSeats.contains(key);
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (locked) {
-            _lockedSeats.remove(key);
-          } else {
-            _lockedSeats.add(key);
-          }
-        });
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: 0.25),
-              border: Border.all(color: AppColors.gold.withValues(alpha: 0.7)),
-            ),
-            child: Icon(
-                locked ? Icons.lock_rounded : Icons.event_seat_rounded,
-                color: AppColors.gold,
-                size: 20),
-          ),
-          const SizedBox(height: 3),
-          Text(locked ? 'Locked' : label,
-              style: const TextStyle(fontSize: 9, color: Colors.white70)),
-        ],
       ),
     );
   }

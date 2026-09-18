@@ -9,7 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/ids.dart';
-import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
@@ -20,6 +19,7 @@ import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/pk_arena.dart';
 import 'widgets/pk_score_bar.dart';
 
 /// Viewer of a PK battle — same proven audience-join + chat/gift chrome as
@@ -398,8 +398,17 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     _burstCtl.forward(from: 0);
   }
 
+  String get _statusLabel => switch (_battle?.status) {
+        null => 'Solo PK',
+        'invited' => 'Invite sent',
+        'accepted' => 'Starting…',
+        'live' => 'Live battle',
+        _ => 'PK Battle',
+      };
+
   @override
   Widget build(BuildContext context) {
+    final arenaH = MediaQuery.of(context).size.height * 0.42;
     return Scaffold(
       backgroundColor: const Color(0xFF07040F),
       body: SafeArea(
@@ -409,8 +418,12 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
               children: [
                 ConnectionBanner(reconnecting: _reconnecting),
                 _topBar(context),
+                const SizedBox(height: 6),
+                PkArenaHeader(giftTotal: widget.stream.gifts, statusLabel: _statusLabel),
                 const SizedBox(height: 8),
-                Expanded(child: _arenaShell()),
+                SizedBox(height: arenaH, child: _arena()),
+                if (_battle?.isLive == true) _scoreBar(),
+                const SizedBox(height: 6),
                 Expanded(child: _chatFeed()),
                 GiftTrayButton(onTap: _openGifts),
                 _inputBar(),
@@ -472,106 +485,59 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     );
   }
 
-  Widget _arenaShell() {
-    final battle = _battle;
-    final mySide = battle?.sideFor(widget.stream.id);
-    final displayScoreA =
-        battle == null ? 0 : (mySide == 'b' ? battle.scoreB : battle.scoreA);
-    final displayScoreB =
-        battle == null ? 0 : (mySide == 'b' ? battle.scoreA : battle.scoreB);
-    final secondsLeft = battle?.endsAt == null
-        ? 0
-        : battle!.endsAt!.difference(DateTime.now().toUtc()).inSeconds.clamp(0, 1 << 30);
-
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _cornerAvatar(widget.stream.host.name, AppColors.live),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: AppColors.goldGradient,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text('VS',
-                      style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                          color: Color(0xFF3A1A5E))),
-                ),
-              ),
-              _cornerAvatar(_opponentUser?.name ?? 'Waiting…', AppColors.diamond,
-                  dimmed: _opponentUser == null),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (_joinError != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(_joinError!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
-            )
-          else if (_waitingTooLong)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                "Still nothing from the host — they may have ended, "
-                "or there's a connection issue.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 12.5),
-              ),
-            )
-          else if (_isReal && _remoteUid == null)
-            const CircularProgressIndicator(color: AppColors.primaryBright)
-          else if (_isReal && battle == null)
-            const Text('No opponent yet — solo PK',
-                style: TextStyle(color: Colors.white54, fontSize: 11.5))
-          else if (_isReal && !battle!.isLive && !battle.isTerminal)
-            const Text('An opponent has been found — starting soon',
-                style: TextStyle(color: Colors.white54, fontSize: 11.5))
-          else if (_isReal)
-            const Text("You're watching live — audio is playing",
-                style: TextStyle(color: Colors.white54, fontSize: 11.5)),
-          if (battle?.isLive == true) ...[
-            const SizedBox(height: 16),
-            PkScoreBar(
-                scoreA: displayScoreA, scoreB: displayScoreB, secondsLeft: secondsLeft),
-          ],
-        ],
-      ),
+  /// Same split-panel arena the host sees (via the shared [PkArena]
+  /// widget), just read-only — no onSeatTap/onAddSeat, so seats render but
+  /// aren't tappable. The host/opponent name, seat rows, and colors are
+  /// identical; only the status text overlaid at the bottom differs.
+  Widget _arena() {
+    return PkArena(
+      hostA: widget.stream.host,
+      hostB: _opponentUser,
+      seatsPerSide: 2,
+      bottomBar: _connectionStatus(),
     );
   }
 
-  Widget _cornerAvatar(String name, Color tint, {bool dimmed = false}) {
-    return Opacity(
-      opacity: dimmed ? 0.45 : 1,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: tint, width: 2)),
-            child: AppAvatar(name: name, size: 64),
-          ),
-          const SizedBox(height: 6),
-          Text(name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                  color: Colors.white)),
-        ],
+  Widget? _connectionStatus() {
+    final battle = _battle;
+    String? text;
+    if (_joinError != null) {
+      text = _joinError;
+    } else if (_waitingTooLong) {
+      text = "Still nothing from the host — they may have ended, "
+          "or there's a connection issue.";
+    } else if (_isReal && _remoteUid == null) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primaryBright));
+    } else if (_isReal && battle == null) {
+      text = 'No opponent yet — solo PK';
+    } else if (_isReal && !(battle?.isLive ?? false) && !(battle?.isTerminal ?? false)) {
+      text = 'An opponent has been found — starting soon';
+    } else if (_isReal) {
+      text = "You're watching live — audio is playing";
+    }
+    if (text == null) return null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(16),
       ),
+      child: Text(text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white70, fontSize: 12)),
     );
+  }
+
+  Widget _scoreBar() {
+    final battle = _battle!;
+    final mySide = battle.sideFor(widget.stream.id);
+    final displayScoreA = mySide == 'b' ? battle.scoreB : battle.scoreA;
+    final displayScoreB = mySide == 'b' ? battle.scoreA : battle.scoreB;
+    final secondsLeft = battle.endsAt == null
+        ? 0
+        : battle.endsAt!.difference(DateTime.now().toUtc()).inSeconds.clamp(0, 1 << 30);
+    return PkScoreBar(scoreA: displayScoreA, scoreB: displayScoreB, secondsLeft: secondsLeft);
   }
 
   Widget _chatFeed() {
