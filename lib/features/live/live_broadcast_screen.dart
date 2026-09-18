@@ -140,9 +140,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         token: widget.token.token,
         channelId: widget.token.channelName,
         uid: widget.token.uid,
-        options: const ChannelMediaOptions(
+        options: ChannelMediaOptions(
           channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
           clientRoleType: ClientRoleType.clientRoleBroadcaster,
+          // Left implicit, these default to "on" per Agora's docs, but that
+          // default has already proven unreliable on this SDK build for the
+          // audience's autoSubscribe flags (see watch_live_screen.dart) —
+          // explicit here too, since this is the actual camera/mic publish
+          // every viewer depends on.
+          publishCameraTrack: !widget.audioOnly,
+          publishMicrophoneTrack: true,
         ),
       );
       if (mounted) setState(() => _engine = engine);
