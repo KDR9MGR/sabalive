@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/ids.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../data/models.dart';
@@ -92,19 +93,26 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   Future<void> _join() async {
     try {
       final engine = await AgoraService.instance.ensureEngine();
-      engine.registerEventHandler(RtcEngineEventHandler(
-        onError: (err, msg) {
-          if (mounted) setState(() => _error = msg);
-        },
-        onConnectionStateChanged: (connection, state, reason) {
-          if (mounted) {
-            setState(() =>
-                _reconnecting = state == ConnectionStateType.connectionStateReconnecting);
-          }
-        },
-      ));
-      AgoraService.instance.registerAutoTokenRenewal(engine,
-          channelName: widget.token.channelName, asBroadcaster: true);
+      engine.registerEventHandler(
+        RtcEngineEventHandler(
+          onError: (err, msg) {
+            if (mounted) setState(() => _error = msg);
+          },
+          onConnectionStateChanged: (connection, state, reason) {
+            if (mounted) {
+              setState(
+                () => _reconnecting =
+                    state == ConnectionStateType.connectionStateReconnecting,
+              );
+            }
+          },
+        ),
+      );
+      AgoraService.instance.registerAutoTokenRenewal(
+        engine,
+        channelName: widget.token.channelName,
+        asBroadcaster: true,
+      );
       if (widget.audioOnly) {
         await engine.enableLocalVideo(false);
       } else {
@@ -187,7 +195,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         for (final r in rows as List) {
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
-            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(profileRow);
+            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(
+              profileRow,
+            );
           }
         }
       });
@@ -212,7 +222,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                 .eq('id', occupantId)
                 .maybeSingle();
             if (mounted && profileRow != null) {
-              setState(() => _seatOccupants[seat] = AppUser.fromRow(profileRow));
+              setState(
+                () => _seatOccupants[seat] = AppUser.fromRow(profileRow),
+              );
             }
           },
         )
@@ -237,15 +249,24 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
 
   Future<void> _appendChatRow(Map<String, dynamic> row) async {
     final senderId = row['sender_id'] as String;
-    final profileRow =
-        await supabase.from('profiles').select().eq('id', senderId).maybeSingle();
+    final profileRow = await supabase
+        .from('profiles')
+        .select()
+        .eq('id', senderId)
+        .maybeSingle();
     final sender = profileRow != null
         ? AppUser.fromRow(profileRow)
         : AppUser(id: senderId, name: 'Someone', username: '@user');
     if (!mounted) return;
     setState(() {
-      _chat.add(LiveChatLine(sender, row['body'] as String,
-          gift: row['kind'] == 'gift', pinned: row['pinned'] as bool? ?? false));
+      _chat.add(
+        LiveChatLine(
+          sender,
+          row['body'] as String,
+          gift: row['kind'] == 'gift',
+          pinned: row['pinned'] as bool? ?? false,
+        ),
+      );
     });
   }
 
@@ -264,7 +285,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         'body': text,
         'kind': 'text',
       });
-    } catch (_) {/* optimistic line already shown */}
+    } catch (_) {
+      /* optimistic line already shown */
+    }
   }
 
   @override
@@ -286,21 +309,26 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         backgroundColor: AppColors.bgElevated,
         title: const Text('End live stream?'),
         content: Text(
-            'You streamed for ${_fmt(_elapsed)} to $_viewers viewer${_viewers == 1 ? '' : 's'}.'),
+          'You streamed for ${_fmt(_elapsed)} to $_viewers viewer${_viewers == 1 ? '' : 's'}.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Keep going')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep going'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('End', style: TextStyle(color: AppColors.danger))),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('End', style: TextStyle(color: AppColors.danger)),
+          ),
         ],
       ),
     );
     if (leave != true || !mounted) return;
     try {
       await context.read<LiveStreamsController>().endStream(widget.stream.id);
-    } catch (_) {/* row may be gone; ending locally matters more */}
+    } catch (_) {
+      /* row may be gone; ending locally matters more */
+    }
     if (mounted) Navigator.pop(context);
   }
 
@@ -311,13 +339,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     return '$h:$m:$s';
   }
 
-  String get _hostIdLabel {
-    final n = widget.stream.host.id.hashCode.abs() % 900000 + 100000;
-    return 'ID: $n';
-  }
+  String get _hostIdLabel => 'ID: ${shortDisplayId(widget.stream.host.id)}';
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+  void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+  );
 
   void _soon(String what) => _snack('$what — coming soon');
 
@@ -338,43 +364,94 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   // ─────────────────────────────────────────────────────── Tools sheet
   Future<void> _openTools() async {
     final tools = <_ToolSpec>[
-      _ToolSpec(Icons.bolt_rounded, 'Invite PK', const Color(0xFFFF7A45),
-          () => _soon('PK battles')),
-      _ToolSpec(Icons.casino_rounded, 'Random PK', const Color(0xFFFF5C5C),
-          () => _soon('PK battles')),
-      _ToolSpec(Icons.sports_esports_rounded, 'Games', AppColors.primaryBright,
-          () => AppNav.games(context)),
-      _ToolSpec(Icons.savings_rounded, 'Coin Bag', AppColors.gold,
-          () => AppNav.wallet(context)),
-      _ToolSpec(Icons.music_note_rounded, 'Play music', AppColors.pink,
-          () => _soon('Music')),
-      _ToolSpec(Icons.campaign_rounded, 'Funny voice', AppColors.magenta,
-          () => _soon('Voice effects')),
-      _ToolSpec(Icons.wallpaper_rounded, 'Room skin', const Color(0xFF2DD4BF),
-          () => _soon('Room skins')),
-      _ToolSpec(Icons.ios_share_rounded, 'Share', AppColors.diamond, _shareStream),
+      _ToolSpec(
+        Icons.bolt_rounded,
+        'Invite PK',
+        const Color(0xFFFF7A45),
+        () => _soon('PK battles'),
+      ),
+      _ToolSpec(
+        Icons.casino_rounded,
+        'Random PK',
+        const Color(0xFFFF5C5C),
+        () => _soon('PK battles'),
+      ),
+      _ToolSpec(
+        Icons.sports_esports_rounded,
+        'Games',
+        AppColors.primaryBright,
+        () => AppNav.games(context),
+      ),
+      _ToolSpec(
+        Icons.savings_rounded,
+        'Coin Bag',
+        AppColors.gold,
+        () => AppNav.wallet(context),
+      ),
+      _ToolSpec(
+        Icons.music_note_rounded,
+        'Play music',
+        AppColors.pink,
+        () => _soon('Music'),
+      ),
+      _ToolSpec(
+        Icons.campaign_rounded,
+        'Funny voice',
+        AppColors.magenta,
+        () => _soon('Voice effects'),
+      ),
+      _ToolSpec(
+        Icons.wallpaper_rounded,
+        'Room skin',
+        const Color(0xFF2DD4BF),
+        () => _soon('Room skins'),
+      ),
+      _ToolSpec(
+        Icons.ios_share_rounded,
+        'Share',
+        AppColors.diamond,
+        _shareStream,
+      ),
       _ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF818CF8), () {
-        Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const MessagesScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MessagesScreen()),
+        );
       }),
-      _ToolSpec(Icons.settings_voice_rounded, 'Voice Control',
-          const Color(0xFF34D399), () {
-        _toggleMic();
-        _snack(_micMuted ? 'Microphone muted' : 'Microphone on');
-      }),
+      _ToolSpec(
+        Icons.settings_voice_rounded,
+        'Voice Control',
+        const Color(0xFF34D399),
+        () {
+          _toggleMic();
+          _snack(_micMuted ? 'Microphone muted' : 'Microphone on');
+        },
+      ),
       _ToolSpec(Icons.volume_up_rounded, 'Speaker', AppColors.success, () {
         _toggleSpeaker();
         _snack(_speakerOn ? 'Speaker on' : 'Speaker off');
       }),
-      _ToolSpec(Icons.assignment_rounded, 'Notice', AppColors.goldDeep,
-          _editNotice),
-      _ToolSpec(Icons.speaker_notes_off_rounded, 'Clear chat',
-          const Color(0xFFFB923C), () {
-        setState(_chat.clear);
-        _snack('Chat cleared');
-      }),
-      _ToolSpec(Icons.block_rounded, 'Block', AppColors.danger,
-          () => _soon('Viewer moderation')),
+      _ToolSpec(
+        Icons.assignment_rounded,
+        'Notice',
+        AppColors.goldDeep,
+        _editNotice,
+      ),
+      _ToolSpec(
+        Icons.speaker_notes_off_rounded,
+        'Clear chat',
+        const Color(0xFFFB923C),
+        () {
+          setState(() => _chat.removeWhere((l) => !l.pinned));
+          _snack('Chat cleared');
+        },
+      ),
+      _ToolSpec(
+        Icons.block_rounded,
+        'Block',
+        AppColors.danger,
+        () => _soon('Viewer moderation'),
+      ),
     ];
 
     await showModalBottomSheet<void>(
@@ -390,11 +467,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Tools',
-                  style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16)),
+              const Text(
+                'Tools',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
               const SizedBox(height: 12),
               const Divider(color: AppColors.stroke, height: 1),
               const SizedBox(height: 16),
@@ -424,7 +504,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   }
 
   Future<void> _pickGift() async {
-    final gift = await showGiftSheet(context, hostName: widget.stream.host.name);
+    final gift = await showGiftSheet(
+      context,
+      hostName: widget.stream.host.name,
+    );
     if (gift != null) await _sendGift(gift);
   }
 
@@ -433,11 +516,21 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     final wallet = context.read<WalletController>();
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await wallet.sendGift(gift, widget.stream.host,
-          liveStreamId: widget.stream.id);
+      await wallet.sendGift(
+        gift,
+        widget.stream.host,
+        liveStreamId: widget.stream.id,
+      );
       if (mounted) {
-        setState(() => _chat.add(LiveChatLine(
-            widget.stream.host, 'sent ${gift.name} ${gift.emoji}', gift: true)));
+        setState(
+          () => _chat.add(
+            LiveChatLine(
+              widget.stream.host,
+              'sent ${gift.name} ${gift.emoji}',
+              gift: true,
+            ),
+          ),
+        );
       }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
@@ -446,7 +539,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
 
   Future<void> _shareStream() async {
     await Clipboard.setData(
-        ClipboardData(text: 'https://sabalive.app/live/${widget.stream.id}'));
+      ClipboardData(text: 'https://sabalive.app/live/${widget.stream.id}'),
+    );
     if (mounted) _snack('Stream link copied');
   }
 
@@ -461,22 +555,26 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           controller: controller,
           maxLength: 120,
           maxLines: 2,
-          decoration: const InputDecoration(hintText: 'Pin a message for viewers'),
+          decoration: const InputDecoration(
+            hintText: 'Pin a message for viewers',
+          ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Pin')),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Pin'),
+          ),
         ],
       ),
     );
     if (text != null && text.isNotEmpty && mounted) {
-      setState(() => _chat.add(LiveChatLine(
-          widget.stream.host, text,
-          pinned: true)));
+      setState(
+        () => _chat.add(LiveChatLine(widget.stream.host, text, pinned: true)),
+      );
       _snack('Notice pinned');
     }
   }
@@ -493,14 +591,18 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Text('Seat $seat',
-                  style: const TextStyle(
-                      fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
+              child: Text(
+                'Seat $seat',
+                style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             ListTile(
-              leading: Icon(locked
-                  ? Icons.lock_open_rounded
-                  : Icons.lock_outline_rounded),
+              leading: Icon(
+                locked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+              ),
               title: Text(locked ? 'Unlock seat' : 'Lock seat'),
               onTap: () => Navigator.pop(context, 'lock'),
             ),
@@ -524,11 +626,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         }
       });
       _snack('Seat $seat ${locked ? 'unlocked' : 'locked'}');
-      unawaited(supabase.rpc('set_seat_lock', params: {
-        'p_stream_id': widget.stream.id,
-        'p_seat': seat,
-        'p_locked': !locked,
-      }));
+      unawaited(
+        supabase.rpc(
+          'set_seat_lock',
+          params: {
+            'p_stream_id': widget.stream.id,
+            'p_seat': seat,
+            'p_locked': !locked,
+          },
+        ),
+      );
     } else if (choice == 'invite') {
       _soon('Seat invites');
     }
@@ -547,17 +654,25 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Co-host requests',
-                  style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15)),
+              const Text(
+                'Co-host requests',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
               const SizedBox(height: 16),
-              Icon(Icons.group_add_rounded,
-                  size: 40, color: AppColors.textMuted.withValues(alpha: 0.6)),
+              Icon(
+                Icons.group_add_rounded,
+                size: 40,
+                color: AppColors.textMuted.withValues(alpha: 0.6),
+              ),
               const SizedBox(height: 10),
-              const Text('No one has asked to join yet.',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+              const Text(
+                'No one has asked to join yet.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12.5),
+              ),
             ],
           ),
         ),
@@ -593,9 +708,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               onRemoveSeat: _seatCount <= 4
                   ? null
                   : () => setState(() {
-                        _lockedSeats.remove(_seatCount);
-                        _seatCount--;
-                      }),
+                      _lockedSeats.remove(_seatCount);
+                      _seatCount--;
+                    }),
             )
           else if (_engine != null)
             AgoraVideoView(
@@ -611,12 +726,15 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                 child: _error != null
                     ? Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text(_error!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white70)),
+                        child: Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
                       )
                     : const CircularProgressIndicator(
-                        color: AppColors.primaryBright),
+                        color: AppColors.primaryBright,
+                      ),
               ),
             ),
 
@@ -634,7 +752,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                     (_pipPos.dy + d.delta.dy).clamp(80.0, size.height - 220),
                   );
                 }),
-                child: _PipCard(onClose: () => setState(() => _showPip = false)),
+                child: _PipCard(
+                  onClose: () => setState(() => _showPip = false),
+                ),
               ),
             ),
 
@@ -657,10 +777,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                           const Spacer(),
                           _circle('$_viewers', onTap: _openRequests),
                           const SizedBox(width: 8),
-                          _circle(null,
-                              icon: Icons.close_rounded,
-                              iconColor: AppColors.danger,
-                              onTap: _end),
+                          _circle(
+                            null,
+                            icon: Icons.close_rounded,
+                            iconColor: AppColors.danger,
+                            onTap: _end,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -668,59 +790,61 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                         children: [
                           _miniPill(Icons.schedule_rounded, _fmt(_elapsed)),
                           const SizedBox(width: 8),
-                          _miniPill(Icons.diamond_rounded, compactCount(diamonds),
-                              tint: AppColors.diamond),
+                          _miniPill(
+                            Icons.diamond_rounded,
+                            compactCount(diamonds),
+                            tint: AppColors.diamond,
+                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
 
-                // ── beauty + flip (top-right, below the top bar)
-                Positioned(
-                  right: 12,
-                  top: 58,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          setState(() => _beautyOn = !_beautyOn);
-                          _snack(_beautyOn ? 'Beauty on' : 'Beauty off');
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            gradient: AppColors.primaryGradient,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                  _beautyOn
-                                      ? Icons.auto_awesome_rounded
-                                      : Icons.auto_awesome_outlined,
-                                  size: 14,
-                                  color: Colors.white),
-                              const SizedBox(width: 5),
-                              const Text('Beauty',
-                                  style: TextStyle(
-                                      fontFamily: 'Poppins',
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                      color: Colors.white)),
-                            ],
-                          ),
+                // ── beauty (top-right, below the top bar) — video only
+                if (!widget.audioOnly)
+                  Positioned(
+                    right: 12,
+                    top: 58,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _beautyOn = !_beautyOn);
+                        _snack(_beautyOn ? 'Beauty on' : 'Beauty off');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _beautyOn
+                                  ? Icons.auto_awesome_rounded
+                                  : Icons.auto_awesome_outlined,
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 5),
+                            const Text(
+                              'Beauty',
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      _iconCircle(Icons.cameraswitch_rounded,
-                          () => _engine?.switchCamera()),
-                    ],
+                    ),
                   ),
-                ),
 
                 // ── bottom stack: warning + chat + right rail + bar
                 Positioned(
@@ -746,8 +870,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      if (widget.audioOnly)
-                        GiftTray(onSelect: _sendGift),
+                      if (widget.audioOnly) GiftTray(onSelect: _sendGift),
                       const SizedBox(height: 6),
                       _bottomBar(),
                     ],
@@ -779,18 +902,22 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             children: [
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 120),
-                child: Text(widget.stream.host.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                        color: Colors.white)),
-              ),
-              Text(_hostIdLabel,
+                child: Text(
+                  widget.stream.host.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 9.5, color: Colors.white70)),
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Text(
+                _hostIdLabel,
+                style: const TextStyle(fontSize: 9.5, color: Colors.white70),
+              ),
             ],
           ),
         ],
@@ -810,19 +937,26 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         children: [
           Icon(icon, size: 12, color: tint),
           const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  color: Colors.white)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w600,
+              fontSize: 11,
+              color: Colors.white,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _circle(String? label,
-      {IconData? icon, Color iconColor = Colors.white, VoidCallback? onTap}) {
+  Widget _circle(
+    String? label, {
+    IconData? icon,
+    Color iconColor = Colors.white,
+    VoidCallback? onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -835,12 +969,15 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         ),
         child: icon != null
             ? Icon(icon, size: 18, color: iconColor)
-            : Text(label ?? '',
+            : Text(
+                label ?? '',
                 style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    color: Colors.white)),
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: Colors.white,
+                ),
+              ),
       ),
     );
   }
@@ -872,10 +1009,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         'Any sexual or violent content is strictly prohibited — violators are '
         'banned. Do not share personal info such as phone or location.',
         style: TextStyle(
-            color: Color(0xFFFF6B6B),
-            fontSize: 11,
-            height: 1.35,
-            fontWeight: FontWeight.w600),
+          color: Color(0xFFFF6B6B),
+          fontSize: 11,
+          height: 1.35,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -895,38 +1033,50 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: line.pinned
-                      ? AppColors.primary.withValues(alpha: 0.5)
-                      : Colors.black.withValues(alpha: 0.36),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: RichText(
-                  text: TextSpan(
-                    style: const TextStyle(
-                        fontFamily: 'Poppins', fontSize: 11.5),
-                    children: [
-                      if (line.pinned)
-                        const TextSpan(
+              child: GestureDetector(
+                onTap: isRealId(line.user.id)
+                    ? () => AppNav.userProfile(context, line.user)
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: line.pinned
+                        ? AppColors.primary.withValues(alpha: 0.5)
+                        : Colors.black.withValues(alpha: 0.36),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 11.5,
+                      ),
+                      children: [
+                        if (line.pinned)
+                          const TextSpan(
                             text: '📌 ',
-                            style: TextStyle(fontSize: 11)),
-                      TextSpan(
-                        text: '${line.user.name}  ',
-                        style: TextStyle(
+                            style: TextStyle(fontSize: 11),
+                          ),
+                        TextSpan(
+                          text: '${line.user.name}  ',
+                          style: TextStyle(
                             color: line.gift
                                 ? AppColors.gold
                                 : AppColors.primaryBright,
-                            fontWeight: FontWeight.w600),
-                      ),
-                      TextSpan(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        TextSpan(
                           text: line.text,
                           style: TextStyle(
-                              color:
-                                  line.gift ? AppColors.gold : Colors.white)),
-                    ],
+                            color: line.gift ? AppColors.gold : Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -944,7 +1094,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _iconCircle(
-              _micMuted ? Icons.mic_off_rounded : Icons.mic_rounded, _toggleMic),
+            _micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            _toggleMic,
+          ),
           const SizedBox(height: 12),
           GestureDetector(
             onTap: _openRequests,
@@ -957,16 +1109,22 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               ),
               child: const Column(
                 children: [
-                  Icon(Icons.person_add_alt_1_rounded,
-                      color: Colors.white, size: 20),
+                  Icon(
+                    Icons.person_add_alt_1_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                   SizedBox(height: 3),
-                  Text('REQUESTS',
-                      style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 8,
-                          letterSpacing: 0.3,
-                          color: Colors.white)),
+                  Text(
+                    'REQUESTS',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 8,
+                      letterSpacing: 0.3,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -979,13 +1137,19 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   Widget _bottomBar() {
     return Container(
       padding: EdgeInsets.fromLTRB(
-          12, 8, 12, 8 + MediaQuery.of(context).padding.bottom),
+        12,
+        8,
+        12,
+        8 + MediaQuery.of(context).padding.bottom,
+      ),
       child: Row(
         children: [
           _iconCircle(Icons.more_horiz_rounded, _openTools),
           const SizedBox(width: 8),
-          _iconCircle(Icons.emoji_emotions_outlined,
-              () => _soon('Emoji picker')),
+          _iconCircle(
+            Icons.emoji_emotions_outlined,
+            () => _soon('Emoji picker'),
+          ),
           const SizedBox(width: 8),
           _iconCircle(Icons.card_giftcard_rounded, _pickGift),
           const SizedBox(width: 8),
@@ -1023,8 +1187,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                 gradient: AppColors.liveGradient,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.send_rounded,
-                  color: Colors.white, size: 19),
+              child: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 19,
+              ),
             ),
           ),
         ],
@@ -1066,10 +1233,15 @@ class _ToolTile extends StatelessWidget {
             child: Icon(spec.icon, color: spec.color, size: 26),
           ),
           const SizedBox(height: 6),
-          Text(spec.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: AppColors.textPrimary)),
+          Text(
+            spec.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 10.5,
+              color: AppColors.textPrimary,
+            ),
+          ),
         ],
       ),
     );
@@ -1120,7 +1292,11 @@ class _PipCard extends StatelessWidget {
           colors: [Color(0xFFF5279B), Color(0xFFF5A623)],
         ),
         boxShadow: const [
-          BoxShadow(color: Colors.black45, blurRadius: 12, offset: Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black45,
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
         ],
       ),
       child: Stack(
@@ -1134,11 +1310,14 @@ class _PipCard extends StatelessWidget {
                 color: Colors.black.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text('LIVE',
-                  style: TextStyle(
-                      fontSize: 7,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white)),
+              child: const Text(
+                'LIVE',
+                style: TextStyle(
+                  fontSize: 7,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
           Positioned(
@@ -1152,8 +1331,11 @@ class _PipCard extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.4),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close_rounded,
-                    size: 12, color: Colors.white),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 12,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -1161,11 +1343,14 @@ class _PipCard extends StatelessWidget {
             left: 8,
             right: 8,
             bottom: 8,
-            child: Text('Featured live',
-                style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white)),
+            child: Text(
+              'Featured live',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
           ),
         ],
       ),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/utils/formatters.dart';
+import '../../core/utils/ids.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/mock_data.dart';
@@ -41,9 +43,9 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ],
               ),
-              Text(user.username,
-                  style: const TextStyle(
-                      color: AppColors.textMuted, fontSize: 12.5)),
+              _copyableLine(context, user.username),
+              const SizedBox(height: 2),
+              _copyableLine(context, 'ID: ${shortDisplayId(user.id)}'),
               const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -103,6 +105,28 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _copyableLine(BuildContext context, String text) {
+    return GestureDetector(
+      onTap: () async {
+        await Clipboard.setData(ClipboardData(text: text));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Copied "$text"'), duration: const Duration(seconds: 1)),
+          );
+        }
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+          const SizedBox(width: 4),
+          const Icon(Icons.copy_rounded, size: 13, color: AppColors.textMuted),
+        ],
       ),
     );
   }

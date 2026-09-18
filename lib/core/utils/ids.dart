@@ -9,6 +9,14 @@ bool isRealId(String id) => _uuidPattern.hasMatch(id);
 
 final _rng = Random.secure();
 
+/// A short, stable, human-shareable numeric id derived from a real user id —
+/// shown wherever a raw UUID would be unwieldy (profile screen, host chip
+/// while broadcasting). Same input always yields the same output.
+String shortDisplayId(String id) {
+  final n = id.hashCode.abs() % 900000 + 100000;
+  return '$n';
+}
+
 /// RFC 4122 v4 UUID — used for client-generated channel names etc.
 String newUuid() {
   final b = List<int>.generate(16, (_) => _rng.nextInt(256));

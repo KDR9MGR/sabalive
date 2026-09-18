@@ -89,8 +89,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
 
   Future<void> _logViewerJoin() async {
     try {
-      await supabase.rpc('join_live_stream', params: {'p_stream_id': widget.stream.id});
-    } catch (_) {/* best-effort — a missed count beats a broken screen */}
+      await supabase.rpc(
+        'join_live_stream',
+        params: {'p_stream_id': widget.stream.id},
+      );
+    } catch (_) {
+      /* best-effort — a missed count beats a broken screen */
+    }
   }
 
   /// Live seat occupancy + locks — mirrors the host's own subscription in
@@ -110,7 +115,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         for (final r in rows as List) {
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
-            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(profileRow);
+            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(
+              profileRow,
+            );
           }
         }
         final locked = streamRow?['locked_seats'] as List?;
@@ -137,7 +144,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 .eq('id', occupantId)
                 .maybeSingle();
             if (mounted && profileRow != null) {
-              setState(() => _seatOccupants[seat] = AppUser.fromRow(profileRow));
+              setState(
+                () => _seatOccupants[seat] = AppUser.fromRow(profileRow),
+              );
             }
           },
         )
@@ -235,7 +244,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         ),
       );
       _waitTimer = Timer(const Duration(seconds: 8), () {
-        if (mounted && _remoteUid == null) setState(() => _waitingTooLong = true);
+        if (mounted && _remoteUid == null)
+          setState(() => _waitingTooLong = true);
       });
     } catch (e) {
       if (mounted) setState(() => _joinError = friendlyError(e));
@@ -329,7 +339,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     if (_isReal) {
       AgoraService.instance.release();
       unawaited(
-        supabase.rpc('leave_live_stream', params: {'p_stream_id': widget.stream.id}),
+        supabase.rpc(
+          'leave_live_stream',
+          params: {'p_stream_id': widget.stream.id},
+        ),
       );
       unawaited(
         supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
@@ -363,7 +376,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     if (occupant?.id == myId) {
       setState(() => _seatBusy = true);
       try {
-        await supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id});
+        await supabase.rpc(
+          'release_seat',
+          params: {'p_stream_id': widget.stream.id},
+        );
         final engine = _engine;
         if (engine != null) {
           await AgoraService.instance.switchRole(
@@ -374,7 +390,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         }
         if (mounted) setState(() => _seatOccupants.remove(seat));
       } catch (e) {
-        if (mounted) messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+        if (mounted)
+          messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
       } finally {
         if (mounted) setState(() => _seatBusy = false);
       }
@@ -391,10 +408,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
 
     setState(() => _seatBusy = true);
     try {
-      await supabase.rpc('claim_seat', params: {
-        'p_stream_id': widget.stream.id,
-        'p_seat': seat,
-      });
+      await supabase.rpc(
+        'claim_seat',
+        params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
+      );
       final engine = _engine;
       if (engine != null) {
         await AgoraService.instance.switchRole(
@@ -404,7 +421,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         );
       }
     } catch (e) {
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      if (mounted)
+        messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _seatBusy = false);
     }
@@ -467,6 +485,36 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _burstCtl.forward(from: 0);
   }
 
+  Future<void> _moreActions() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.bgElevated,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(
+                Icons.card_giftcard_rounded,
+                color: AppColors.gold,
+              ),
+              title: Text('Send a gift · ${compactCount(widget.stream.gifts)}'),
+              onTap: () => Navigator.pop(context, 'gift'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: const Text('Share'),
+              onTap: () => Navigator.pop(context, 'share'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (choice == 'gift') await _openGifts();
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>();
@@ -479,10 +527,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         children: [
           SeatRoom(
             host: widget.stream.host,
-            error: _joinError ??
+            error:
+                _joinError ??
                 (_waitingTooLong
                     ? "Still nothing from the host — they may have ended, "
-                        "or there's a connection issue."
+                          "or there's a connection issue."
                     : null),
             seatCount: 8,
             lockedSeats: _lockedSeats,
@@ -678,49 +727,60 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           final line = _chat[_chat.length - 1 - i];
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: line.pinned
-                    ? AppColors.primary.withValues(alpha: 0.35)
-                    : Colors.black.withValues(alpha: 0.32),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: RichText(
-                text: TextSpan(
-                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 11.5),
-                  children: [
-                    if (line.pinned)
-                      const WidgetSpan(
-                        alignment: PlaceholderAlignment.middle,
-                        child: Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: Icon(
-                            Icons.push_pin_rounded,
-                            size: 11,
-                            color: Colors.white,
+            child: GestureDetector(
+              onTap: isRealId(line.user.id)
+                  ? () => AppNav.userProfile(context, line.user)
+                  : null,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: line.pinned
+                      ? AppColors.primary.withValues(alpha: 0.35)
+                      : Colors.black.withValues(alpha: 0.32),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 11.5,
+                    ),
+                    children: [
+                      if (line.pinned)
+                        const WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Padding(
+                            padding: EdgeInsets.only(right: 4),
+                            child: Icon(
+                              Icons.push_pin_rounded,
+                              size: 11,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
+                      TextSpan(
+                        text: '${line.user.name}  ',
+                        style: TextStyle(
+                          color: line.gift
+                              ? AppColors.gold
+                              : AppColors.primaryBright,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    TextSpan(
-                      text: '${line.user.name}  ',
-                      style: TextStyle(
-                        color: line.gift
-                            ? AppColors.gold
-                            : AppColors.primaryBright,
-                        fontWeight: FontWeight.w600,
+                      TextSpan(
+                        text: line.text,
+                        style: TextStyle(
+                          color: line.gift ? AppColors.gold : Colors.white,
+                          fontWeight: line.gift
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
                       ),
-                    ),
-                    TextSpan(
-                      text: line.text,
-                      style: TextStyle(
-                        color: line.gift ? AppColors.gold : Colors.white,
-                        fontWeight: line.gift
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -774,13 +834,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             _like,
             color: AppColors.live,
           ),
-          item(
-            Icons.card_giftcard_rounded,
-            compactCount(widget.stream.gifts),
-            _openGifts,
-            color: AppColors.gold,
-          ),
-          item(Icons.reply_rounded, 'Share', () {}),
+          item(Icons.more_horiz_rounded, 'More', _moreActions),
         ],
       ),
     );

@@ -36,6 +36,7 @@ class _SplashScreenState extends State<SplashScreen> {
       await c.initialize();
       await c.setVolume(1);
       await c.setLooping(false);
+      await c.setPlaybackSpeed(1.5);
       c.addListener(_onTick);
       if (!mounted) return;
       setState(() {});

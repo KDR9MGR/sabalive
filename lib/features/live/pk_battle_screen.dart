@@ -8,11 +8,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/ids.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/models.dart';
 import '../../data/pk_battles_repository.dart';
+import '../../router/app_nav.dart';
 import '../../services/agora_service.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
@@ -46,10 +48,14 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   bool _reconnecting = false;
 
   final List<LiveChatLine> _chat = [
-    LiveChatLine(AppUser(id: 'sys1', name: 'TDP, SREENIV', username: '@u'),
-        'has joined the Chatroom'),
-    LiveChatLine(AppUser(id: 'sys2', name: 'Neha khan 78', username: '@u'),
-        'has joined the Chatroom'),
+    LiveChatLine(
+      AppUser(id: 'sys1', name: 'TDP, SREENIV', username: '@u'),
+      'has joined the Chatroom',
+    ),
+    LiveChatLine(
+      AppUser(id: 'sys2', name: 'Neha khan 78', username: '@u'),
+      'has joined the Chatroom',
+    ),
   ];
   final _input = TextEditingController();
 
@@ -90,17 +96,24 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     try {
       final engine = await AgoraService.instance.ensureEngine();
       _engine = engine;
-      engine.registerEventHandler(RtcEngineEventHandler(
-        onError: (err, msg) {},
-        onConnectionStateChanged: (connection, state, reason) {
-          if (mounted) {
-            setState(() =>
-                _reconnecting = state == ConnectionStateType.connectionStateReconnecting);
-          }
-        },
-      ));
-      AgoraService.instance.registerAutoTokenRenewal(engine,
-          channelName: widget.token.channelName, asBroadcaster: true);
+      engine.registerEventHandler(
+        RtcEngineEventHandler(
+          onError: (err, msg) {},
+          onConnectionStateChanged: (connection, state, reason) {
+            if (mounted) {
+              setState(
+                () => _reconnecting =
+                    state == ConnectionStateType.connectionStateReconnecting,
+              );
+            }
+          },
+        ),
+      );
+      AgoraService.instance.registerAutoTokenRenewal(
+        engine,
+        channelName: widget.token.channelName,
+        asBroadcaster: true,
+      );
       await engine.enableLocalVideo(false);
       await engine.joinChannel(
         token: widget.token.token,
@@ -117,8 +130,9 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     }
   }
 
-  void _toast(String m) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 2)));
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(m), duration: const Duration(seconds: 2)),
+  );
 
   void _subscribeChat() {
     _chatChannel = supabase
@@ -179,8 +193,9 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     }
 
     if (_opponentUser == null || wasId != battle.id) {
-      final opponentId =
-          battle.hostAId == widget.stream.host.id ? battle.hostBId : battle.hostAId;
+      final opponentId = battle.hostAId == widget.stream.host.id
+          ? battle.hostBId
+          : battle.hostAId;
       final profile = await _pkRepo.profile(opponentId);
       if (mounted) setState(() => _opponentUser = profile);
     }
@@ -207,8 +222,11 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     if (_agoraChannelTarget == target) return;
     _agoraChannelTarget = target;
     try {
-      await AgoraService.instance
-          .switchChannel(engine, newChannelName: target, asBroadcaster: true);
+      await AgoraService.instance.switchChannel(
+        engine,
+        newChannelName: target,
+        asBroadcaster: true,
+      );
     } catch (e) {
       if (mounted) _toast(friendlyError(e));
     }
@@ -216,7 +234,8 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
 
   void _startCountdown(String battleId) async {
     await Future.delayed(const Duration(seconds: 3));
-    if (!mounted || _battle?.id != battleId || _battle?.status != 'accepted') return;
+    if (!mounted || _battle?.id != battleId || _battle?.status != 'accepted')
+      return;
     try {
       final updated = await _pkRepo.begin(battleId);
       await _onBattleUpdate(updated);
@@ -252,7 +271,8 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     final youAreA = battle.hostAId == widget.stream.host.id;
     final myScore = youAreA ? battle.scoreA : battle.scoreB;
     final oppScore = youAreA ? battle.scoreB : battle.scoreA;
-    final youWin = (youAreA && battle.winner == 'a') || (!youAreA && battle.winner == 'b');
+    final youWin =
+        (youAreA && battle.winner == 'a') || (!youAreA && battle.winner == 'b');
     final draw = battle.winner == 'draw';
     if (!mounted) return;
     await showDialog<void>(
@@ -261,10 +281,13 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         backgroundColor: AppColors.bgElevated,
         title: Text(draw ? 'Draw!' : (youWin ? 'You win! 🏆' : 'You lost')),
         content: Text(
-            'Final score  ${compactCount(myScore)}  vs  ${compactCount(oppScore)}'),
+          'Final score  ${compactCount(myScore)}  vs  ${compactCount(oppScore)}',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('Close')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
@@ -274,14 +297,20 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     final senderId = row['sender_id'] as String?;
     final prof = senderId == null
         ? null
-        : await supabase.from('profiles').select().eq('id', senderId).maybeSingle();
+        : await supabase
+              .from('profiles')
+              .select()
+              .eq('id', senderId)
+              .maybeSingle();
     final sender = prof != null
         ? AppUser.fromRow(prof)
         : AppUser(id: senderId ?? 'x', name: 'Someone', username: '@u');
     final isGift = row['kind'] == 'gift';
     if (!mounted) return;
     setState(() {
-      _chat.add(LiveChatLine(sender, row['body'] as String? ?? '', gift: isGift));
+      _chat.add(
+        LiveChatLine(sender, row['body'] as String? ?? '', gift: isGift),
+      );
     });
   }
 
@@ -305,13 +334,20 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     if (battle == null || !battle.isLive) {
       // No live battle — same self-gift behavior this screen always had.
       try {
-        await context
-            .read<WalletController>()
-            .sendGift(g, widget.stream.host, liveStreamId: widget.stream.id);
+        await context.read<WalletController>().sendGift(
+          g,
+          widget.stream.host,
+          liveStreamId: widget.stream.id,
+        );
         if (!mounted) return;
         setState(() {
-          _chat.add(LiveChatLine(
-              widget.stream.host, 'sent ${g.name} ${g.emoji}', gift: true));
+          _chat.add(
+            LiveChatLine(
+              widget.stream.host,
+              'sent ${g.name} ${g.emoji}',
+              gift: true,
+            ),
+          );
         });
       } catch (e) {
         if (mounted) _toast(friendlyError(e));
@@ -335,11 +371,13 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Send')),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Send'),
+            ),
           ],
         ),
       ),
@@ -350,8 +388,13 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
       await _pkRepo.sendGift(battle.id, side, g);
       if (mounted) {
         setState(() {
-          _chat.add(LiveChatLine(
-              widget.stream.host, 'sent ${g.name} ${g.emoji}', gift: true));
+          _chat.add(
+            LiveChatLine(
+              widget.stream.host,
+              'sent ${g.name} ${g.emoji}',
+              gift: true,
+            ),
+          );
         });
       }
     } catch (e) {
@@ -367,11 +410,13 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         title: const Text('End PK battle?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Stay')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Stay'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('End', style: TextStyle(color: AppColors.danger))),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('End', style: TextStyle(color: AppColors.danger)),
+          ),
         ],
       ),
     );
@@ -384,7 +429,9 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         } else {
           await _pkRepo.cancel(battle.id);
         }
-      } catch (_) {/* ending the stream matters more than tidy cleanup */}
+      } catch (_) {
+        /* ending the stream matters more than tidy cleanup */
+      }
     }
     if (!mounted) return;
     try {
@@ -418,7 +465,10 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         : (mySide == 'b' ? battle.scoreA : battle.scoreB);
     final secondsLeft = battle?.endsAt == null
         ? 0
-        : battle!.endsAt!.difference(DateTime.now().toUtc()).inSeconds.clamp(0, 1 << 30);
+        : battle!.endsAt!
+              .difference(DateTime.now().toUtc())
+              .inSeconds
+              .clamp(0, 1 << 30);
     final arenaH = MediaQuery.of(context).size.height * 0.42;
 
     return Scaffold(
@@ -430,7 +480,10 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
             ConnectionBanner(reconnecting: _reconnecting),
             _topBar(),
             const SizedBox(height: 6),
-            PkArenaHeader(giftTotal: widget.stream.gifts, statusLabel: _statusLabel),
+            PkArenaHeader(
+              giftTotal: widget.stream.gifts,
+              statusLabel: _statusLabel,
+            ),
             const SizedBox(height: 8),
             SizedBox(
               height: arenaH,
@@ -452,7 +505,10 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
             ),
             if (battle?.isLive == true)
               PkScoreBar(
-                  scoreA: displayScoreA, scoreB: displayScoreB, secondsLeft: secondsLeft),
+                scoreA: displayScoreA,
+                scoreB: displayScoreB,
+                secondsLeft: secondsLeft,
+              ),
             const SizedBox(height: 6),
             Expanded(child: _chatFeed()),
             GiftTray(onSelect: _onGift),
@@ -471,31 +527,43 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         children: [
           AppAvatar(name: widget.stream.host.name, size: 34),
           const SizedBox(width: 8),
-          Text(widget.stream.host.name,
-              style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: Colors.white)),
+          Text(
+            widget.stream.host.name,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: Colors.white,
+            ),
+          ),
           const Spacer(),
           const _Dot(color: AppColors.live),
           const SizedBox(width: 4),
-          const Text('LIVE',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                  color: AppColors.live)),
+          const Text(
+            'LIVE',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+              color: AppColors.live,
+            ),
+          ),
           const SizedBox(width: 8),
           const Icon(Icons.graphic_eq_rounded, size: 15, color: Colors.white70),
           const SizedBox(width: 3),
-          Text('$_viewers',
-              style: const TextStyle(fontSize: 12, color: Colors.white)),
+          Text(
+            '$_viewers',
+            style: const TextStyle(fontSize: 12, color: Colors.white),
+          ),
           const SizedBox(width: 10),
           const Icon(Icons.settings_rounded, size: 19, color: Colors.white70),
           const SizedBox(width: 6),
           GestureDetector(
             onTap: _end,
-            child: const Icon(Icons.close_rounded, size: 22, color: Colors.white),
+            child: const Icon(
+              Icons.close_rounded,
+              size: 22,
+              color: Colors.white,
+            ),
           ),
         ],
       ),
@@ -503,12 +571,12 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   }
 
   String get _statusLabel => switch (_battle?.status) {
-        null => 'Waiting for opponent',
-        'invited' => 'Invite sent',
-        'accepted' => 'Starting…',
-        'live' => 'Live battle',
-        _ => 'PK Battle',
-      };
+    null => 'Waiting for opponent',
+    'invited' => 'Invite sent',
+    'accepted' => 'Starting…',
+    'live' => 'Live battle',
+    _ => 'PK Battle',
+  };
 
   Widget _battleActionBar() {
     final battle = _battle;
@@ -517,32 +585,53 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     if (battle == null) {
       return GestureDetector(
         onTap: () async {
-          final created =
-              await showPkOpponentPicker(context, myStreamId: widget.stream.id);
+          final created = await showPkOpponentPicker(
+            context,
+            myStreamId: widget.stream.id,
+          );
           if (created != null) await _onBattleUpdate(created);
         },
-        child: _pillRow('Invite an opponent',
-            trailing:
-                const Icon(Icons.add_rounded, color: AppColors.primaryDeep, size: 20)),
+        child: _pillRow(
+          'Invite an opponent',
+          trailing: const Icon(
+            Icons.add_rounded,
+            color: AppColors.primaryDeep,
+            size: 20,
+          ),
+        ),
       );
     }
     if (battle.status == 'invited' && battle.hostAId == myId) {
-      return _pillRow('Waiting for ${_opponentUser?.name ?? '…'}…',
-          trailing: GestureDetector(
-            onTap: _battleBusy ? null : () => _cancelBattle(battle.id),
-            child: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
-          ));
+      return _pillRow(
+        'Waiting for ${_opponentUser?.name ?? '…'}…',
+        trailing: GestureDetector(
+          onTap: _battleBusy ? null : () => _cancelBattle(battle.id),
+          child: const Icon(
+            Icons.close_rounded,
+            color: Colors.white70,
+            size: 20,
+          ),
+        ),
+      );
     }
     if (battle.status == 'invited' && battle.hostBId == myId) {
       return Row(
         children: [
           Expanded(
-              child: _actionButton(
-                  'Decline', AppColors.danger, () => _respond(battle.id, false))),
+            child: _actionButton(
+              'Decline',
+              AppColors.danger,
+              () => _respond(battle.id, false),
+            ),
+          ),
           const SizedBox(width: 8),
           Expanded(
-              child: _actionButton(
-                  'Accept', AppColors.success, () => _respond(battle.id, true))),
+            child: _actionButton(
+              'Accept',
+              AppColors.success,
+              () => _respond(battle.id, true),
+            ),
+          ),
         ],
       );
     }
@@ -562,9 +651,12 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
       child: Row(
         children: [
           Expanded(
-              child: Text(text,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 13.5))),
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 13.5),
+            ),
+          ),
           ?trailing,
         ],
       ),
@@ -577,10 +669,18 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(26)),
-        child: Text(label,
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5)),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(26),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 13.5,
+          ),
+        ),
       ),
     );
   }
@@ -597,24 +697,36 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
             final joined = line.text == 'has joined the Chatroom';
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
-              child: RichText(
-                text: TextSpan(
-                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 11.5),
-                  children: [
-                    TextSpan(
+              child: GestureDetector(
+                onTap: isRealId(line.user.id)
+                    ? () => AppNav.userProfile(context, line.user)
+                    : null,
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 11.5,
+                    ),
+                    children: [
+                      TextSpan(
                         text: '${line.user.name}  ',
                         style: TextStyle(
-                            color: line.gift
-                                ? AppColors.gold
-                                : AppColors.primaryBright,
-                            fontWeight: FontWeight.w600)),
-                    TextSpan(
+                          color: line.gift
+                              ? AppColors.gold
+                              : AppColors.primaryBright,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextSpan(
                         text: line.text,
                         style: TextStyle(
-                            color: joined
-                                ? Colors.white54
-                                : (line.gift ? AppColors.gold : Colors.white))),
-                  ],
+                          color: joined
+                              ? Colors.white54
+                              : (line.gift ? AppColors.gold : Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -635,8 +747,11 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.event_seat_rounded,
-                        color: Color(0xFF1B1140), size: 24),
+                    child: const Icon(
+                      Icons.event_seat_rounded,
+                      color: Color(0xFF1B1140),
+                      size: 24,
+                    ),
                   ),
                   Positioned(
                     right: -4,
@@ -644,19 +759,26 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: const BoxDecoration(
-                          color: AppColors.live, shape: BoxShape.circle),
-                      child: const Text('9',
-                          style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white)),
+                        color: AppColors.live,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Text(
+                        '9',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 3),
-              const Text('Join Call',
-                  style: TextStyle(fontSize: 9, color: Colors.white70)),
+              const Text(
+                'Join Call',
+                style: TextStyle(fontSize: 9, color: Colors.white70),
+              ),
             ],
           ),
         ),
@@ -712,7 +834,8 @@ class _Dot extends StatelessWidget {
   final Color color;
   @override
   Widget build(BuildContext context) => Container(
-      width: 7,
-      height: 7,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+    width: 7,
+    height: 7,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 }

@@ -14,6 +14,7 @@ import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
 import '../../data/pk_battles_repository.dart';
+import '../../router/app_nav.dart';
 import '../../services/agora_service.dart';
 import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
@@ -95,7 +96,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     if (battle != null) {
       await _onBattleUpdate(battle);
     } else {
-      _discoveryChannel = _pkRepo.subscribeDiscovery(widget.stream.id, _onBattleUpdate);
+      _discoveryChannel = _pkRepo.subscribeDiscovery(
+        widget.stream.id,
+        _onBattleUpdate,
+      );
     }
   }
 
@@ -112,8 +116,9 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     }
 
     if (_opponentUser == null || wasId != battle.id) {
-      final opponentId =
-          battle.hostAId == widget.stream.host.id ? battle.hostBId : battle.hostAId;
+      final opponentId = battle.hostAId == widget.stream.host.id
+          ? battle.hostBId
+          : battle.hostAId;
       final profile = await _pkRepo.profile(opponentId);
       if (mounted) setState(() => _opponentUser = profile);
     }
@@ -132,8 +137,11 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     await Future.delayed(Duration(milliseconds: math.Random().nextInt(1500)));
     if (!mounted || _agoraChannelTarget != target) return;
     try {
-      await AgoraService.instance
-          .switchChannel(engine, newChannelName: target, asBroadcaster: false);
+      await AgoraService.instance.switchChannel(
+        engine,
+        newChannelName: target,
+        asBroadcaster: false,
+      );
     } catch (_) {
       // Best-effort — connection state / join errors already surface via
       // the registered event handlers.
@@ -142,8 +150,13 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
 
   Future<void> _logViewerJoin() async {
     try {
-      await supabase.rpc('join_live_stream', params: {'p_stream_id': widget.stream.id});
-    } catch (_) {/* best-effort — a missed count beats a broken screen */}
+      await supabase.rpc(
+        'join_live_stream',
+        params: {'p_stream_id': widget.stream.id},
+      );
+    } catch (_) {
+      /* best-effort — a missed count beats a broken screen */
+    }
   }
 
   Future<void> _joinReal() async {
@@ -203,7 +216,8 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       );
       _agoraChannelTarget = widget.stream.id;
       _waitTimer = Timer(const Duration(seconds: 8), () {
-        if (mounted && _remoteUid == null) setState(() => _waitingTooLong = true);
+        if (mounted && _remoteUid == null)
+          setState(() => _waitingTooLong = true);
       });
       if (mounted) setState(() {});
     } catch (e) {
@@ -274,7 +288,11 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   ) {
     final sender =
         profiles[row['sender_id']] ??
-        AppUser(id: row['sender_id'] as String, name: 'Someone', username: '@user');
+        AppUser(
+          id: row['sender_id'] as String,
+          name: 'Someone',
+          username: '@user',
+        );
     return LiveChatLine(
       sender,
       row['body'] as String,
@@ -295,7 +313,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     if (_isReal) {
       AgoraService.instance.release();
       unawaited(
-        supabase.rpc('leave_live_stream', params: {'p_stream_id': widget.stream.id}),
+        supabase.rpc(
+          'leave_live_stream',
+          params: {'p_stream_id': widget.stream.id},
+        ),
       );
     }
     super.dispose();
@@ -316,8 +337,9 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
         });
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
       return;
     }
@@ -331,31 +353,39 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       await _openBattleGift(battle);
       return;
     }
-    final gift = await showGiftSheet(context, hostName: widget.stream.host.name);
+    final gift = await showGiftSheet(
+      context,
+      hostName: widget.stream.host.name,
+    );
     if (gift == null || !mounted) return;
     final me = context.read<AuthController>().user ?? Mock.me;
     try {
       await context.read<WalletController>().sendGift(
-            gift,
-            widget.stream.host,
-            liveStreamId: _isReal ? widget.stream.id : null,
-          );
+        gift,
+        widget.stream.host,
+        liveStreamId: _isReal ? widget.stream.id : null,
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       return;
     }
     if (!mounted) return;
     setState(() {
       _giftBurst = gift;
-      if (!_isReal) _chat.add(LiveChatLine(me, 'sent ${gift.name}', gift: true));
+      if (!_isReal)
+        _chat.add(LiveChatLine(me, 'sent ${gift.name}', gift: true));
     });
     _burstCtl.forward(from: 0);
   }
 
   Future<void> _openBattleGift(PkBattleInfo battle) async {
-    final gift = await showGiftSheet(context, hostName: widget.stream.host.name);
+    final gift = await showGiftSheet(
+      context,
+      hostName: widget.stream.host.name,
+    );
     if (gift == null || !mounted) return;
 
     final hostSide = battle.sideFor(widget.stream.id)!;
@@ -374,11 +404,13 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Send')),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Send'),
+            ),
           ],
         ),
       ),
@@ -389,8 +421,9 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       await _pkRepo.sendGift(battle.id, side, gift);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       return;
     }
     if (!mounted) return;
@@ -399,12 +432,12 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   }
 
   String get _statusLabel => switch (_battle?.status) {
-        null => 'Solo PK',
-        'invited' => 'Invite sent',
-        'accepted' => 'Starting…',
-        'live' => 'Live battle',
-        _ => 'PK Battle',
-      };
+    null => 'Solo PK',
+    'invited' => 'Invite sent',
+    'accepted' => 'Starting…',
+    'live' => 'Live battle',
+    _ => 'PK Battle',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -419,7 +452,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                 ConnectionBanner(reconnecting: _reconnecting),
                 _topBar(context),
                 const SizedBox(height: 6),
-                PkArenaHeader(giftTotal: widget.stream.gifts, statusLabel: _statusLabel),
+                PkArenaHeader(
+                  giftTotal: widget.stream.gifts,
+                  statusLabel: _statusLabel,
+                ),
                 const SizedBox(height: 8),
                 SizedBox(height: arenaH, child: _arena()),
                 if (_battle?.isLive == true) _scoreBar(),
@@ -440,8 +476,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                         opacity: (1 - v).clamp(0.0, 1.0),
                         child: Transform.scale(
                           scale: 0.6 + v * 1.8,
-                          child: Text(_giftBurst!.emoji,
-                              style: const TextStyle(fontSize: 90)),
+                          child: Text(
+                            _giftBurst!.emoji,
+                            style: const TextStyle(fontSize: 90),
+                          ),
                         ),
                       ),
                     );
@@ -461,12 +499,15 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
         children: [
           const Icon(Icons.bolt_rounded, color: AppColors.gold, size: 18),
           const SizedBox(width: 6),
-          const Text('PK Battle',
-              style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: Colors.white)),
+          const Text(
+            'PK Battle',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              color: Colors.white,
+            ),
+          ),
           const Spacer(),
           GestureDetector(
             onTap: () => Navigator.pop(context),
@@ -477,7 +518,11 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                 color: Colors.white.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close_rounded, size: 18, color: Colors.white),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -504,14 +549,18 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     if (_joinError != null) {
       text = _joinError;
     } else if (_waitingTooLong) {
-      text = "Still nothing from the host — they may have ended, "
+      text =
+          "Still nothing from the host — they may have ended, "
           "or there's a connection issue.";
     } else if (_isReal && _remoteUid == null) {
       return const Center(
-          child: CircularProgressIndicator(color: AppColors.primaryBright));
+        child: CircularProgressIndicator(color: AppColors.primaryBright),
+      );
     } else if (_isReal && battle == null) {
       text = 'No opponent yet — solo PK';
-    } else if (_isReal && !(battle?.isLive ?? false) && !(battle?.isTerminal ?? false)) {
+    } else if (_isReal &&
+        !(battle?.isLive ?? false) &&
+        !(battle?.isTerminal ?? false)) {
       text = 'An opponent has been found — starting soon';
     } else if (_isReal) {
       text = "You're watching live — audio is playing";
@@ -523,9 +572,11 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
         color: Colors.black.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Text(text,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white70, fontSize: 12)),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
+      ),
     );
   }
 
@@ -536,8 +587,15 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     final displayScoreB = mySide == 'b' ? battle.scoreA : battle.scoreB;
     final secondsLeft = battle.endsAt == null
         ? 0
-        : battle.endsAt!.difference(DateTime.now().toUtc()).inSeconds.clamp(0, 1 << 30);
-    return PkScoreBar(scoreA: displayScoreA, scoreB: displayScoreB, secondsLeft: secondsLeft);
+        : battle.endsAt!
+              .difference(DateTime.now().toUtc())
+              .inSeconds
+              .clamp(0, 1 << 30);
+    return PkScoreBar(
+      scoreA: displayScoreA,
+      scoreB: displayScoreB,
+      secondsLeft: secondsLeft,
+    );
   }
 
   Widget _chatFeed() {
@@ -549,25 +607,32 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
         final line = _chat[_chat.length - 1 - i];
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
-          child: RichText(
-            text: TextSpan(
-              style: const TextStyle(fontFamily: 'Poppins', fontSize: 12.5),
-              children: [
-                TextSpan(
-                  text: '${line.user.name}  ',
-                  style: TextStyle(
-                    color: line.gift ? AppColors.gold : AppColors.primaryBright,
-                    fontWeight: FontWeight.w600,
+          child: GestureDetector(
+            onTap: isRealId(line.user.id)
+                ? () => AppNav.userProfile(context, line.user)
+                : null,
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(fontFamily: 'Poppins', fontSize: 12.5),
+                children: [
+                  TextSpan(
+                    text: '${line.user.name}  ',
+                    style: TextStyle(
+                      color: line.gift
+                          ? AppColors.gold
+                          : AppColors.primaryBright,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                TextSpan(
-                  text: line.text,
-                  style: TextStyle(
-                    color: line.gift ? AppColors.gold : Colors.white70,
-                    fontWeight: line.gift ? FontWeight.w600 : FontWeight.w400,
+                  TextSpan(
+                    text: line.text,
+                    style: TextStyle(
+                      color: line.gift ? AppColors.gold : Colors.white70,
+                      fontWeight: line.gift ? FontWeight.w600 : FontWeight.w400,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -600,15 +665,21 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                         isDense: true,
                         border: InputBorder.none,
                         hintText: 'Cheer them on…',
-                        hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
+                        hintStyle: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
+                        ),
                       ),
                       onSubmitted: (_) => _send(),
                     ),
                   ),
                   GestureDetector(
                     onTap: _send,
-                    child: const Icon(Icons.send_rounded,
-                        color: AppColors.primaryBright, size: 20),
+                    child: const Icon(
+                      Icons.send_rounded,
+                      color: AppColors.primaryBright,
+                      size: 20,
+                    ),
                   ),
                 ],
               ),
@@ -642,14 +713,21 @@ class GiftTrayButton extends StatelessWidget {
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.card_giftcard_rounded, size: 18, color: Color(0xFF3A1A5E)),
+              Icon(
+                Icons.card_giftcard_rounded,
+                size: 18,
+                color: Color(0xFF3A1A5E),
+              ),
               SizedBox(width: 6),
-              Text('Send a gift',
-                  style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: Color(0xFF3A1A5E))),
+              Text(
+                'Send a gift',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: Color(0xFF3A1A5E),
+                ),
+              ),
             ],
           ),
         ),

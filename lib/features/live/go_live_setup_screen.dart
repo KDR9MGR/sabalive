@@ -24,8 +24,7 @@ class GoLiveSetupScreen extends StatefulWidget {
 
 class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
   final _title = TextEditingController(text: 'Chill Sunday Vibes');
-  String _category = 'Chatting';
-  String _audience = 'Everyone';
+  static const _category = 'Chatting';
   bool _starting = false;
   LiveMode _mode = LiveMode.video;
 
@@ -33,43 +32,6 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
   void dispose() {
     _title.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickCategory() async {
-    final choice = await _sheet('Category', Mock.categories.map((c) => c.label).toList());
-    if (choice != null) setState(() => _category = choice);
-  }
-
-  Future<void> _pickAudience() async {
-    final choice = await _sheet('Audience', ['Everyone', 'Followers only', 'Private (invite)']);
-    if (choice != null) setState(() => _audience = choice);
-  }
-
-  Future<String?> _sheet(String title, List<String> options) {
-    return showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.bgElevated,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 14),
-            Text(title,
-                style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15)),
-            const SizedBox(height: 8),
-            ...options.map((o) => ListTile(
-                  title: Text(o),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.pop(context, o),
-                )),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _start() async {
@@ -167,12 +129,6 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                     hintText: 'What\'s your stream about?',
                   ),
                 ),
-                const SizedBox(height: 8),
-                _row(Icons.grid_view_rounded, 'Category', _category,
-                    _pickCategory),
-                _row(Icons.groups_rounded, 'Audience', _audience, _pickAudience),
-                _row(Icons.tune_rounded, 'More Settings', 'Beauty, mic, guests',
-                    () {}),
                 const Spacer(),
                 GradientButton(
                   label: switch (_mode) {
@@ -187,12 +143,6 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                   },
                   loading: _starting,
                   onPressed: _start,
-                ),
-                const SizedBox(height: 12),
-                OutlinePillButton(
-                  label: 'Schedule for later',
-                  icon: Icons.schedule_rounded,
-                  onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
@@ -212,39 +162,4 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
         ),
       );
 
-  Widget _row(IconData icon, String title, String value, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Material(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            child: Row(
-              children: [
-                Icon(icon, size: 20, color: AppColors.primaryBright),
-                const SizedBox(width: 12),
-                Text(title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w500, fontSize: 13.5)),
-                const Spacer(),
-                Flexible(
-                  child: Text(value,
-                      textAlign: TextAlign.right,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 12.5)),
-                ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.textMuted),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
