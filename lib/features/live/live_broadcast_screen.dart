@@ -119,6 +119,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               supabase.rpc('set_host_agora_uid', params: {
                 'p_stream_id': widget.stream.id,
                 'p_uid': uid,
+              }).catchError((e) {
+                debugPrint('set_host_agora_uid failed: $e');
               });
             }
           },
