@@ -23,6 +23,7 @@ import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/seat_room.dart';
 
 class WatchLiveScreen extends StatefulWidget {
   const WatchLiveScreen({super.key, required this.stream});
@@ -50,6 +51,20 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   Timer? _waitTimer;
   bool _waitingTooLong = false;
 
+  // Real, synced seat state — viewers can claim a seat in a video stream
+  // too now, mic-only (no camera track), same mechanism proven in the
+  // audio room's watch screen.
+  final Map<int, AppUser> _seatOccupants = {};
+  Set<int> _lockedSeats = {};
+  final Set<int> _mutedSeats = {};
+  late int _seatCount = widget.stream.seatCount;
+  RealtimeChannel? _seatsChannel;
+  RealtimeChannel? _seatStreamChannel;
+  bool _seatBusy = false;
+  int? _mySeat;
+  bool _myMuted = false;
+  Timer? _heartbeat;
+
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
@@ -68,8 +83,230 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
+      _subscribeSeats();
+      _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
+        supabase.rpc('heartbeat_viewer', params: {'p_stream_id': widget.stream.id});
+        if (_mySeat != null) {
+          supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id});
+        }
+      });
     } else {
       _chat.addAll(Mock.liveChat());
+    }
+  }
+
+  /// Live seat occupancy, locks, count, and mute state — identical shape to
+  /// watch_audio_room_screen.dart's subscription, just for a video stream.
+  Future<void> _subscribeSeats() async {
+    final rows = await supabase
+        .from('live_stream_seats')
+        .select(
+            'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)')
+        .eq('live_stream_id', widget.stream.id);
+    final streamRow = await supabase
+        .from('live_streams')
+        .select('locked_seats, seat_count')
+        .eq('id', widget.stream.id)
+        .maybeSingle();
+    if (mounted) {
+      setState(() {
+        for (final r in rows as List) {
+          final profileRow = r['profiles'] as Map<String, dynamic>?;
+          if (profileRow != null) {
+            final seat = r['seat_number'] as int;
+            _seatOccupants[seat] = AppUser.fromRow(profileRow);
+            if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
+          }
+        }
+        final locked = streamRow?['locked_seats'] as List?;
+        if (locked != null) _lockedSeats = locked.cast<int>().toSet();
+        final count = streamRow?['seat_count'] as int?;
+        if (count != null) _seatCount = count;
+      });
+    }
+    _seatsChannel = supabase
+        .channel('live-seats-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) async {
+            final seat = payload.newRecord['seat_number'] as int;
+            final occupantId = payload.newRecord['occupant_id'] as String;
+            final profileRow = await supabase
+                .from('profiles')
+                .select()
+                .eq('id', occupantId)
+                .maybeSingle();
+            if (mounted && profileRow != null) {
+              setState(() {
+                _seatOccupants[seat] = AppUser.fromRow(profileRow);
+                _mutedSeats.remove(seat);
+              });
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final seat = payload.newRecord['seat_number'] as int?;
+            final muted = payload.newRecord['is_muted'] as bool?;
+            if (mounted && seat != null && muted != null) {
+              setState(() {
+                if (muted) {
+                  _mutedSeats.add(seat);
+                } else {
+                  _mutedSeats.remove(seat);
+                }
+              });
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final seat = payload.oldRecord['seat_number'] as int?;
+            if (mounted && seat != null) {
+              setState(() {
+                _seatOccupants.remove(seat);
+                _mutedSeats.remove(seat);
+                if (_mySeat == seat) _mySeat = null;
+              });
+            }
+          },
+        )
+        .subscribe();
+    _seatStreamChannel = supabase
+        .channel('live-seatlocks-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'live_streams',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final locked = payload.newRecord['locked_seats'] as List?;
+            final count = payload.newRecord['seat_count'] as int?;
+            if (!mounted) return;
+            setState(() {
+              if (locked != null) _lockedSeats = locked.cast<int>().toSet();
+              if (count != null) _seatCount = count;
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _seatTap(int seat) async {
+    if (!_isReal || _seatBusy) return;
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return;
+    final occupant = _seatOccupants[seat];
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (occupant?.id == myId) {
+      setState(() => _seatBusy = true);
+      try {
+        await supabase.rpc(
+          'release_seat',
+          params: {'p_stream_id': widget.stream.id},
+        );
+        final engine = _engine;
+        if (engine != null) {
+          await AgoraService.instance.switchRole(
+            engine,
+            channelName: widget.stream.id,
+            asBroadcaster: false,
+          );
+        }
+        if (mounted) {
+          setState(() {
+            _seatOccupants.remove(seat);
+            _mySeat = null;
+            _myMuted = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+        }
+      } finally {
+        if (mounted) setState(() => _seatBusy = false);
+      }
+      return;
+    }
+    if (occupant != null) {
+      messenger.showSnackBar(SnackBar(content: Text('Seat $seat is taken')));
+      return;
+    }
+    if (_lockedSeats.contains(seat)) {
+      messenger.showSnackBar(SnackBar(content: Text('Seat $seat is locked')));
+      return;
+    }
+
+    setState(() => _seatBusy = true);
+    try {
+      await supabase.rpc(
+        'claim_seat',
+        params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
+      );
+      final engine = _engine;
+      if (engine != null) {
+        // Mic-only — camera track stays off, matching the audience join's
+        // publishCameraTrack: false (switchRole only flips the mic flag).
+        await AgoraService.instance.switchRole(
+          engine,
+          channelName: widget.stream.id,
+          asBroadcaster: true,
+        );
+      }
+      if (mounted) setState(() => _mySeat = seat);
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _seatBusy = false);
+    }
+  }
+
+  Future<void> _toggleMyMute() async {
+    final next = !_myMuted;
+    setState(() => _myMuted = next);
+    try {
+      await _engine?.muteLocalAudioStream(next);
+      await supabase.rpc('set_seat_mute', params: {
+        'p_stream_id': widget.stream.id,
+        'p_muted': next,
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _myMuted = !next);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
     }
   }
 
@@ -240,9 +477,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   @override
   void dispose() {
     _waitTimer?.cancel();
+    _heartbeat?.cancel();
     _msgController.dispose();
     _burstCtl.dispose();
     _chatChannel?.unsubscribe();
+    _seatsChannel?.unsubscribe();
+    _seatStreamChannel?.unsubscribe();
     if (_isReal) {
       AgoraService.instance.release();
       unawaited(
@@ -250,6 +490,9 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           'leave_live_stream',
           params: {'p_stream_id': widget.stream.id},
         ),
+      );
+      unawaited(
+        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
       );
     }
     super.dispose();
@@ -405,6 +648,16 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                     _sideRail(),
                   ],
                 ),
+                if (_isReal) ...[
+                  const SizedBox(height: 8),
+                  CompactSeatStrip(
+                    seatCount: _seatCount,
+                    occupants: _seatOccupants,
+                    lockedSeats: _lockedSeats,
+                    mutedSeats: _mutedSeats,
+                    onSeatTap: _seatTap,
+                  ),
+                ],
                 const SizedBox(height: 10),
                 _inputBar(),
                 SizedBox(height: MediaQuery.of(context).padding.bottom + 6),
@@ -715,7 +968,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             color: AppColors.live,
           ),
           item(Icons.more_horiz_rounded, 'More', _moreActions),
-          item(Icons.group_add_rounded, 'Guest', () {}),
+          if (_mySeat != null)
+            item(
+              _myMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+              _myMuted ? 'Unmute' : 'Mute',
+              _toggleMyMute,
+              color: _myMuted ? AppColors.danger : Colors.white,
+            ),
         ],
       ),
     );

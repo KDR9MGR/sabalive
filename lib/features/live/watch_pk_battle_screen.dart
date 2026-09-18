@@ -61,6 +61,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   RealtimeChannel? _discoveryChannel;
   RealtimeChannel? _battleChannel;
   Timer? _clockTicker;
+  Timer? _heartbeat;
   String? _agoraChannelTarget;
 
   late final AnimationController _burstCtl = AnimationController(
@@ -83,6 +84,9 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       _loadBattle();
       _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted && _battle?.isLive == true) setState(() {});
+      });
+      _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
+        supabase.rpc('heartbeat_viewer', params: {'p_stream_id': widget.stream.id});
       });
     } else {
       _chat.addAll(Mock.liveChat());
@@ -305,6 +309,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   void dispose() {
     _waitTimer?.cancel();
     _clockTicker?.cancel();
+    _heartbeat?.cancel();
     _msgController.dispose();
     _burstCtl.dispose();
     _chatChannel?.unsubscribe();

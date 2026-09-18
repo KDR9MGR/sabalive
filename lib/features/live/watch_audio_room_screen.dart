@@ -59,9 +59,14 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   RtcEngine? _engine;
   final Map<int, AppUser> _seatOccupants = {};
   Set<int> _lockedSeats = {};
+  final Set<int> _mutedSeats = {};
+  late int _seatCount = widget.stream.seatCount;
   RealtimeChannel? _seatsChannel;
   RealtimeChannel? _seatStreamChannel;
   bool _seatBusy = false;
+  int? _mySeat;
+  bool _myMuted = false;
+  Timer? _heartbeat;
 
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
@@ -82,6 +87,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       _loadRealChat();
       _logViewerJoin();
       _subscribeSeats();
+      // Mirrors the host's own heartbeat: keeps this viewer (and, while
+      // seated, this seat) from being swept by finalize_stale_presence if
+      // the connection silently dies instead of a clean dispose.
+      _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
+        supabase.rpc('heartbeat_viewer', params: {'p_stream_id': widget.stream.id});
+        if (_mySeat != null) {
+          supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id});
+        }
+      });
     } else {
       _chat.addAll(Mock.liveChat());
     }
@@ -103,11 +117,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   Future<void> _subscribeSeats() async {
     final rows = await supabase
         .from('live_stream_seats')
-        .select('seat_number, profiles!live_stream_seats_occupant_id_fkey(*)')
+        .select(
+            'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)')
         .eq('live_stream_id', widget.stream.id);
     final streamRow = await supabase
         .from('live_streams')
-        .select('locked_seats')
+        .select('locked_seats, seat_count')
         .eq('id', widget.stream.id)
         .maybeSingle();
     if (mounted) {
@@ -115,13 +130,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         for (final r in rows as List) {
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
-            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(
-              profileRow,
-            );
+            final seat = r['seat_number'] as int;
+            _seatOccupants[seat] = AppUser.fromRow(profileRow);
+            if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
           }
         }
         final locked = streamRow?['locked_seats'] as List?;
         if (locked != null) _lockedSeats = locked.cast<int>().toSet();
+        final count = streamRow?['seat_count'] as int?;
+        if (count != null) _seatCount = count;
       });
     }
     _seatsChannel = supabase
@@ -144,9 +161,33 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 .eq('id', occupantId)
                 .maybeSingle();
             if (mounted && profileRow != null) {
-              setState(
-                () => _seatOccupants[seat] = AppUser.fromRow(profileRow),
-              );
+              setState(() {
+                _seatOccupants[seat] = AppUser.fromRow(profileRow);
+                _mutedSeats.remove(seat);
+              });
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final seat = payload.newRecord['seat_number'] as int?;
+            final muted = payload.newRecord['is_muted'] as bool?;
+            if (mounted && seat != null && muted != null) {
+              setState(() {
+                if (muted) {
+                  _mutedSeats.add(seat);
+                } else {
+                  _mutedSeats.remove(seat);
+                }
+              });
             }
           },
         )
@@ -162,7 +203,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           callback: (payload) {
             final seat = payload.oldRecord['seat_number'] as int?;
             if (mounted && seat != null) {
-              setState(() => _seatOccupants.remove(seat));
+              setState(() {
+                _seatOccupants.remove(seat);
+                _mutedSeats.remove(seat);
+                if (_mySeat == seat) _mySeat = null;
+              });
             }
           },
         )
@@ -180,9 +225,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           ),
           callback: (payload) {
             final locked = payload.newRecord['locked_seats'] as List?;
-            if (mounted && locked != null) {
-              setState(() => _lockedSeats = locked.cast<int>().toSet());
-            }
+            final count = payload.newRecord['seat_count'] as int?;
+            if (!mounted) return;
+            setState(() {
+              if (locked != null) _lockedSeats = locked.cast<int>().toSet();
+              if (count != null) _seatCount = count;
+            });
           },
         )
         .subscribe();
@@ -331,6 +379,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   @override
   void dispose() {
     _waitTimer?.cancel();
+    _heartbeat?.cancel();
     _msgController.dispose();
     _burstCtl.dispose();
     _chatChannel?.unsubscribe();
@@ -388,7 +437,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             asBroadcaster: false,
           );
         }
-        if (mounted) setState(() => _seatOccupants.remove(seat));
+        if (mounted) {
+          setState(() {
+            _seatOccupants.remove(seat);
+            _mySeat = null;
+            _myMuted = false;
+          });
+        }
       } catch (e) {
         if (mounted)
           messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
@@ -420,11 +475,30 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           asBroadcaster: true,
         );
       }
+      if (mounted) setState(() => _mySeat = seat);
     } catch (e) {
       if (mounted)
         messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _seatBusy = false);
+    }
+  }
+
+  Future<void> _toggleMyMute() async {
+    final next = !_myMuted;
+    setState(() => _myMuted = next);
+    try {
+      await _engine?.muteLocalAudioStream(next);
+      await supabase.rpc('set_seat_mute', params: {
+        'p_stream_id': widget.stream.id,
+        'p_muted': next,
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _myMuted = !next);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
     }
   }
 
@@ -533,9 +607,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                     ? "Still nothing from the host — they may have ended, "
                           "or there's a connection issue."
                     : null),
-            seatCount: 8,
+            seatCount: _seatCount,
             lockedSeats: _lockedSeats,
             occupants: _seatOccupants,
+            mutedSeats: _mutedSeats,
             onSeatTap: _seatTap,
           ),
           const DecoratedBox(
@@ -835,6 +910,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             color: AppColors.live,
           ),
           item(Icons.more_horiz_rounded, 'More', _moreActions),
+          if (_mySeat != null)
+            item(
+              _myMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+              _myMuted ? 'Unmute' : 'Mute',
+              _toggleMyMute,
+              color: _myMuted ? AppColors.danger : Colors.white,
+            ),
         ],
       ),
     );

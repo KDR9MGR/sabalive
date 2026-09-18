@@ -60,11 +60,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   bool _showPip = true;
   Offset _pipPos = const Offset(-1, -1); // resolved on first layout
 
-  // audio-room seat controls — seat count stays host-local, occupancy and
-  // locks are real (live_stream_seats / live_streams.locked_seats)
-  int _seatCount = 8;
+  // Seat controls — real and synced everywhere (live_stream_seats /
+  // live_streams.seat_count / locked_seats). Video mode shows seats too now
+  // (a slim strip, not the full backdrop) but has no add/remove UI — only
+  // audio rooms let the host resize the room.
+  late int _seatCount = widget.stream.seatCount;
   Set<int> _lockedSeats = {};
   final Map<int, AppUser> _seatOccupants = {};
+  final Set<int> _mutedSeats = {};
   RealtimeChannel? _seatsChannel;
 
   Timer? _heartbeat;
@@ -75,7 +78,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     _join();
     _subscribeChat();
     _subscribeViewerCount();
-    if (widget.audioOnly) _subscribeSeats();
+    _subscribeSeats();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
     });
@@ -171,12 +174,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           callback: (payload) {
             final count = payload.newRecord['viewer_count'] as int?;
             final locked = payload.newRecord['locked_seats'] as List?;
+            final seatCount = payload.newRecord['seat_count'] as int?;
             if (!mounted) return;
             setState(() {
               if (count != null) _viewers = count;
               if (locked != null) {
                 _lockedSeats = locked.cast<int>().toSet();
               }
+              if (seatCount != null) _seatCount = seatCount;
             });
           },
         )
@@ -188,16 +193,17 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   Future<void> _subscribeSeats() async {
     final rows = await supabase
         .from('live_stream_seats')
-        .select('seat_number, profiles!live_stream_seats_occupant_id_fkey(*)')
+        .select(
+            'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)')
         .eq('live_stream_id', widget.stream.id);
     if (mounted) {
       setState(() {
         for (final r in rows as List) {
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
-            _seatOccupants[r['seat_number'] as int] = AppUser.fromRow(
-              profileRow,
-            );
+            final seat = r['seat_number'] as int;
+            _seatOccupants[seat] = AppUser.fromRow(profileRow);
+            if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
           }
         }
       });
@@ -222,9 +228,33 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                 .eq('id', occupantId)
                 .maybeSingle();
             if (mounted && profileRow != null) {
-              setState(
-                () => _seatOccupants[seat] = AppUser.fromRow(profileRow),
-              );
+              setState(() {
+                _seatOccupants[seat] = AppUser.fromRow(profileRow);
+                _mutedSeats.remove(seat);
+              });
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final seat = payload.newRecord['seat_number'] as int?;
+            final muted = payload.newRecord['is_muted'] as bool?;
+            if (mounted && seat != null && muted != null) {
+              setState(() {
+                if (muted) {
+                  _mutedSeats.add(seat);
+                } else {
+                  _mutedSeats.remove(seat);
+                }
+              });
             }
           },
         )
@@ -240,7 +270,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           callback: (payload) {
             final seat = payload.oldRecord['seat_number'] as int?;
             if (mounted && seat != null) {
-              setState(() => _seatOccupants.remove(seat));
+              setState(() {
+                _seatOccupants.remove(seat);
+                _mutedSeats.remove(seat);
+              });
             }
           },
         )
@@ -579,6 +612,19 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     }
   }
 
+  Future<void> _changeSeatCount(int delta) async {
+    final next = (_seatCount + delta).clamp(5, 25);
+    setState(() => _seatCount = next);
+    try {
+      await supabase.rpc('set_seat_count', params: {
+        'p_stream_id': widget.stream.id,
+        'p_count': next,
+      });
+    } catch (e) {
+      if (mounted) _snack(friendlyError(e));
+    }
+  }
+
   Future<void> _seatMenu(int seat) async {
     final locked = _lockedSeats.contains(seat);
     final choice = await showModalBottomSheet<String>(
@@ -701,16 +747,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               seatCount: _seatCount,
               lockedSeats: _lockedSeats,
               occupants: _seatOccupants,
+              mutedSeats: _mutedSeats,
               onSeatTap: _seatMenu,
-              onAddSeat: _seatCount >= 12
-                  ? null
-                  : () => setState(() => _seatCount++),
-              onRemoveSeat: _seatCount <= 4
-                  ? null
-                  : () => setState(() {
-                      _lockedSeats.remove(_seatCount);
-                      _seatCount--;
-                    }),
+              onAddSeat: _seatCount >= 25 ? null : () => _changeSeatCount(5),
+              onRemoveSeat:
+                  _seatCount <= 5 ? null : () => _changeSeatCount(-5),
             )
           else if (_engine != null)
             AgoraVideoView(
@@ -871,6 +912,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                       ),
                       const SizedBox(height: 8),
                       if (widget.audioOnly) GiftTray(onSelect: _sendGift),
+                      if (!widget.audioOnly) ...[
+                        CompactSeatStrip(
+                          seatCount: _seatCount,
+                          occupants: _seatOccupants,
+                          lockedSeats: _lockedSeats,
+                          mutedSeats: _mutedSeats,
+                          onSeatTap: _seatMenu,
+                        ),
+                        const SizedBox(height: 6),
+                      ],
                       const SizedBox(height: 6),
                       _bottomBar(),
                     ],
