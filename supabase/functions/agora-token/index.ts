@@ -71,13 +71,28 @@ Deno.serve(async (req) => {
   const role = body.role === "subscriber" ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
 
   // Publisher tokens let the holder actually broadcast into the channel.
-  // For a channel that's a real live_streams row, only that stream's host
-  // or someone currently holding a claimed seat on it may publish — every
-  // other authenticated user used to get a publisher token for any channel
-  // name with no check at all. A channelName that ISN'T a live_streams id
-  // (e.g. a 1:1 call's "call-<uuid>" channel) simply won't match any row
-  // here and falls through unchanged.
-  if (role === RtcRole.PUBLISHER) {
+  // A "pk-<battleId>" channel is the shared arena two matched PK hosts
+  // rejoin into once their battle goes live — only those two hosts may
+  // publish into it. Everything else falls through to the live_streams
+  // check below (e.g. a 1:1 call's "call-<uuid>" channel matches neither
+  // and mints unchanged, exactly as before).
+  if (role === RtcRole.PUBLISHER && channelName.startsWith("pk-")) {
+    const battleId = channelName.slice(3);
+    const { data: battle } = await userClient
+      .from("pk_battles")
+      .select("host_a_id, host_b_id, status")
+      .eq("id", battleId)
+      .maybeSingle();
+    if (!battle || battle.status !== "live" ||
+        (battle.host_a_id !== user.id && battle.host_b_id !== user.id)) {
+      return json({ error: "Not authorized to publish to this PK battle" }, 403);
+    }
+  } else if (role === RtcRole.PUBLISHER) {
+    // For a channel that's a real live_streams row, only that stream's host
+    // or someone currently holding a claimed seat on it may publish — every
+    // other authenticated user used to get a publisher token for any channel
+    // name with no check at all. A channelName that ISN'T a live_streams id
+    // simply won't match any row here and falls through unchanged.
     const { data: stream } = await userClient
       .from("live_streams")
       .select("host_id")

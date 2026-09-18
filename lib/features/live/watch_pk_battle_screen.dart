@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
@@ -10,8 +11,10 @@ import '../../core/utils/errors.dart';
 import '../../core/utils/ids.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
+import '../../data/pk_battles_repository.dart';
 import '../../services/agora_service.dart';
 import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
@@ -23,13 +26,11 @@ import 'widgets/pk_score_bar.dart';
 /// [WatchAudioRoomScreen]/[WatchLiveScreen], with a PK-themed shell instead
 /// of the seat grid or video canvas.
 ///
-/// The score/timer aren't independently computed here — pk_battle_screen.dart
-/// (the host) is the source of truth and broadcasts its own current numbers
-/// over Realtime (no real PK matchmaking/scoring backend exists; that's a
-/// separate, already-flagged gap), and this screen just mirrors whatever it
-/// last heard. Before the first broadcast arrives, or if the host goes quiet,
-/// no bar (or a frozen last-known one) is shown rather than a second,
-/// independently-fake number.
+/// `pk_battles` (see [PkBattlesRepository]) is the single real source of
+/// truth for the opponent, score, and timer — this screen subscribes to the
+/// same row both hosts do, it never simulates or mirrors a broadcast. Before
+/// a battle is matched, or once one ends, it shows a real "waiting"/"ended"
+/// state rather than a fake number.
 class WatchPkBattleScreen extends StatefulWidget {
   const WatchPkBattleScreen({super.key, required this.stream});
   final LiveStream stream;
@@ -41,10 +42,12 @@ class WatchPkBattleScreen extends StatefulWidget {
 class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     with TickerProviderStateMixin {
   late final bool _isReal = isRealId(widget.stream.id);
+  final _pkRepo = PkBattlesRepository();
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
   Gift? _giftBurst;
 
+  RtcEngine? _engine;
   int? _remoteUid;
   RealtimeChannel? _chatChannel;
   String? _joinError;
@@ -52,13 +55,12 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   Timer? _waitTimer;
   bool _waitingTooLong = false;
 
-  int? _scoreA;
-  int? _scoreB;
-  int? _secondsLeft;
-  bool _scoreFinished = false;
-  bool _scoreStale = false;
-  RealtimeChannel? _scoreChannel;
-  Timer? _scoreTimeoutTimer;
+  PkBattleInfo? _battle;
+  AppUser? _opponentUser;
+  RealtimeChannel? _discoveryChannel;
+  RealtimeChannel? _battleChannel;
+  Timer? _clockTicker;
+  String? _agoraChannelTarget;
 
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
@@ -77,36 +79,65 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
-      _subscribeScore();
+      _loadBattle();
+      _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted && _battle?.isLive == true) setState(() {});
+      });
     } else {
       _chat.addAll(Mock.liveChat());
     }
   }
 
-  /// Mirrors pk_battle_screen.dart's own score/timer — see that file's
-  /// _broadcastScore(). A stale timer (3x the host's ~4s heartbeat) covers
-  /// the host disconnecting or going quiet without a final message.
-  void _subscribeScore() {
-    _scoreChannel = supabase
-        .channel('pk-score-${widget.stream.id}')
-        .onBroadcast(
-          event: 'score',
-          callback: (payload) {
-            _scoreTimeoutTimer?.cancel();
-            if (!mounted) return;
-            setState(() {
-              _scoreA = payload['scoreA'] as int?;
-              _scoreB = payload['scoreB'] as int?;
-              _secondsLeft = payload['secondsLeft'] as int?;
-              _scoreFinished = payload['finished'] as bool? ?? false;
-              _scoreStale = false;
-            });
-            _scoreTimeoutTimer = Timer(const Duration(seconds: 12), () {
-              if (mounted) setState(() => _scoreStale = true);
-            });
-          },
-        )
-        .subscribe();
+  // ─────────────────────────────────────── real PK battle state machine
+
+  Future<void> _loadBattle() async {
+    final battle = await _pkRepo.currentBattleFor(widget.stream.id);
+    if (battle != null) {
+      await _onBattleUpdate(battle);
+    } else {
+      _discoveryChannel = _pkRepo.subscribeDiscovery(widget.stream.id, _onBattleUpdate);
+    }
+  }
+
+  Future<void> _onBattleUpdate(PkBattleInfo battle) async {
+    if (!mounted) return;
+    final wasId = _battle?.id;
+    setState(() => _battle = battle);
+
+    if (wasId != battle.id) {
+      _discoveryChannel?.unsubscribe();
+      _discoveryChannel = null;
+      _battleChannel?.unsubscribe();
+      _battleChannel = _pkRepo.subscribeBattle(battle.id, _onBattleUpdate);
+    }
+
+    if (_opponentUser == null || wasId != battle.id) {
+      final opponentId =
+          battle.hostAId == widget.stream.host.id ? battle.hostBId : battle.hostAId;
+      final profile = await _pkRepo.profile(opponentId);
+      if (mounted) setState(() => _opponentUser = profile);
+    }
+
+    await _syncAgoraChannel(battle);
+  }
+
+  /// Jittered so a large audience doesn't all leave+rejoin Agora in the
+  /// same instant when a battle starts or ends.
+  Future<void> _syncAgoraChannel(PkBattleInfo battle) async {
+    final engine = _engine;
+    if (engine == null) return;
+    final target = battle.isLive ? battle.agoraChannel : widget.stream.id;
+    if (_agoraChannelTarget == target) return;
+    _agoraChannelTarget = target;
+    await Future.delayed(Duration(milliseconds: math.Random().nextInt(1500)));
+    if (!mounted || _agoraChannelTarget != target) return;
+    try {
+      await AgoraService.instance
+          .switchChannel(engine, newChannelName: target, asBroadcaster: false);
+    } catch (_) {
+      // Best-effort — connection state / join errors already surface via
+      // the registered event handlers.
+    }
   }
 
   Future<void> _logViewerJoin() async {
@@ -118,6 +149,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   Future<void> _joinReal() async {
     try {
       final engine = await AgoraService.instance.ensureEngine();
+      _engine = engine;
       final token = await AgoraService.instance.fetchToken(
         channelName: widget.stream.id,
         asBroadcaster: false,
@@ -169,6 +201,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           publishMicrophoneTrack: false,
         ),
       );
+      _agoraChannelTarget = widget.stream.id;
       _waitTimer = Timer(const Duration(seconds: 8), () {
         if (mounted && _remoteUid == null) setState(() => _waitingTooLong = true);
       });
@@ -253,11 +286,12 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   @override
   void dispose() {
     _waitTimer?.cancel();
-    _scoreTimeoutTimer?.cancel();
+    _clockTicker?.cancel();
     _msgController.dispose();
     _burstCtl.dispose();
     _chatChannel?.unsubscribe();
-    _scoreChannel?.unsubscribe();
+    _discoveryChannel?.unsubscribe();
+    _battleChannel?.unsubscribe();
     if (_isReal) {
       AgoraService.instance.release();
       unawaited(
@@ -292,6 +326,11 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   }
 
   Future<void> _openGifts() async {
+    final battle = _battle;
+    if (battle != null && battle.isLive) {
+      await _openBattleGift(battle);
+      return;
+    }
     final gift = await showGiftSheet(context, hostName: widget.stream.host.name);
     if (gift == null || !mounted) return;
     final me = context.read<AuthController>().user ?? Mock.me;
@@ -312,6 +351,50 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       _giftBurst = gift;
       if (!_isReal) _chat.add(LiveChatLine(me, 'sent ${gift.name}', gift: true));
     });
+    _burstCtl.forward(from: 0);
+  }
+
+  Future<void> _openBattleGift(PkBattleInfo battle) async {
+    final gift = await showGiftSheet(context, hostName: widget.stream.host.name);
+    if (gift == null || !mounted) return;
+
+    final hostSide = battle.sideFor(widget.stream.id)!;
+    final oppName = _opponentUser?.name ?? 'Opponent';
+    var pickedIndex = 0; // 0 = this stream's host, 1 = the opponent
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.bgElevated,
+          title: const Text('Send to'),
+          content: SegmentedTabs(
+            tabs: [widget.stream.host.name, oppName],
+            index: pickedIndex,
+            onChanged: (i) => setDialogState(() => pickedIndex = i),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Send')),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final side = pickedIndex == 0 ? hostSide : (hostSide == 'a' ? 'b' : 'a');
+    try {
+      await _pkRepo.sendGift(battle.id, side, gift);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _giftBurst = gift);
     _burstCtl.forward(from: 0);
   }
 
@@ -390,6 +473,16 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   }
 
   Widget _arenaShell() {
+    final battle = _battle;
+    final mySide = battle?.sideFor(widget.stream.id);
+    final displayScoreA =
+        battle == null ? 0 : (mySide == 'b' ? battle.scoreB : battle.scoreA);
+    final displayScoreB =
+        battle == null ? 0 : (mySide == 'b' ? battle.scoreA : battle.scoreB);
+    final secondsLeft = battle?.endsAt == null
+        ? 0
+        : battle!.endsAt!.difference(DateTime.now().toUtc()).inSeconds.clamp(0, 1 << 30);
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -414,7 +507,8 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                           color: Color(0xFF3A1A5E))),
                 ),
               ),
-              _cornerAvatar('Opponent', AppColors.diamond, dimmed: true),
+              _cornerAvatar(_opponentUser?.name ?? 'Waiting…', AppColors.diamond,
+                  dimmed: _opponentUser == null),
             ],
           ),
           const SizedBox(height: 14),
@@ -437,21 +531,19 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
             )
           else if (_isReal && _remoteUid == null)
             const CircularProgressIndicator(color: AppColors.primaryBright)
+          else if (_isReal && battle == null)
+            const Text('No opponent yet — solo PK',
+                style: TextStyle(color: Colors.white54, fontSize: 11.5))
+          else if (_isReal && !battle!.isLive && !battle.isTerminal)
+            const Text('An opponent has been found — starting soon',
+                style: TextStyle(color: Colors.white54, fontSize: 11.5))
           else if (_isReal)
             const Text("You're watching live — audio is playing",
                 style: TextStyle(color: Colors.white54, fontSize: 11.5)),
-          if (_scoreA != null && _scoreB != null && _secondsLeft != null) ...[
+          if (battle?.isLive == true) ...[
             const SizedBox(height: 16),
             PkScoreBar(
-                scoreA: _scoreA!, scoreB: _scoreB!, secondsLeft: _secondsLeft!),
-            if (_scoreStale) ...[
-              const SizedBox(height: 6),
-              Text(
-                  _scoreFinished
-                      ? 'Battle ended'
-                      : 'Score sync paused',
-                  style: const TextStyle(color: Colors.white54, fontSize: 11)),
-            ],
+                scoreA: displayScoreA, scoreB: displayScoreB, secondsLeft: secondsLeft),
           ],
         ],
       ),
@@ -470,6 +562,8 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           ),
           const SizedBox(height: 6),
           Text(name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w600,

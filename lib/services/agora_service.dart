@@ -21,6 +21,7 @@ class AgoraService {
 
   RtcEngine? _engine;
   bool _asBroadcaster = false;
+  String? _channelName;
 
   Future<RtcEngine> ensureEngine() async {
     final existing = _engine;
@@ -57,13 +58,17 @@ class AgoraService {
     required bool asBroadcaster,
   }) {
     _asBroadcaster = asBroadcaster;
+    _channelName = channelName;
     engine.registerEventHandler(RtcEngineEventHandler(
       onTokenPrivilegeWillExpire: (connection, token) async {
         try {
-          // Reads _asBroadcaster live rather than the captured param, so a
-          // mid-session switchRole() call (e.g. claiming a seat) is honored
-          // on the next renewal instead of silently reverting the role.
-          final fresh = await fetchToken(channelName: channelName, asBroadcaster: _asBroadcaster);
+          // Reads _asBroadcaster/_channelName live rather than the captured
+          // params, so a mid-session switchRole()/switchChannel() call (e.g.
+          // claiming a seat, or a PK battle moving to its shared channel) is
+          // honored on the next renewal instead of renewing a token for a
+          // role or channel this client isn't actually in anymore.
+          final fresh = await fetchToken(
+              channelName: _channelName ?? channelName, asBroadcaster: _asBroadcaster);
           await engine.renewToken(fresh.token);
         } catch (_) {
           // Best-effort — if this fails the SDK will surface a connection
@@ -123,6 +128,38 @@ class AgoraService {
       );
       _asBroadcaster = asBroadcaster;
     }
+  }
+
+  /// Moves an already-joined client to a DIFFERENT channel entirely — e.g.
+  /// two PK hosts (and their viewers) converging on a shared battle channel,
+  /// or returning to their own solo channel once it ends. Unlike [switchRole]
+  /// (a role change within the same channel), Agora has no primitive for
+  /// moving channels other than a full leave+rejoin — this isn't a fallback
+  /// being chosen over something lighter, it's the only mechanism available.
+  Future<void> switchChannel(
+    RtcEngine engine, {
+    required String newChannelName,
+    required bool asBroadcaster,
+  }) async {
+    final fresh = await fetchToken(channelName: newChannelName, asBroadcaster: asBroadcaster);
+    await engine.leaveChannel();
+    await engine.joinChannel(
+      token: fresh.token,
+      channelId: fresh.channelName,
+      uid: fresh.uid,
+      options: ChannelMediaOptions(
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+        clientRoleType: asBroadcaster
+            ? ClientRoleType.clientRoleBroadcaster
+            : ClientRoleType.clientRoleAudience,
+        autoSubscribeAudio: true,
+        autoSubscribeVideo: true,
+        publishCameraTrack: false,
+        publishMicrophoneTrack: asBroadcaster,
+      ),
+    );
+    _asBroadcaster = asBroadcaster;
+    _channelName = newChannelName;
   }
 
   /// Camera + microphone are only needed to broadcast, not to watch.

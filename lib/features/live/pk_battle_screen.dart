@@ -10,17 +10,22 @@ import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../core/widgets/pills.dart';
 import '../../data/models.dart';
+import '../../data/pk_battles_repository.dart';
 import '../../services/agora_service.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_tray.dart';
+import 'widgets/pk_opponent_picker_sheet.dart';
 import 'widgets/pk_score_bar.dart';
 
-/// Host-side PK battle room. Your side (audio) + room chat + gift tray are
-/// real; the opponent and the tug-of-war score are a local practice battle
-/// until live matchmaking (`pk_battles`) is wired.
+/// Host-side PK battle room. Room chat/gifts and your own audio are real, as
+/// always. The opponent and scoring are now real too: `pk_battles` is the
+/// single source of truth (server-driven invite → accept → live → finished
+/// state machine), never a client-side simulation — see
+/// `PkBattlesRepository`.
 class PkBattleScreen extends StatefulWidget {
   const PkBattleScreen({super.key, required this.stream, required this.token});
   final LiveStream stream;
@@ -31,6 +36,9 @@ class PkBattleScreen extends StatefulWidget {
 }
 
 class _PkBattleScreenState extends State<PkBattleScreen> {
+  final _pkRepo = PkBattlesRepository();
+
+  RtcEngine? _engine;
   RealtimeChannel? _chatChannel;
   RealtimeChannel? _viewerChannel;
   int _viewers = 0;
@@ -44,23 +52,19 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   ];
   final _input = TextEditingController();
 
-  // practice battle state
-  final _opponent = AppUser(id: 'demo-opp', name: 'Challenger', username: '@vs');
-  int _scoreA = 0;
-  int _seatsPerSide = 2; // host-adjustable, local for the alpha
+  // seat chrome stays host-local/decorative — unrelated to the real battle
+  int _seatsPerSide = 2;
   final Set<String> _lockedSeats = {}; // keys like 'L1', 'R2'
-  int _scoreB = 0;
-  Duration _left = const Duration(minutes: 3);
-  Timer? _timer;
-  Timer? _oppTrickle;
-  Timer? _heartbeat;
-  bool _finished = false;
 
-  // Mirrors this screen's own score/timer to viewers — see
-  // watch_pk_battle_screen.dart. Doesn't change how the scores above are
-  // computed, only exposes their current values.
-  RealtimeChannel? _scoreChannel;
-  Timer? _scoreHeartbeat;
+  Timer? _heartbeat;
+  Timer? _clockTicker;
+
+  PkBattleInfo? _battle;
+  AppUser? _opponentUser;
+  RealtimeChannel? _inviteChannel;
+  RealtimeChannel? _battleChannel;
+  bool _battleBusy = false;
+  String? _agoraChannelTarget;
 
   @override
   void initState() {
@@ -68,37 +72,23 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     _join();
     _subscribeChat();
     _subscribeViewerCount();
-    _scoreChannel = supabase.channel('pk-score-${widget.stream.id}')..subscribe();
-    _scoreHeartbeat = Timer.periodic(const Duration(seconds: 4), (_) => _broadcastScore());
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        _left -= const Duration(seconds: 1);
-        if (_left <= Duration.zero && !_finished) {
-          _left = Duration.zero;
-          _finished = true;
-          _broadcastScore();
-          _showResult();
-        }
-      });
-    });
-    // opponent gets the occasional gift so the bar actually moves
-    _oppTrickle = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted && !_finished) {
-        setState(() => _scoreB += 10 + (_scoreA ~/ 20));
-        _broadcastScore();
-      }
-    });
-    // Keeps the underlying stream row from being auto-ended as stale.
+    _loadBattle();
+    _inviteChannel = _pkRepo.subscribeIncomingInvites(_onBattleUpdate);
     final liveStreams = context.read<LiveStreamsController>();
     _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
       liveStreams.heartbeat(widget.stream.id);
+    });
+    // Purely a display tick — recomputes remaining time from the server's
+    // own ends_at every second, never owns or decrements a duration itself.
+    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _battle?.isLive == true) setState(() {});
     });
   }
 
   Future<void> _join() async {
     try {
       final engine = await AgoraService.instance.ensureEngine();
+      _engine = engine;
       engine.registerEventHandler(RtcEngineEventHandler(
         onError: (err, msg) {},
         onConnectionStateChanged: (connection, state, reason) {
@@ -120,6 +110,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
           clientRoleType: ClientRoleType.clientRoleBroadcaster,
         ),
       );
+      _agoraChannelTarget = widget.stream.id;
     } catch (e) {
       if (mounted) _toast(friendlyError(e));
     }
@@ -168,13 +159,114 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
         .subscribe();
   }
 
-  void _broadcastScore() {
-    _scoreChannel?.sendBroadcastMessage(event: 'score', payload: {
-      'scoreA': _scoreA,
-      'scoreB': _scoreB,
-      'secondsLeft': _left.inSeconds,
-      'finished': _finished,
-    });
+  // ─────────────────────────────────────── real PK battle state machine
+
+  Future<void> _loadBattle() async {
+    final battle = await _pkRepo.currentBattleFor(widget.stream.id);
+    if (battle != null) await _onBattleUpdate(battle);
+  }
+
+  Future<void> _onBattleUpdate(PkBattleInfo battle) async {
+    if (!mounted) return;
+    final wasId = _battle?.id;
+    final prevStatus = _battle?.status;
+    setState(() => _battle = battle);
+
+    if (wasId != battle.id) {
+      _battleChannel?.unsubscribe();
+      _battleChannel = _pkRepo.subscribeBattle(battle.id, _onBattleUpdate);
+    }
+
+    if (_opponentUser == null || wasId != battle.id) {
+      final opponentId =
+          battle.hostAId == widget.stream.host.id ? battle.hostBId : battle.hostAId;
+      final profile = await _pkRepo.profile(opponentId);
+      if (mounted) setState(() => _opponentUser = profile);
+    }
+
+    await _syncAgoraChannel(battle);
+
+    if (battle.status == 'accepted' && prevStatus != 'accepted') {
+      _startCountdown(battle.id);
+    }
+    if (battle.status == 'finished' && prevStatus != 'finished') {
+      _showResult(battle);
+    }
+    if (battle.isTerminal) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && _battle?.id == battle.id) setState(() => _battle = null);
+      });
+    }
+  }
+
+  Future<void> _syncAgoraChannel(PkBattleInfo battle) async {
+    final engine = _engine;
+    if (engine == null) return;
+    final target = battle.isLive ? battle.agoraChannel : widget.stream.id;
+    if (_agoraChannelTarget == target) return;
+    _agoraChannelTarget = target;
+    try {
+      await AgoraService.instance
+          .switchChannel(engine, newChannelName: target, asBroadcaster: true);
+    } catch (e) {
+      if (mounted) _toast(friendlyError(e));
+    }
+  }
+
+  void _startCountdown(String battleId) async {
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted || _battle?.id != battleId || _battle?.status != 'accepted') return;
+    try {
+      final updated = await _pkRepo.begin(battleId);
+      await _onBattleUpdate(updated);
+    } catch (_) {
+      // The other host may have already started it, or it ended meanwhile.
+    }
+  }
+
+  Future<void> _cancelBattle(String battleId) async {
+    setState(() => _battleBusy = true);
+    try {
+      await _pkRepo.cancel(battleId);
+    } catch (e) {
+      if (mounted) _toast(friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _battleBusy = false);
+    }
+  }
+
+  Future<void> _respond(String battleId, bool accept) async {
+    setState(() => _battleBusy = true);
+    try {
+      final updated = await _pkRepo.respond(battleId, accept);
+      await _onBattleUpdate(updated);
+    } catch (e) {
+      if (mounted) _toast(friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _battleBusy = false);
+    }
+  }
+
+  Future<void> _showResult(PkBattleInfo battle) async {
+    final youAreA = battle.hostAId == widget.stream.host.id;
+    final myScore = youAreA ? battle.scoreA : battle.scoreB;
+    final oppScore = youAreA ? battle.scoreB : battle.scoreA;
+    final youWin = (youAreA && battle.winner == 'a') || (!youAreA && battle.winner == 'b');
+    final draw = battle.winner == 'draw';
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        title: Text(draw ? 'Draw!' : (youWin ? 'You win! 🏆' : 'You lost')),
+        content: Text(
+            'Final score  ${compactCount(myScore)}  vs  ${compactCount(oppScore)}'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
   }
 
   Future<void> _appendRow(Map<String, dynamic> row) async {
@@ -189,9 +281,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     if (!mounted) return;
     setState(() {
       _chat.add(LiveChatLine(sender, row['body'] as String? ?? '', gift: isGift));
-      if (isGift) _scoreA += 20; // gifts in the room back the host
     });
-    if (isGift) _broadcastScore();
   }
 
   Future<void> _send() async {
@@ -210,52 +300,62 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   }
 
   Future<void> _onGift(Gift g) async {
-    // Self-gift: really moves coins→diamonds via send_gift and backs your side.
+    final battle = _battle;
+    if (battle == null || !battle.isLive) {
+      // No live battle — same self-gift behavior this screen always had.
+      try {
+        await context
+            .read<WalletController>()
+            .sendGift(g, widget.stream.host, liveStreamId: widget.stream.id);
+        if (!mounted) return;
+        setState(() {
+          _chat.add(LiveChatLine(
+              widget.stream.host, 'sent ${g.name} ${g.emoji}', gift: true));
+        });
+      } catch (e) {
+        if (mounted) _toast(friendlyError(e));
+      }
+      return;
+    }
+
+    final mySide = battle.sideFor(widget.stream.id)!;
+    final oppName = _opponentUser?.name ?? 'Opponent';
+    var pickedIndex = 0; // 0 = me, 1 = opponent
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.bgElevated,
+          title: const Text('Send to'),
+          content: SegmentedTabs(
+            tabs: ['Me', oppName],
+            index: pickedIndex,
+            onChanged: (i) => setDialogState(() => pickedIndex = i),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Send')),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    final side = pickedIndex == 0 ? mySide : (mySide == 'a' ? 'b' : 'a');
     try {
-      await context
-          .read<WalletController>()
-          .sendGift(g, widget.stream.host, liveStreamId: widget.stream.id);
-      if (!mounted) return;
-      setState(() {
-        _scoreA += g.price;
-        _chat.add(LiveChatLine(
-            widget.stream.host, 'sent ${g.name} ${g.emoji}', gift: true));
-      });
-      _broadcastScore();
+      await _pkRepo.sendGift(battle.id, side, g);
+      if (mounted) {
+        setState(() {
+          _chat.add(LiveChatLine(
+              widget.stream.host, 'sent ${g.name} ${g.emoji}', gift: true));
+        });
+      }
     } catch (e) {
       if (mounted) _toast(friendlyError(e));
     }
-  }
-
-  Future<void> _showResult() async {
-    final youWin = _scoreA > _scoreB;
-    final draw = _scoreA == _scoreB;
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        title: Text(draw ? 'Draw!' : (youWin ? 'You win! 🏆' : 'You lost')),
-        content: Text(
-            'Final score  ${compactCount(_scoreA)}  vs  ${compactCount(_scoreB)}'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                _scoreA = 0;
-                _scoreB = 0;
-                _left = const Duration(minutes: 3);
-                _finished = false;
-              });
-            },
-            child: const Text('Rematch'),
-          ),
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close')),
-        ],
-      ),
-    );
   }
 
   Future<void> _end() async {
@@ -275,6 +375,17 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
       ),
     );
     if (leave != true || !mounted) return;
+    final battle = _battle;
+    if (battle != null && !battle.isTerminal) {
+      try {
+        if (battle.isLive) {
+          await _pkRepo.finalizeNow(battle.id);
+        } else {
+          await _pkRepo.cancel(battle.id);
+        }
+      } catch (_) {/* ending the stream matters more than tidy cleanup */}
+    }
+    if (!mounted) return;
     try {
       await context.read<LiveStreamsController>().endStream(widget.stream.id);
     } catch (_) {}
@@ -283,20 +394,30 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _oppTrickle?.cancel();
     _heartbeat?.cancel();
-    _scoreHeartbeat?.cancel();
+    _clockTicker?.cancel();
     _input.dispose();
     _chatChannel?.unsubscribe();
     _viewerChannel?.unsubscribe();
-    _scoreChannel?.unsubscribe();
+    _inviteChannel?.unsubscribe();
+    _battleChannel?.unsubscribe();
     AgoraService.instance.release();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final battle = _battle;
+    final mySide = battle?.sideFor(widget.stream.id);
+    final displayScoreA = battle == null
+        ? 0
+        : (mySide == 'b' ? battle.scoreB : battle.scoreA);
+    final displayScoreB = battle == null
+        ? 0
+        : (mySide == 'b' ? battle.scoreA : battle.scoreB);
+    final secondsLeft = battle?.endsAt == null
+        ? 0
+        : battle!.endsAt!.difference(DateTime.now().toUtc()).inSeconds.clamp(0, 1 << 30);
     final arenaH = MediaQuery.of(context).size.height * 0.42;
 
     return Scaffold(
@@ -314,8 +435,9 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
               height: arenaH,
               child: _arena(),
             ),
-            PkScoreBar(
-                scoreA: _scoreA, scoreB: _scoreB, secondsLeft: _left.inSeconds),
+            if (battle?.isLive == true)
+              PkScoreBar(
+                  scoreA: displayScoreA, scoreB: displayScoreB, secondsLeft: secondsLeft),
             const SizedBox(height: 6),
             Expanded(child: _chatFeed()),
             GiftTray(onSelect: _onGift),
@@ -366,6 +488,13 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   }
 
   Widget _subRow() {
+    final label = switch (_battle?.status) {
+      null => 'Waiting for opponent',
+      'invited' => 'Invite sent',
+      'accepted' => 'Starting…',
+      'live' => 'Live battle',
+      _ => 'PK Battle',
+    };
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
@@ -393,12 +522,8 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
               color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('Practice PK',
-                  style: TextStyle(fontSize: 10, color: Colors.white70)),
-              SizedBox(width: 3),
-              Icon(Icons.chevron_right_rounded, size: 14, color: Colors.white70),
-            ]),
+            child: Text(label,
+                style: const TextStyle(fontSize: 10, color: Colors.white70)),
           ),
         ],
       ),
@@ -419,42 +544,89 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
           left: 12,
           right: 12,
           bottom: 8,
-          child: GestureDetector(
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Live opponent matchmaking — coming soon')),
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(26),
-              ),
-              child: Row(
-                children: [
-                  Text(_opponent.name,
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 13.5)),
-                  const Spacer(),
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: const BoxDecoration(
-                        color: Colors.white, shape: BoxShape.circle),
-                    child: const Icon(Icons.add_rounded,
-                        color: AppColors.primaryDeep, size: 20),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          child: _battleActionBar(),
         ),
       ],
     );
   }
 
+  Widget _battleActionBar() {
+    final battle = _battle;
+    final myId = widget.stream.host.id;
+
+    if (battle == null) {
+      return GestureDetector(
+        onTap: () async {
+          final created =
+              await showPkOpponentPicker(context, myStreamId: widget.stream.id);
+          if (created != null) await _onBattleUpdate(created);
+        },
+        child: _pillRow('Invite an opponent',
+            trailing:
+                const Icon(Icons.add_rounded, color: AppColors.primaryDeep, size: 20)),
+      );
+    }
+    if (battle.status == 'invited' && battle.hostAId == myId) {
+      return _pillRow('Waiting for ${_opponentUser?.name ?? '…'}…',
+          trailing: GestureDetector(
+            onTap: _battleBusy ? null : () => _cancelBattle(battle.id),
+            child: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+          ));
+    }
+    if (battle.status == 'invited' && battle.hostBId == myId) {
+      return Row(
+        children: [
+          Expanded(
+              child: _actionButton(
+                  'Decline', AppColors.danger, () => _respond(battle.id, false))),
+          const SizedBox(width: 8),
+          Expanded(
+              child: _actionButton(
+                  'Accept', AppColors.success, () => _respond(battle.id, true))),
+        ],
+      );
+    }
+    if (battle.status == 'accepted') {
+      return _pillRow('Starting…');
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _pillRow(String text, {Widget? trailing}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+              child: Text(text,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 13.5))),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _actionButton(String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: _battleBusy ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(26)),
+        child: Text(label,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5)),
+      ),
+    );
+  }
+
   Widget _corner(bool left) {
-    final user = left ? widget.stream.host : _opponent;
+    final AppUser? user = left ? widget.stream.host : _opponentUser;
     final glow = left ? AppColors.live : AppColors.diamond;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -476,10 +648,20 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
               border: Border.all(color: glow, width: 3),
               boxShadow: [BoxShadow(color: glow.withValues(alpha: 0.6), blurRadius: 18)],
             ),
-            child: AppAvatar(name: user.name, size: 72),
+            child: user != null
+                ? AppAvatar(name: user.name, size: 72)
+                : Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.08)),
+                    child: const Icon(Icons.person_outline_rounded,
+                        color: Colors.white38, size: 32),
+                  ),
           ),
           const SizedBox(height: 6),
-          Text(user.name,
+          Text(user?.name ?? (left ? '' : 'Waiting…'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
