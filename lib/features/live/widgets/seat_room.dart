@@ -31,6 +31,12 @@ class SeatCircle extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      // Without this, a tap only registers on the small icon glyph inside
+      // the circle (its own painted text), not the visibly larger colored
+      // circle around it — same class of hit-testing gap already noted for
+      // AppThumb: a GestureDetector defers to its child's own hit bounds
+      // unless told to claim the whole area itself.
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -210,6 +216,7 @@ class SeatRoom extends StatelessWidget {
       opacity: onTap == null ? 0.4 : 1,
       child: GestureDetector(
         onTap: onTap,
+        behavior: HitTestBehavior.opaque,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(

@@ -109,6 +109,19 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               );
             }
           },
+          // Persist the host's actual assigned uid so viewers can tell
+          // them apart from a seat-holder who also becomes a broadcaster
+          // in this same channel — onUserJoined alone no longer uniquely
+          // identifies "the host" once more than one broadcaster can join.
+          onJoinChannelSuccess: (connection, elapsed) {
+            final uid = connection.localUid;
+            if (uid != null) {
+              supabase.rpc('set_host_agora_uid', params: {
+                'p_stream_id': widget.stream.id,
+                'p_uid': uid,
+              });
+            }
+          },
         ),
       );
       AgoraService.instance.registerAutoTokenRenewal(

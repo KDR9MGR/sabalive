@@ -46,6 +46,7 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
   RealtimeChannel? _viewerChannel;
   int _viewers = 0;
   bool _reconnecting = false;
+  bool _micMuted = false;
 
   final List<LiveChatLine> _chat = [
     LiveChatLine(
@@ -402,6 +403,13 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
     }
   }
 
+  Future<void> _toggleMic() async {
+    setState(() => _micMuted = !_micMuted);
+    try {
+      await _engine?.muteLocalAudioStream(_micMuted);
+    } catch (_) {}
+  }
+
   Future<void> _end() async {
     final leave = await showDialog<bool>(
       context: context,
@@ -553,6 +561,15 @@ class _PkBattleScreenState extends State<PkBattleScreen> {
           Text(
             '$_viewers',
             style: const TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _toggleMic,
+            child: Icon(
+              _micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+              size: 19,
+              color: _micMuted ? AppColors.danger : Colors.white70,
+            ),
           ),
           const SizedBox(width: 10),
           const Icon(Icons.settings_rounded, size: 19, color: Colors.white70),

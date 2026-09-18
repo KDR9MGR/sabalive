@@ -45,6 +45,11 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
   RtcEngine? _engine;
   int? _remoteUid;
+  // Multiple broadcasters can now be in this channel (host + seat-holders),
+  // so onUserJoined alone can't tell them apart — track everyone who's
+  // currently joined and pick the host's uid out of that set once known.
+  final Set<int> _joinedUids = {};
+  int? _hostAgoraUid;
   RealtimeChannel? _chatChannel;
   String? _joinError;
   bool _reconnecting = false;
@@ -74,6 +79,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   void initState() {
     super.initState();
     _likes = widget.stream.likes;
+    _hostAgoraUid = widget.stream.hostAgoraUid;
     _burstCtl.addStatusListener((s) {
       if (s == AnimationStatus.completed && mounted) {
         setState(() => _giftBurst = null);
@@ -105,7 +111,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         .eq('live_stream_id', widget.stream.id);
     final streamRow = await supabase
         .from('live_streams')
-        .select('locked_seats, seat_count')
+        .select('locked_seats, seat_count, host_agora_uid')
         .eq('id', widget.stream.id)
         .maybeSingle();
     if (mounted) {
@@ -122,6 +128,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         if (locked != null) _lockedSeats = locked.cast<int>().toSet();
         final count = streamRow?['seat_count'] as int?;
         if (count != null) _seatCount = count;
+        _hostAgoraUid = streamRow?['host_agora_uid'] as int? ?? _hostAgoraUid;
+        _recomputeRemoteUid();
       });
     }
     _seatsChannel = supabase
@@ -209,14 +217,30 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           callback: (payload) {
             final locked = payload.newRecord['locked_seats'] as List?;
             final count = payload.newRecord['seat_count'] as int?;
+            final hostUid = payload.newRecord['host_agora_uid'] as int?;
             if (!mounted) return;
             setState(() {
               if (locked != null) _lockedSeats = locked.cast<int>().toSet();
               if (count != null) _seatCount = count;
+              if (hostUid != null) _hostAgoraUid = hostUid;
+              _recomputeRemoteUid();
             });
           },
         )
         .subscribe();
+  }
+
+  /// Picks which joined broadcaster's video the viewer should actually see.
+  /// Prefers the known host uid; if it isn't known yet, falls back to
+  /// whoever joined first so a fresh viewer isn't stuck on a blank screen
+  /// waiting on a Realtime round-trip that may not have landed yet.
+  void _recomputeRemoteUid() {
+    final hostUid = _hostAgoraUid;
+    if (hostUid != null) {
+      _remoteUid = _joinedUids.contains(hostUid) ? hostUid : null;
+    } else {
+      _remoteUid = _joinedUids.isNotEmpty ? _joinedUids.first : null;
+    }
   }
 
   Future<void> _seatTap(int seat) async {
@@ -337,16 +361,17 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         RtcEngineEventHandler(
           onUserJoined: (connection, remoteUid, elapsed) {
             _waitTimer?.cancel();
+            _joinedUids.add(remoteUid);
             if (mounted) {
               setState(() {
-                _remoteUid = remoteUid;
                 _waitingTooLong = false;
+                _recomputeRemoteUid();
               });
             }
           },
           onUserOffline: (connection, remoteUid, reason) {
-            if (mounted && _remoteUid == remoteUid)
-              setState(() => _remoteUid = null);
+            _joinedUids.remove(remoteUid);
+            if (mounted) setState(_recomputeRemoteUid);
           },
           onError: (err, msg) {
             if (mounted) setState(() => _joinError = msg);

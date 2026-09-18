@@ -72,6 +72,7 @@ class LiveStream {
     this.tags = const [],
     this.mode = LiveMode.video,
     this.seatCount = 5,
+    this.hostAgoraUid,
   });
 
   factory LiveStream.fromRow(Map<String, dynamic> row, AppUser host) => LiveStream(
@@ -84,6 +85,7 @@ class LiveStream {
         gifts: row['gift_coin_total'] as int? ?? 0,
         mode: LiveMode.values.byName(row['mode'] as String? ?? 'video'),
         seatCount: row['seat_count'] as int? ?? 5,
+        hostAgoraUid: row['host_agora_uid'] as int?,
       );
 
   final String id;
@@ -96,6 +98,7 @@ class LiveStream {
   final List<String> tags;
   final LiveMode mode;
   int seatCount;
+  int? hostAgoraUid;
 
   bool get pk => mode == LiveMode.pk;
 }
