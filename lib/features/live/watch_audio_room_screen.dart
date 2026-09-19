@@ -621,19 +621,23 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          SeatRoom(
-            host: widget.stream.host,
-            error:
-                _joinError ??
-                (_waitingTooLong
-                    ? "Still nothing from the host — they may have ended, "
-                          "or there's a connection issue."
-                    : null),
-            seatCount: _seatCount,
-            lockedSeats: _lockedSeats,
-            occupants: _seatOccupants,
-            mutedSeats: _mutedSeats,
-            onSeatTap: _seatTap,
+          // Plain backdrop only — the actual host avatar + seat grid render
+          // in-flow below, inside the SafeArea's Column, not stacked under
+          // it. A seat grid stacked as a backdrop (the old approach) sits
+          // underneath the chat/toolbar layer, and anything painted on top
+          // of it — even an empty-looking one — can silently swallow taps
+          // meant for a seat beneath it. CompactSeatStrip (video mode) never
+          // had this problem because it was already laid out in-flow;
+          // this brings audio in line with that instead of continuing to
+          // patch the overlay approach.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF1B1140), Color(0xFF0B0716)],
+              ),
+            ),
           ),
           const DecoratedBox(
             decoration: BoxDecoration(
@@ -654,7 +658,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             child: Column(
               children: [
                 _topBar(context, following, session),
-                const Spacer(),
+                Expanded(child: _seatArea()),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -694,6 +698,83 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 },
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// Host avatar + the actual tappable seat grid, laid out in-flow (see the
+  /// comment in build()). Scrollable since audio rooms can have up to 25
+  /// seats — five rows would otherwise overflow on a shorter phone.
+  Widget _seatArea() {
+    final error =
+        _joinError ??
+        (_waitingTooLong
+            ? "Still nothing from the host — they may have ended, "
+                  "or there's a connection issue."
+            : null);
+    if (error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            error,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: AppColors.primaryGradient,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.5),
+                  blurRadius: 26,
+                ),
+              ],
+            ),
+            child: AppAvatar(name: widget.stream.host.name, size: 88),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.stream.host.name,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.white,
+            ),
+          ),
+          const Text('Host', style: TextStyle(fontSize: 10, color: Colors.white60)),
+          const SizedBox(height: 24),
+          GridView.count(
+            crossAxisCount: 5,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 16,
+            crossAxisSpacing: 4,
+            childAspectRatio: 0.72,
+            children: [
+              for (var i = 1; i <= _seatCount; i++)
+                SeatCircle(
+                  seat: i,
+                  occupant: _seatOccupants[i],
+                  locked: _lockedSeats.contains(i),
+                  muted: _mutedSeats.contains(i),
+                  onTap: () => _seatTap(i),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
         ],
       ),
     );
