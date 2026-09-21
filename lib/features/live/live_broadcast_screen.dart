@@ -79,6 +79,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     _subscribeChat();
     _subscribeViewerCount();
     _subscribeSeats();
+    if (widget.audioOnly) {
+      // Audio rooms no longer give the host a seat of their own outside the
+      // numbered grid — the host just occupies seat 1 like anyone else,
+      // and can move to any other open seat via the seat menu below.
+      supabase
+          .rpc('claim_seat', params: {'p_stream_id': widget.stream.id, 'p_seat': 1})
+          .catchError((e) => debugPrint('auto-claim host seat failed: $e'));
+    }
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
     });
@@ -649,6 +657,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
 
   Future<void> _seatMenu(int seat) async {
     final locked = _lockedSeats.contains(seat);
+    final myId = supabase.auth.currentUser?.id;
+    final isMySeat = _seatOccupants[seat]?.id == myId;
+    // Audio rooms only — the host can move into any open seat, same as
+    // guests, instead of only ever occupying a separate seat of their own.
+    final canSitHere =
+        widget.audioOnly && !isMySeat && _seatOccupants[seat] == null;
     final choice = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.bgElevated,
@@ -667,6 +681,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                 ),
               ),
             ),
+            if (canSitHere)
+              ListTile(
+                leading: const Icon(Icons.event_seat_rounded),
+                title: const Text('Sit here'),
+                onTap: () => Navigator.pop(context, 'sit'),
+              ),
             ListTile(
               leading: Icon(
                 locked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
@@ -685,7 +705,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
       ),
     );
     if (!mounted) return;
-    if (choice == 'lock') {
+    if (choice == 'sit') {
+      try {
+        await supabase.rpc(
+          'claim_seat',
+          params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
+        );
+      } catch (e) {
+        if (mounted) _snack(friendlyError(e));
+      }
+    } else if (choice == 'lock') {
       setState(() {
         if (locked) {
           _lockedSeats.remove(seat);
@@ -764,7 +793,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         children: [
           if (widget.audioOnly)
             SeatRoom(
-              host: widget.stream.host,
+              hostId: widget.stream.host.id,
               error: _error,
               seatCount: _seatCount,
               lockedSeats: _lockedSeats,

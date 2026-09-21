@@ -14,6 +14,7 @@ class SeatCircle extends StatelessWidget {
     this.occupant,
     this.locked = false,
     this.muted = false,
+    this.isHost = false,
     this.size = 58,
     this.onTap,
     this.showLabel = true,
@@ -23,6 +24,11 @@ class SeatCircle extends StatelessWidget {
   final AppUser? occupant;
   final bool locked;
   final bool muted;
+  /// True when this seat's occupant is the room's host — audio rooms no
+  /// longer give the host a separate avatar above the grid; the host just
+  /// sits in one of the numbered seats like anyone else, marked with a
+  /// small badge so viewers can still tell who they are.
+  final bool isHost;
   final double size;
   final VoidCallback? onTap;
   final bool showLabel;
@@ -81,6 +87,18 @@ class SeatCircle extends StatelessWidget {
                         color: Colors.white, size: 11),
                   ),
                 ),
+              if (occupant != null && isHost)
+                Positioned(
+                  left: -2,
+                  top: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(
+                        color: AppColors.gold, shape: BoxShape.circle),
+                    child: const Icon(Icons.star_rounded,
+                        color: Colors.white, size: 11),
+                  ),
+                ),
             ],
           ),
           if (showLabel) ...[
@@ -100,14 +118,15 @@ class SeatCircle extends StatelessWidget {
   }
 }
 
-/// Voice-room stage: host on top, a 5-per-row grid of guest seats below.
-/// Shared by the host's own broadcast screen (seats are editable —
-/// add/remove/lock) and the viewer's watch screen (read-only — omit
-/// onAddSeat/onRemoveSeat).
+/// Voice-room stage: a 5-per-row grid of numbered seats, one of which the
+/// host occupies like anyone else (marked with [SeatCircle]'s host badge)
+/// rather than getting a separate avatar above the grid. Shared by the
+/// host's own broadcast screen (seats are editable — add/remove/lock) and
+/// the viewer's watch screen (read-only — omit onAddSeat/onRemoveSeat).
 class SeatRoom extends StatelessWidget {
   const SeatRoom({
     super.key,
-    required this.host,
+    required this.hostId,
     this.error,
     required this.seatCount,
     required this.lockedSeats,
@@ -117,7 +136,7 @@ class SeatRoom extends StatelessWidget {
     this.occupants = const {},
     this.mutedSeats = const {},
   });
-  final AppUser host;
+  final String hostId;
   final String? error;
   final int seatCount;
   final Set<int> lockedSeats;
@@ -145,29 +164,6 @@ class SeatRoom extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 90, 20, 0),
           child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: AppColors.primaryGradient,
-                  boxShadow: [
-                    BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.5),
-                        blurRadius: 26),
-                  ],
-                ),
-                child: AppAvatar(name: host.name, size: 88),
-              ),
-              const SizedBox(height: 8),
-              Text(host.name,
-                  style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: Colors.white)),
-              const Text('Host',
-                  style: TextStyle(fontSize: 10, color: Colors.white60)),
-              const SizedBox(height: 24),
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -190,6 +186,7 @@ class SeatRoom extends StatelessWidget {
                         occupant: occupants[i],
                         locked: lockedSeats.contains(i),
                         muted: mutedSeats.contains(i),
+                        isHost: occupants[i]?.id == hostId,
                         onTap: () => onSeatTap(i),
                       ),
                   ],

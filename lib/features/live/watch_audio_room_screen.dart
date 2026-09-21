@@ -703,9 +703,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     );
   }
 
-  /// Host avatar + the actual tappable seat grid, laid out in-flow (see the
-  /// comment in build()). Scrollable since audio rooms can have up to 25
-  /// seats — five rows would otherwise overflow on a shorter phone.
+  /// The actual tappable seat grid, laid out in-flow (see the comment in
+  /// build()). The host occupies one of these numbered seats like anyone
+  /// else now (marked with SeatCircle's host badge) rather than getting a
+  /// separate avatar above the grid. Scrollable since audio rooms can have
+  /// up to 25 seats — five rows would otherwise overflow on a shorter phone.
   Widget _seatArea() {
     final error =
         _joinError ??
@@ -729,32 +731,6 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: AppColors.primaryGradient,
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.5),
-                  blurRadius: 26,
-                ),
-              ],
-            ),
-            child: AppAvatar(name: widget.stream.host.name, size: 88),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.stream.host.name,
-            style: const TextStyle(
-              fontFamily: 'Poppins',
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-              color: Colors.white,
-            ),
-          ),
-          const Text('Host', style: TextStyle(fontSize: 10, color: Colors.white60)),
           const SizedBox(height: 24),
           GridView.count(
             crossAxisCount: 5,
@@ -770,6 +746,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                   occupant: _seatOccupants[i],
                   locked: _lockedSeats.contains(i),
                   muted: _mutedSeats.contains(i),
+                  isHost: _seatOccupants[i]?.id == widget.stream.host.id,
                   onTap: () => _seatTap(i),
                 ),
             ],
