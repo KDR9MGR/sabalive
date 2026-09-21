@@ -212,25 +212,6 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.85),
                   fontSize: 12.5)),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => AppNav.goLive(context),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text('Go Live',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12.5,
-                    color: AppColors.primaryDeep,
-                  )),
-            ),
-          ),
         ],
       ),
     );
