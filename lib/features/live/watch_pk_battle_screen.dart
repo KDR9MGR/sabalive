@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
@@ -110,6 +111,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   Future<void> _onBattleUpdate(PkBattleInfo battle) async {
     if (!mounted) return;
     final wasId = _battle?.id;
+    final prevStatus = _battle?.status;
     setState(() => _battle = battle);
 
     if (wasId != battle.id) {
@@ -128,6 +130,44 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     }
 
     await _syncAgoraChannel(battle);
+
+    // Driven purely by the server-side status transition (never a client
+    // timer) — the same trigger pk_battle_screen.dart's host uses, so a
+    // viewer only ever sees a result once the DB has actually finalized
+    // the battle (whether via the host's "End" action or the
+    // finalize_expired_pk_battles cron sweep).
+    if (battle.status == 'finished' && prevStatus != 'finished') {
+      await _showResult(battle);
+    }
+  }
+
+  Future<void> _showResult(PkBattleInfo battle) async {
+    if (!mounted) return;
+    final mySide = battle.sideFor(widget.stream.id);
+    // Same A/B remap _scoreBar() uses — "A" is always whichever host this
+    // screen's own stream belongs to, "B" the opponent, matching the arena.
+    final aName = widget.stream.host.name;
+    final bName = _opponentUser?.name ?? 'Opponent';
+    final scoreA = mySide == 'b' ? battle.scoreB : battle.scoreA;
+    final scoreB = mySide == 'b' ? battle.scoreA : battle.scoreB;
+    final draw = battle.winner == 'draw';
+    final aWon = !draw && mySide != null && battle.winner == mySide;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        title: Text(draw ? "It's a draw!" : '${aWon ? aName : bName} wins! 🏆'),
+        content: Text(
+          'Final score  ${compactCount(scoreA)}  vs  ${compactCount(scoreB)}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Jittered so a large audience doesn't all leave+rejoin Agora in the
@@ -441,6 +481,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     'invited' => 'Invite sent',
     'accepted' => 'Starting…',
     'live' => 'Live battle',
+    'finished' => 'Battle ended',
     _ => 'PK Battle',
   };
 
@@ -563,9 +604,9 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       );
     } else if (_isReal && battle == null) {
       text = 'No opponent yet — solo PK';
-    } else if (_isReal &&
-        !(battle?.isLive ?? false) &&
-        !(battle?.isTerminal ?? false)) {
+    } else if (_isReal && (battle?.isTerminal ?? false)) {
+      text = 'Battle ended';
+    } else if (_isReal && !(battle?.isLive ?? false)) {
       text = 'An opponent has been found — starting soon';
     } else if (_isReal) {
       text = "You're watching live — audio is playing";
