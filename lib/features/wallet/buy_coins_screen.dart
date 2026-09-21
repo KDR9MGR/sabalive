@@ -32,6 +32,16 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
   Future<void> _pay(CoinPack pack) async {
     if (_paying) return;
     final messenger = ScaffoldMessenger.of(context);
+    // Temporarily disabled per Rey (2026-09-21): buyCoins() only ever
+    // called the dev_purchase_coins test RPC (no real gateway wired up
+    // yet), so tapping Pay silently granted free coins. Same flag that
+    // already hides the fake payment-method picker below.
+    if (!FeatureFlags.paymentMethodsEnabled) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Coin purchases are coming soon')),
+      );
+      return;
+    }
     final navigator = Navigator.of(context);
     setState(() => _paying = true);
     try {

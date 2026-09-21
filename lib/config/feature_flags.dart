@@ -14,10 +14,12 @@
 ///   Developer's Services ID Return URL is set — see
 ///   `SupabaseConfig.authRedirectUrl`.
 /// - [paymentMethodsEnabled]: needs a real payment gateway (Razorpay/Stripe/
-///   IAP — not chosen yet). Buy Coins currently credits coins via a
-///   `dev_purchase_coins` dev RPC regardless of the method shown, so the
-///   UPI/Card/Net Banking/Wallet picker is fake and stays hidden until a
-///   gateway is wired behind it.
+///   IAP — not chosen yet). The UPI/Card/Net Banking/Wallet picker is fake
+///   and stays hidden until a gateway is wired behind it. Buy Coins' Pay
+///   button also checks this flag directly (2026-09-21, per Rey) — it used
+///   to call `dev_purchase_coins` (a test RPC that instantly grants coins,
+///   no real charge) regardless of this flag, so tapping Pay silently gave
+///   free coins. Now shows "coming soon" instead while this is false.
 ///
 /// ⚠️ Still on the pre-production checklist — wire the real thing behind it
 /// before shipping to real users.
