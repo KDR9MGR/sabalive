@@ -20,7 +20,6 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
 import 'widgets/gift_sheet.dart';
-import 'widgets/gift_tray.dart';
 import 'widgets/seat_room.dart';
 
 /// Host's own broadcast view — real Agora publish + real Realtime chat tied
@@ -962,7 +961,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      if (widget.audioOnly) GiftTray(onSelect: _sendGift),
                       if (!widget.audioOnly) ...[
                         CompactSeatStrip(
                           seatCount: _seatCount,
