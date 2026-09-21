@@ -180,9 +180,13 @@ class AuthController extends ChangeNotifier {
         await supabase.auth.resetPasswordForEmail(target.trim());
       });
 
+  // Username is admin/agency-controlled, not user-editable — it's the
+  // lookup key for coin transfers (resell_coins), so a user renaming
+  // themselves could cause misdirected transfers. Enforced server-side
+  // too (see migration 20260921100000_lock_username_edit.sql), this just
+  // keeps the client from offering a control that wouldn't do anything.
   Future<void> updateProfile({
     String? name,
-    String? username,
     String? bio,
     String? location,
   }) =>
@@ -191,7 +195,6 @@ class AuthController extends ChangeNotifier {
         if (uid == null) return;
         final updates = <String, dynamic>{
           'name': ?name,
-          'username': ?username?.replaceFirst('@', ''),
           'bio': ?bio,
           'location': ?location,
         };

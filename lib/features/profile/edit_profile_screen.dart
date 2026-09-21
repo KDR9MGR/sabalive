@@ -18,8 +18,6 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late final _user = context.read<AuthController>().user ?? Mock.me;
   late final _name = TextEditingController(text: _user.name);
-  late final _username =
-      TextEditingController(text: _user.username.replaceFirst('@', ''));
   late final _bio = TextEditingController(text: _user.bio);
   late final _location = TextEditingController(text: _user.location);
   int _gender = 0;
@@ -27,7 +25,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _username.dispose();
     _bio.dispose();
     _location.dispose();
     super.dispose();
@@ -39,7 +36,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       await context.read<AuthController>().updateProfile(
             name: _name.text.trim(),
-            username: '@${_username.text.trim()}',
             bio: _bio.text.trim(),
             location: _location.text.trim(),
           );
@@ -84,12 +80,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _label('Full Name'),
           TextField(
               controller: _name, onChanged: (_) => setState(() {})),
-          const SizedBox(height: 16),
-          _label('Username'),
-          TextField(
-            controller: _username,
-            decoration: const InputDecoration(prefixText: '@ '),
-          ),
           const SizedBox(height: 16),
           _label('Bio'),
           TextField(
