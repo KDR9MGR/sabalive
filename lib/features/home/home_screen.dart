@@ -5,7 +5,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/pills.dart';
 import '../../core/widgets/saba_logo.dart';
 import '../../core/widgets/section_header.dart';
-import '../../data/mock_data.dart';
+import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
 import '../../state/live_streams_controller.dart';
@@ -20,16 +20,32 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+/// The app only has three ways to actually go live — everything on this
+/// screen filters by that, not by content genre.
+const _liveModes = [LiveMode.video, LiveMode.audio, LiveMode.pk];
+
+String _modeLabel(LiveMode m) => switch (m) {
+      LiveMode.video => 'Video',
+      LiveMode.audio => 'Audio',
+      LiveMode.pk => 'PK',
+    };
+
+IconData _modeIcon(LiveMode m) => switch (m) {
+      LiveMode.video => Icons.videocam_rounded,
+      LiveMode.audio => Icons.mic_rounded,
+      LiveMode.pk => Icons.bolt_rounded,
+    };
+
 class _HomeScreenState extends State<HomeScreen> {
   int _cat = 0;
-  final _cats = ['All', ...Mock.categories.take(5).map((c) => c.label)];
+  final _cats = ['All', ..._liveModes.map(_modeLabel)];
 
   @override
   Widget build(BuildContext context) {
     final source = context.watch<LiveStreamsController>().streams;
     final streams = _cat == 0
         ? source
-        : source.where((s) => s.category == _cats[_cat]).toList();
+        : source.where((s) => s.mode == _liveModes[_cat - 1]).toList();
     final trending = source;
 
     return Scaffold(
@@ -94,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: SectionHeader(title: 'Categories', onAction: () {}),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            SliverToBoxAdapter(child: _categoryStrip()),
+            SliverToBoxAdapter(child: _categoryStrip(source)),
             if (trending.isNotEmpty) ...[
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
               SliverToBoxAdapter(
@@ -181,92 +197,84 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(greeting,
-                    style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                      color: Colors.white,
-                    )),
-                const SizedBox(height: 4),
-                Text('Go live or find someone to watch right now',
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontSize: 12.5)),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: () => AppNav.goLive(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('Go Live',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12.5,
-                          color: AppColors.primaryDeep,
-                        )),
-                  ),
-                ),
-              ],
+          Text(greeting,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: Colors.white,
+              )),
+          const SizedBox(height: 4),
+          Text('Go live or find someone to watch right now',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontSize: 12.5)),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => AppNav.goLive(context),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('Go Live',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12.5,
+                    color: AppColors.primaryDeep,
+                  )),
             ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 70,
-            height: 70,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.waving_hand_rounded,
-                color: Colors.white, size: 34),
           ),
         ],
       ),
     );
   }
 
-  Widget _categoryStrip() {
+  Widget _categoryStrip(List<LiveStream> source) {
     return SizedBox(
       height: 108,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: Mock.categories.length,
+        itemCount: _liveModes.length,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
-          final c = Mock.categories[i];
-          return Column(
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.stroke),
+          final mode = _liveModes[i];
+          final selected = _cat == i + 1;
+          final liveCount = source.where((s) => s.mode == mode).length;
+          return GestureDetector(
+            onTap: () => setState(() => _cat = i + 1),
+            child: Column(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: selected
+                            ? AppColors.primaryBright
+                            : AppColors.stroke),
+                  ),
+                  child: Icon(_modeIcon(mode),
+                      color: AppColors.primaryBright, size: 26),
                 ),
-                child: Icon(c.icon, color: AppColors.primaryBright, size: 26),
-              ),
-              const SizedBox(height: 6),
-              Text(c.label,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary)),
-              Text('${compactCount(c.streams)} live',
-                  style: const TextStyle(
-                      fontSize: 9, color: AppColors.textMuted)),
-            ],
+                const SizedBox(height: 6),
+                Text(_modeLabel(mode),
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary)),
+                Text('${compactCount(liveCount)} live',
+                    style: const TextStyle(
+                        fontSize: 9, color: AppColors.textMuted)),
+              ],
+            ),
           );
         },
       ),
