@@ -19,12 +19,13 @@ class RankingsScreen extends StatefulWidget {
 class _RankingsScreenState extends State<RankingsScreen> {
   final _repo = RankingsRepository();
 
-  int _board = 0; // 0 = Hosts, 1 = Gifters
+  int _board = 0; // 0 = Hosts, 1 = Gifters, 2 = Agency
   int _period = 1; // 0 = Daily, 1 = Weekly, 2 = Monthly
 
   bool _loading = true;
   String? _error;
   List<RankingEntry> _entries = const [];
+  List<AgencyRankingEntry> _agencyEntries = const [];
   int _reqSeq = 0;
 
   @override
@@ -40,6 +41,15 @@ class _RankingsScreenState extends State<RankingsScreen> {
       _error = null;
     });
     try {
+      if (_board == 2) {
+        final entries = await _repo.fetchAgencies(RankPeriod.values[_period]);
+        if (!mounted || seq != _reqSeq) return;
+        setState(() {
+          _agencyEntries = entries;
+          _loading = false;
+        });
+        return;
+      }
       final entries = await _repo.fetch(
         _board == 0 ? RankBoard.hosts : RankBoard.gifters,
         RankPeriod.values[_period],
@@ -74,6 +84,8 @@ class _RankingsScreenState extends State<RankingsScreen> {
   Widget build(BuildContext context) {
     final top3 = _entries.take(3).toList();
     final rest = _entries.skip(3).toList();
+    final resultSlivers =
+        _board == 2 ? _agencyResultSlivers() : _resultSlivers(top3, rest);
 
     return Scaffold(
       body: SafeArea(
@@ -101,7 +113,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: SegmentedTabs(
-                    tabs: const ['Hosts', 'Gifters'],
+                    tabs: const ['Hosts', 'Gifters', 'Agency'],
                     index: _board,
                     onChanged: _setBoard,
                   ),
@@ -116,7 +128,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 18)),
-              ..._resultSlivers(top3, rest),
+              ...resultSlivers,
             ],
           ),
         ),
@@ -165,6 +177,77 @@ class _RankingsScreenState extends State<RankingsScreen> {
         ),
       ),
     ];
+  }
+
+  List<Widget> _agencyResultSlivers() {
+    if (_loading) {
+      return const [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.only(top: 80),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      ];
+    }
+    if (_error != null) {
+      return [_messageSliver(_error!, retry: true)];
+    }
+    if (_agencyEntries.isEmpty) {
+      return [_messageSliver('No agency rankings for this period yet.')];
+    }
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => _agencyRow(_agencyEntries[i], i + 1),
+            childCount: _agencyEntries.length,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _agencyRow(AgencyRankingEntry e, int rank) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 26,
+            child: Text('$rank',
+                style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted)),
+          ),
+          AppAvatar(name: e.name, size: 40),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(e.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.5)),
+          ),
+          Row(
+            children: [
+              const Icon(Icons.diamond_rounded,
+                  size: 12, color: AppColors.diamond),
+              const SizedBox(width: 3),
+              Text(compactCount(e.score),
+                  style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _messageSliver(String text, {bool retry = false}) {

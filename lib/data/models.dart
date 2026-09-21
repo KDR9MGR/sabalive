@@ -212,6 +212,16 @@ class RankingEntry {
   final int rankChange; // +up / -down / 0
 }
 
+/// One row of the Agency leaderboard — sum of gift coins received by all of
+/// an agency's hosts. Kept separate from [RankingEntry] since an agency has
+/// no [AppUser]/level/profile to link into.
+class AgencyRankingEntry {
+  AgencyRankingEntry(this.id, this.name, this.score);
+  final String id;
+  final String name;
+  final int score;
+}
+
 enum TxType { topUp, giftSent, giftReceived, withdraw, grant }
 
 class WalletTx {

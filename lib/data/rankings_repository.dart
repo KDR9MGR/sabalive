@@ -41,4 +41,22 @@ class RankingsRepository {
           RankingEntry(user, scoreById[r['profile_id']]!, 0),
     ];
   }
+
+  Future<List<AgencyRankingEntry>> fetchAgencies(RankPeriod period) async {
+    final fn = switch (period) {
+      RankPeriod.daily => 'rankings_agencies_daily',
+      RankPeriod.weekly => 'rankings_agencies_weekly',
+      RankPeriod.monthly => 'rankings_agencies_monthly',
+    };
+    final rows = (await supabase.rpc(fn).limit(100) as List)
+        .cast<Map<String, dynamic>>();
+    return [
+      for (final r in rows)
+        AgencyRankingEntry(
+          r['agency_id'] as String,
+          r['agency_name'] as String,
+          (r['score'] as num).toInt(),
+        ),
+    ];
+  }
 }
