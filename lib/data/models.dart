@@ -315,3 +315,48 @@ class AppNotification {
   final String time;
   final bool unread;
 }
+
+enum FeedbackKind { appError, suggestion, earningInfo, other }
+
+enum FeedbackStatus { pending, inProgress, resolved }
+
+class FeedbackItem {
+  FeedbackItem({
+    required this.id,
+    required this.kind,
+    required this.body,
+    required this.status,
+    required this.createdAt,
+    this.response,
+    this.respondedAt,
+  });
+
+  factory FeedbackItem.fromRow(Map<String, dynamic> row) => FeedbackItem(
+        id: row['id'] as String,
+        kind: switch (row['kind'] as String) {
+          'app_error' => FeedbackKind.appError,
+          'suggestion' => FeedbackKind.suggestion,
+          'earning_info' => FeedbackKind.earningInfo,
+          _ => FeedbackKind.other,
+        },
+        body: row['body'] as String,
+        status: switch (row['status'] as String) {
+          'in_progress' => FeedbackStatus.inProgress,
+          'resolved' => FeedbackStatus.resolved,
+          _ => FeedbackStatus.pending,
+        },
+        createdAt: DateTime.parse(row['created_at'] as String).toLocal(),
+        response: row['response'] as String?,
+        respondedAt: row['responded_at'] == null
+            ? null
+            : DateTime.parse(row['responded_at'] as String).toLocal(),
+      );
+
+  final String id;
+  final FeedbackKind kind;
+  final String body;
+  final FeedbackStatus status;
+  final DateTime createdAt;
+  final String? response;
+  final DateTime? respondedAt;
+}

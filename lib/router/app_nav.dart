@@ -14,6 +14,7 @@ import '../features/live/watch_pk_battle_screen.dart';
 import '../features/messages/chat_screen.dart';
 import '../features/messages/new_group_screen.dart';
 import '../features/profile/edit_profile_screen.dart';
+import '../features/profile/feedback_screen.dart';
 import '../features/profile/follow_list_screen.dart';
 import '../features/profile/kyc_screen.dart';
 import '../features/profile/notifications_screen.dart';
@@ -153,4 +154,7 @@ class AppNav {
 
   static Future<void> editProfile(BuildContext context) =>
       _push(context, const EditProfileScreen());
+
+  static Future<void> feedback(BuildContext context) =>
+      _push(context, const FeedbackScreen());
 }
