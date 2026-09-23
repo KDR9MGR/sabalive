@@ -14,6 +14,7 @@ import '../features/live/watch_pk_battle_screen.dart';
 import '../features/messages/chat_screen.dart';
 import '../features/messages/new_group_screen.dart';
 import '../features/profile/apply_agency_screen.dart';
+import '../features/profile/badges_screen.dart';
 import '../features/profile/edit_profile_screen.dart';
 import '../features/profile/feedback_screen.dart';
 import '../features/profile/follow_list_screen.dart';
@@ -173,4 +174,7 @@ class AppNav {
 
   static Future<void> myLevel(BuildContext context) =>
       _push(context, const MyLevelScreen());
+
+  static Future<void> badges(BuildContext context, String profileId) =>
+      _push(context, BadgesScreen(profileId: profileId));
 }

@@ -267,13 +267,24 @@ class ProfileScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
-          child: Text('Badges',
-              style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => AppNav.badges(context, user.id),
+            child: Row(
+              children: [
+                const Text('Badges',
+                    style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15)),
+                const Spacer(),
+                const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.textMuted, size: 18),
+              ],
+            ),
+          ),
         ),
         SizedBox(
           height: 62,
