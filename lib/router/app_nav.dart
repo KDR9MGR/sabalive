@@ -20,6 +20,7 @@ import '../features/profile/follow_list_screen.dart';
 import '../features/profile/kyc_screen.dart';
 import '../features/profile/notifications_screen.dart';
 import '../features/profile/profile_visitors_screen.dart';
+import '../features/profile/referrals_screen.dart';
 import '../features/profile/settings_screen.dart';
 import '../features/profile/user_profile_screen.dart';
 import '../features/search/search_screen.dart';
@@ -165,4 +166,7 @@ class AppNav {
 
   static Future<void> profileVisitors(BuildContext context) =>
       _push(context, const ProfileVisitorsScreen());
+
+  static Future<void> referrals(BuildContext context) =>
+      _push(context, const ReferralsScreen());
 }

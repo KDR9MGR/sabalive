@@ -323,6 +323,8 @@ class ProfileScreen extends StatelessWidget {
           () => AppNav.applyAgency(context)),
       (Icons.visibility_outlined, 'Profile Visitors',
           () => AppNav.profileVisitors(context)),
+      (Icons.person_add_alt_1_rounded, 'My Invites',
+          () => AppNav.referrals(context)),
       (Icons.feedback_outlined, 'Feedback', () => AppNav.feedback(context)),
       (Icons.notifications_none_rounded, 'Notifications',
           () => AppNav.notifications(context)),
