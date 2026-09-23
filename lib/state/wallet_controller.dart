@@ -35,6 +35,7 @@ class WalletController extends ChangeNotifier {
 
   int _coins = 0;
   int _diamonds = 0;
+  int _adminCoins = 0;
   List<WalletTx> _tx = const [];
   List<Gift> _gifts = const [];
   List<CoinPack> _coinPacks = const [];
@@ -45,6 +46,11 @@ class WalletController extends ChangeNotifier {
 
   int get coins => _coins;
   int get diamonds => _diamonds;
+  /// Coins actually granted by the admin panel — excludes self-purchase
+  /// and coin-seller/reseller transfers. Display-only, for Wallet &
+  /// Earnings; [coins] (the real, true spendable balance every RPC
+  /// checks against) is unaffected.
+  int get adminCoins => _adminCoins;
   double get earningsInr => _diamonds * 0.82; // fake conversion rate
   bool get loading => _loading;
   List<WalletTx> get transactions => List.unmodifiable(_tx);
@@ -64,6 +70,11 @@ class WalletController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Wallet & Earnings' Transaction History excludes these same kinds, so
+  /// the list never contradicts [adminCoins] sitting above it.
+  static const _nonAdminKinds = {'purchase', 'transfer_in', 'transfer_out'};
+  static const _nonAdminKindsFilter = '(purchase,transfer_in,transfer_out)';
+
   Future<void> _bindWallet(String uid) async {
     _loading = true;
     notifyListeners();
@@ -78,9 +89,11 @@ class WalletController extends ChangeNotifier {
         .from('wallet_ledger')
         .select()
         .eq('profile_id', uid)
+        .not('kind', 'in', _nonAdminKindsFilter)
         .order('created_at', ascending: false)
         .limit(50);
     _tx = ledgerRows.map(WalletTx.fromLedgerRow).toList();
+    await _refreshAdminCoins();
 
     await _walletChannel?.unsubscribe();
     _walletChannel = supabase
@@ -102,7 +115,11 @@ class WalletController extends ChangeNotifier {
           table: 'wallet_ledger',
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'profile_id', value: uid),
           callback: (payload) {
-            _tx = [WalletTx.fromLedgerRow(payload.newRecord), ..._tx];
+            final kind = payload.newRecord['kind'] as String?;
+            if (kind != null && !_nonAdminKinds.contains(kind)) {
+              _tx = [WalletTx.fromLedgerRow(payload.newRecord), ..._tx];
+            }
+            unawaited(_refreshAdminCoins());
             notifyListeners();
           },
         )
@@ -112,9 +129,19 @@ class WalletController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _refreshAdminCoins() async {
+    try {
+      final v = await supabase.rpc('admin_granted_coin_balance');
+      _adminCoins = (v as num).toInt();
+    } catch (_) {
+      /* best-effort — the real balance elsewhere is unaffected */
+    }
+  }
+
   void _clearWallet() {
     _coins = 0;
     _diamonds = 0;
+    _adminCoins = 0;
     _tx = const [];
     _loading = false;
     unawaited(_walletChannel?.unsubscribe());

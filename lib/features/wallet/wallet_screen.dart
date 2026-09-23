@@ -43,7 +43,7 @@ class WalletScreen extends StatelessWidget {
                     const Icon(Icons.monetization_on_rounded,
                         color: AppColors.gold, size: 30),
                     const SizedBox(width: 8),
-                    Text(withThousands(wallet.coins),
+                    Text(withThousands(wallet.adminCoins),
                         style: const TextStyle(
                           fontFamily: 'Poppins',
                           fontWeight: FontWeight.w700,
