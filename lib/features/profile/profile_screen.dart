@@ -321,6 +321,8 @@ class ProfileScreen extends StatelessWidget {
           () => AppNav.sellCoins(context)),
       (Icons.apartment_rounded, 'Apply for Agency',
           () => AppNav.applyAgency(context)),
+      (Icons.visibility_outlined, 'Profile Visitors',
+          () => AppNav.profileVisitors(context)),
       (Icons.feedback_outlined, 'Feedback', () => AppNav.feedback(context)),
       (Icons.notifications_none_rounded, 'Notifications',
           () => AppNav.notifications(context)),

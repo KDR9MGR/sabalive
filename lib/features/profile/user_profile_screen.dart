@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/ids.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/models.dart';
+import '../../data/profile_visits_repository.dart';
 import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
@@ -31,6 +33,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   void initState() {
     super.initState();
     _refresh();
+    if (isRealId(widget.user.id)) {
+      ProfileVisitsRepository().logVisit(widget.user.id);
+    }
   }
 
   Future<void> _refresh() async {
