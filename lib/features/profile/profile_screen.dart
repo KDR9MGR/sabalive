@@ -158,21 +158,24 @@ class ProfileScreen extends StatelessWidget {
                 AppAvatar(name: user.name, size: 96, ring: true),
                 Transform.translate(
                   offset: const Offset(0, -14),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                    decoration: BoxDecoration(
-                      gradient: AppColors.goldGradient,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.bg, width: 2),
+                  child: GestureDetector(
+                    onTap: () => AppNav.myLevel(context),
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.goldGradient,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.bg, width: 2),
+                      ),
+                      child: Text('Lv ${user.level}',
+                          style: const TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 10,
+                            color: Color(0xFF3A1A5E),
+                          )),
                     ),
-                    child: Text('Lv ${user.level}',
-                        style: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 10,
-                          color: Color(0xFF3A1A5E),
-                        )),
                   ),
                 ),
               ],
@@ -325,6 +328,7 @@ class ProfileScreen extends StatelessWidget {
           () => AppNav.profileVisitors(context)),
       (Icons.person_add_alt_1_rounded, 'My Invites',
           () => AppNav.referrals(context)),
+      (Icons.military_tech_rounded, 'My Level', () => AppNav.myLevel(context)),
       (Icons.feedback_outlined, 'Feedback', () => AppNav.feedback(context)),
       (Icons.notifications_none_rounded, 'Notifications',
           () => AppNav.notifications(context)),

@@ -18,6 +18,7 @@ import '../features/profile/edit_profile_screen.dart';
 import '../features/profile/feedback_screen.dart';
 import '../features/profile/follow_list_screen.dart';
 import '../features/profile/kyc_screen.dart';
+import '../features/profile/my_level_screen.dart';
 import '../features/profile/notifications_screen.dart';
 import '../features/profile/profile_visitors_screen.dart';
 import '../features/profile/referrals_screen.dart';
@@ -169,4 +170,7 @@ class AppNav {
 
   static Future<void> referrals(BuildContext context) =>
       _push(context, const ReferralsScreen());
+
+  static Future<void> myLevel(BuildContext context) =>
+      _push(context, const MyLevelScreen());
 }
