@@ -8,6 +8,7 @@ import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'blocked_users_screen.dart';
 import 'legal_page_screen.dart';
+import 'linked_accounts_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -59,6 +60,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _section('Account'),
           _tile(Icons.lock_outline_rounded, 'Account & Security',
               onTap: _accountSecurity),
+          _tile(Icons.link_rounded, 'Linked Accounts',
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const LinkedAccountsScreen()))),
           _tile(Icons.verified_user_outlined, 'Identity Verification',
               onTap: () => AppNav.kyc(context)),
           _tile(Icons.receipt_long_rounded, 'Wallet & Transactions',
