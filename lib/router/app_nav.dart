@@ -26,8 +26,10 @@ import '../features/profile/referrals_screen.dart';
 import '../features/profile/settings_screen.dart';
 import '../features/profile/user_profile_screen.dart';
 import '../features/search/search_screen.dart';
+import '../features/wallet/bag_screen.dart';
 import '../features/wallet/buy_coins_screen.dart';
 import '../features/wallet/sell_coins_screen.dart';
+import '../features/wallet/store_screen.dart';
 import '../features/wallet/wallet_screen.dart';
 
 /// Thin wrapper so feature screens don't each import MaterialPageRoute plumbing.
@@ -177,4 +179,10 @@ class AppNav {
 
   static Future<void> badges(BuildContext context, String profileId) =>
       _push(context, BadgesScreen(profileId: profileId));
+
+  static Future<void> store(BuildContext context) =>
+      _push(context, const StoreScreen());
+
+  static Future<void> bag(BuildContext context) =>
+      _push(context, const BagScreen());
 }

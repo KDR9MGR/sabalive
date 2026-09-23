@@ -13,6 +13,7 @@ import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
+import 'widgets/equipped_cosmetics.dart';
 
 /// Another user's profile — real `profiles` data, follow/unfollow, and a
 /// shortcut into their live room if they're broadcasting.
@@ -107,6 +108,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     style: const TextStyle(
                         color: AppColors.textMuted, fontSize: 12.5)),
               ),
+              Center(child: EquippedCosmetics(profileId: _user.id)),
               if (_user.bio.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Padding(

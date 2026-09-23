@@ -13,6 +13,7 @@ import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import 'widgets/equipped_cosmetics.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -46,6 +47,7 @@ class ProfileScreen extends StatelessWidget {
               _copyableLine(context, user.username),
               const SizedBox(height: 2),
               _copyableLine(context, 'ID: ${shortDisplayId(user.id)}'),
+              EquippedCosmetics(profileId: user.id),
               const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -340,6 +342,8 @@ class ProfileScreen extends StatelessWidget {
       (Icons.person_add_alt_1_rounded, 'My Invites',
           () => AppNav.referrals(context)),
       (Icons.military_tech_rounded, 'My Level', () => AppNav.myLevel(context)),
+      (Icons.storefront_rounded, 'Store', () => AppNav.store(context)),
+      (Icons.shopping_bag_outlined, 'My Bag', () => AppNav.bag(context)),
       (Icons.feedback_outlined, 'Feedback', () => AppNav.feedback(context)),
       (Icons.notifications_none_rounded, 'Notifications',
           () => AppNav.notifications(context)),
