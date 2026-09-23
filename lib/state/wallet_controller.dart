@@ -145,10 +145,6 @@ class WalletController extends ChangeNotifier {
     await supabase.rpc('dev_purchase_coins', params: {'p_package_id': pack.id});
   }
 
-  Future<void> withdraw(int diamonds) async {
-    await supabase.rpc('request_withdrawal', params: {'p_diamonds': diamonds});
-  }
-
   @override
   void dispose() {
     _authSub?.cancel();

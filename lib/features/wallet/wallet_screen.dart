@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/models.dart';
@@ -54,26 +53,11 @@ class WalletScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GradientButton(
-                        label: 'Buy Coins',
-                        height: 44,
-                        gradient: AppColors.goldGradient,
-                        onPressed: () => AppNav.buyCoins(context),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinePillButton(
-                        label: 'Withdraw',
-                        height: 44,
-                        color: Colors.white,
-                        onPressed: () => _withdraw(context, wallet),
-                      ),
-                    ),
-                  ],
+                GradientButton(
+                  label: 'Buy Coins',
+                  height: 44,
+                  gradient: AppColors.goldGradient,
+                  onPressed: () => AppNav.buyCoins(context),
                 ),
               ],
             ),
@@ -104,16 +88,6 @@ class WalletScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _withdraw(BuildContext context, WalletController wallet) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await wallet.withdraw(5000);
-      messenger.showSnackBar(const SnackBar(content: Text('Withdrawal of 5,000 diamonds requested')));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
   }
 
   Widget _miniStat(IconData icon, Color color, String label, String value) {
