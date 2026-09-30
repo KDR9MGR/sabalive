@@ -5,6 +5,15 @@ import 'models.dart';
 /// Follows, profile lookups, search and notifications — the social surface
 /// outside of live/DM. Backed by `follows`, `profiles`, `live_streams`,
 /// `notifications`.
+/// Result of [SocialRepository.hostGate].
+typedef HostGate = ({
+  bool hasAccess,
+  bool staff,
+  bool banned,
+  String? requestStatus,
+  String? requestAgencyName,
+});
+
 class SocialRepository {
   String? get _me => supabase.auth.currentUser?.id;
 
@@ -219,6 +228,32 @@ class SocialRepository {
     final r = (await supabase
         .rpc('redeem_host_code', params: {'p_code': code})) as Map<String, dynamic>;
     return DateTime.tryParse(r['expires_at'] as String? ?? '')?.toLocal();
+  }
+
+  // ───────────────────────────────── host access (agency-approval gate)
+  /// Where the user stands on becoming a host: already unlocked, revoked, or
+  /// waiting on / declined by the agency they asked (`requestStatus` is
+  /// 'pending' | 'approved' | 'rejected', null if they never asked).
+  Future<HostGate> hostGate() async {
+    final r = (await supabase.rpc('my_host_access')) as Map<String, dynamic>;
+    return (
+      hasAccess: r['has_access'] as bool? ?? false,
+      staff: r['staff'] as bool? ?? false,
+      banned: r['banned'] as bool? ?? false,
+      requestStatus: r['request_status'] as String?,
+      requestAgencyName: r['request_agency_name'] as String?,
+    );
+  }
+
+  /// Files a go-live request with the agency whose public ID (the
+  /// `agencies.display_id`, e.g. 20001) the user typed. Only that agency, and
+  /// the staff above it, can approve; approval makes the user its host.
+  /// Returns the agency's name. Throws a friendly [PostgrestException] for an
+  /// unknown ID or a request that is already pending.
+  Future<String> requestGoLive(int agencyDisplayId) async {
+    final r = (await supabase.rpc('request_go_live',
+        params: {'p_agency_display_id': agencyDisplayId})) as Map<String, dynamic>;
+    return r['agency_name'] as String? ?? 'the agency';
   }
 
   // ───────────────────────────────── coin reseller access + selling

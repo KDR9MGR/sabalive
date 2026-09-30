@@ -5,6 +5,7 @@ import '../data/messages_repository.dart';
 import '../data/models.dart';
 import '../data/social_repository.dart';
 import '../features/common/access_code_screen.dart';
+import '../features/common/agency_request_screen.dart';
 import '../features/games/games_screen.dart';
 import '../features/host/host_dashboard_screen.dart';
 import '../features/live/go_live_setup_screen.dart';
@@ -52,18 +53,16 @@ class AppNav {
         },
       );
 
-  /// Routes through the host-code gate; only lands on go-live setup once the
-  /// user has (or unlocks) agency host access.
+  /// Routes through the agency-request gate; only lands on go-live setup once
+  /// the user has host access — i.e. an agency approved their request (they
+  /// enter that agency's ID; the agency sees it in the admin panel). No host
+  /// code any more.
   static Future<void> goLive(BuildContext context) {
     final repo = SocialRepository();
     return _push(
       context,
-      AccessCodeScreen(
-        title: 'Host Access',
-        blurb: 'Going live is enabled by your agency. Paste the host code they '
-            'gave you to unlock it.',
-        check: repo.hostAccess,
-        redeem: repo.redeemHostCode,
+      AgencyRequestScreen(
+        repo: repo,
         destination: (_) => const GoLiveSetupScreen(),
       ),
     );
