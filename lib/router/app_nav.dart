@@ -4,7 +4,6 @@ import '../core/utils/errors.dart';
 import '../data/messages_repository.dart';
 import '../data/models.dart';
 import '../data/social_repository.dart';
-import '../features/common/access_code_screen.dart';
 import '../features/common/agency_request_screen.dart';
 import '../features/games/games_screen.dart';
 import '../features/host/host_dashboard_screen.dart';
@@ -68,21 +67,10 @@ class AppNav {
     );
   }
 
-  /// Coin selling / reseller tool — behind an agency-issued reseller code.
-  static Future<void> sellCoins(BuildContext context) {
-    final repo = SocialRepository();
-    return _push(
-      context,
-      AccessCodeScreen(
-        title: 'Coin Reseller Access',
-        blurb: 'Selling coins is enabled by your agency or the admin team. '
-            'Enter your reseller code to unlock it.',
-        check: repo.resellerAccess,
-        redeem: repo.redeemResellerCode,
-        destination: (_) => const SellCoinsScreen(),
-      ),
-    );
-  }
+  /// Coin selling / reseller tool — open to any signed-in user, no access
+  /// code required.
+  static Future<void> sellCoins(BuildContext context) =>
+      _push(context, const SellCoinsScreen());
 
   static Future<void> chat(
     BuildContext context,

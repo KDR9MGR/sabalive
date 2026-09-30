@@ -210,26 +210,6 @@ class SocialRepository {
     });
   }
 
-  // ───────────────────────────────── host access (agency code gate)
-  Future<({bool hasAccess, bool staff, bool banned, DateTime? expiresAt})>
-      hostAccess() async {
-    final r = (await supabase.rpc('my_host_access')) as Map<String, dynamic>;
-    return (
-      hasAccess: r['has_access'] as bool? ?? false,
-      staff: r['staff'] as bool? ?? false,
-      banned: r['banned'] as bool? ?? false,
-      expiresAt: DateTime.tryParse(r['expires_at'] as String? ?? '')?.toLocal(),
-    );
-  }
-
-  /// Redeems an agency-issued host code. Returns the access expiry (null =
-  /// permanent). Throws a friendly [PostgrestException] on a bad/expired code.
-  Future<DateTime?> redeemHostCode(String code) async {
-    final r = (await supabase
-        .rpc('redeem_host_code', params: {'p_code': code})) as Map<String, dynamic>;
-    return DateTime.tryParse(r['expires_at'] as String? ?? '')?.toLocal();
-  }
-
   // ───────────────────────────────── host access (agency-approval gate)
   /// Where the user stands on becoming a host: already unlocked, revoked, or
   /// waiting on / declined by the agency they asked (`requestStatus` is
@@ -256,24 +236,7 @@ class SocialRepository {
     return r['agency_name'] as String? ?? 'the agency';
   }
 
-  // ───────────────────────────────── coin reseller access + selling
-  Future<({bool hasAccess, bool staff, bool banned, DateTime? expiresAt})>
-      resellerAccess() async {
-    final r = (await supabase.rpc('my_reseller_access')) as Map<String, dynamic>;
-    return (
-      hasAccess: r['has_access'] as bool? ?? false,
-      staff: r['staff'] as bool? ?? false,
-      banned: r['banned'] as bool? ?? false,
-      expiresAt: DateTime.tryParse(r['expires_at'] as String? ?? '')?.toLocal(),
-    );
-  }
-
-  Future<DateTime?> redeemResellerCode(String code) async {
-    final r = (await supabase.rpc('redeem_reseller_code', params: {'p_code': code}))
-        as Map<String, dynamic>;
-    return DateTime.tryParse(r['expires_at'] as String? ?? '')?.toLocal();
-  }
-
+  // ───────────────────────────────── coin selling
   /// Transfers [coins] from the caller (an approved reseller) to the user with
   /// [recipientUsername]. Server-authoritative (`resell_coins`).
   Future<void> sellCoins({

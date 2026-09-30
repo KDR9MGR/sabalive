@@ -10,7 +10,7 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 
 /// Coin reseller / agent tool — send coins to another user by @username.
-/// Gated by [AccessCodeScreen] on the way in (reseller code).
+/// Open to any signed-in user.
 class SellCoinsScreen extends StatefulWidget {
   const SellCoinsScreen({super.key});
 
