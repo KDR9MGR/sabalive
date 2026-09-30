@@ -6,12 +6,18 @@
 //
 // The platform JWT check proves the caller holds a valid project key (the
 // anon key satisfies that), so we additionally resolve the caller to a
-// real user and require them to be a super_admin.
+// real user. Who may create WHICH role is decided in SQL, not here:
+//   super_admin   -> any role
+//   global_admin  -> country_admin, sub_admin, agency_manager
+//   country_admin -> sub_admin (owned by them), agency_manager (in their tree)
+//   sub_admin     -> agency_manager (for an agency they own)
+// check_staff_creation() validates before the auth user is made, and
+// create_staff_account() (service_role only) re-checks and inserts the row.
 //
 // Request body:
 //   { "email": string,
 //     "role": "admin" | "super_admin" | "global_admin" | "country_admin" | "agency_manager" | "sub_admin",
-//     "agency_id"?: uuid,          // required for agency_manager / sub_admin
+//     "agency_id"?: uuid,          // required for agency_manager; optional for sub_admin
 //     "country_admin_id"?: uuid,   // sub_admin only: the country_admin that will own them
 //     "password"?: string,         // omitted -> a strong temp password is generated
 //     "full_name"?: string,
@@ -33,6 +39,8 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const PLATFORM_ROLES = ["admin", "super_admin", "global_admin", "country_admin"];
 const AGENCY_ROLES = ["agency_manager", "sub_admin"];
 const ALL_ROLES = [...PLATFORM_ROLES, ...AGENCY_ROLES];
+// roles that may create accounts at all — the per-role / per-scope rules live in SQL
+const CREATOR_ROLES = ["super_admin", "global_admin", "country_admin", "sub_admin"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,11 +74,12 @@ Deno.serve(async (req) => {
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  // 2. caller must be a super_admin
+  // 2. caller must be staff at a level that can create accounts
+  //    (which roles, and inside which scope, is checked in SQL below)
   const { data: callerRole } = await admin
     .from("staff_roles").select("role").eq("user_id", user.id).maybeSingle();
-  if (callerRole?.role !== "super_admin") {
-    return json({ error: "Only a Super Admin can invite staff" }, 403);
+  if (!callerRole || !CREATOR_ROLES.includes(callerRole.role)) {
+    return json({ error: "Your role cannot create accounts" }, 403);
   }
 
   // 3. validate the request
@@ -96,13 +105,10 @@ Deno.serve(async (req) => {
 
   if (!email || !email.includes("@")) return json({ error: "A valid email is required" }, 400);
   if (!role || !ALL_ROLES.includes(role)) return json({ error: `role must be one of ${ALL_ROLES.join(", ")}` }, 400);
-  if (AGENCY_ROLES.includes(role) && !agencyId) return json({ error: `${role} requires an agency_id` }, 400);
+  if (role === "agency_manager" && !agencyId) return json({ error: "agency_manager requires an agency_id" }, 400);
   if (PLATFORM_ROLES.includes(role) && agencyId) return json({ error: `${role} must not have an agency_id` }, 400);
-  if (countryAdminId) {
-    if (role !== "sub_admin") return json({ error: "country_admin_id is only valid for a sub_admin" }, 400);
-    const { data: owner } = await admin
-      .from("staff_roles").select("role").eq("user_id", countryAdminId).maybeSingle();
-    if (owner?.role !== "country_admin") return json({ error: "country_admin_id is not a country admin" }, 400);
+  if (countryAdminId && role !== "sub_admin") {
+    return json({ error: "country_admin_id is only valid for a sub_admin" }, 400);
   }
   if (username && !/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
     return json({ error: "Username must be 3-30 characters: letters, numbers, underscore" }, 400);
@@ -110,6 +116,15 @@ Deno.serve(async (req) => {
   if (paymentPin && !/^\d{4,6}$/.test(paymentPin)) {
     return json({ error: "Payment PIN must be 4-6 digits" }, 400);
   }
+
+  // 3b. may THIS caller create THIS role in THIS scope? (rules live in SQL)
+  const { error: checkErr } = await admin.rpc("check_staff_creation", {
+    p_actor: user.id,
+    p_role: role,
+    p_agency_id: agencyId,
+    p_country_admin_id: countryAdminId,
+  });
+  if (checkErr) return json({ error: checkErr.message }, 403);
 
   // 4. create the auth user (email pre-confirmed so they can sign in immediately)
   const generated = !body.password;
@@ -137,8 +152,14 @@ Deno.serve(async (req) => {
   // 5. grant the role (the profiles row already exists via the
   //    on_auth_user_created trigger)
   const payment_pin_hash = paymentPin ? bcrypt.hashSync(paymentPin, 10) : null;
-  const { error: roleErr } = await admin.from("staff_roles")
-    .insert({ user_id: newId, role, agency_id: agencyId, country_admin_id: countryAdminId, payment_pin_hash });
+  const { error: roleErr } = await admin.rpc("create_staff_account", {
+    p_actor: user.id,
+    p_user_id: newId,
+    p_role: role,
+    p_agency_id: agencyId,
+    p_country_admin_id: countryAdminId,
+    p_payment_pin_hash: payment_pin_hash,
+  });
   if (roleErr) {
     // roll back the auth user (and its profiles row, via FK cascade) so a
     // failed invite leaves nothing behind
