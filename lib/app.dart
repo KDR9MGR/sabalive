@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'config/feature_flags.dart';
+import 'core/widgets/permissions_prompt_host.dart';
 import 'features/auth/auth_flow.dart';
 import 'features/calls/incoming_call_banner.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -130,7 +131,7 @@ class _RootGate extends StatelessWidget {
       AuthStatus.unknown => const SplashScreen(),
       AuthStatus.onboarding => const OnboardingScreen(),
       AuthStatus.unauthenticated => const AuthFlow(),
-      AuthStatus.authenticated => const MainShell(),
+      AuthStatus.authenticated => const PermissionsPromptHost(child: MainShell()),
     };
 
     final switcher = AnimatedSwitcher(

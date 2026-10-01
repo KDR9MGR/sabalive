@@ -11,6 +11,10 @@
          firebase_messaging's requestPermission() call (see
          push_notifications_service.dart) prompts for it at runtime. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Photos and audio files (profile picture; host music in audio rooms). 13+ uses the READ_MEDIA_* pair, 12 and below the legacy storage permission. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- We don't use the Advertising ID (no ads, no ad-attribution SDK). Explicitly
          removed so a future transitive dependency (e.g. a Google Play services
          library) can't silently merge it back in and contradict the "No" answer
