@@ -82,7 +82,10 @@ class LevelsRepository {
   }
 
   Future<List<LevelThreshold>> _thresholds() async {
-    final rows = await supabase.from('level_thresholds').select().order('level');
+    final rows = await supabase
+        .from('level_thresholds')
+        .select()
+        .order('level', ascending: true);
     return [
       for (final r in rows) LevelThreshold(r['level'] as int, r['xp_required'] as int),
     ];

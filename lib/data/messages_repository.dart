@@ -143,10 +143,11 @@ class MessagesRepository {
             .from('dm_messages')
             .select('*, profiles!dm_messages_sender_id_fkey(name)')
             .eq('conversation_id', conversationId)
-            .order('created_at')
+            .order('created_at', ascending: false)
             .limit(300) as List)
         .cast<Map<String, dynamic>>();
-    return [for (final r in rows) Bubble.fromRow(r, me)];
+    // The newest 300 (hence the descending query), shown oldest -> newest.
+    return [for (final r in rows.reversed) Bubble.fromRow(r, me)];
   }
 
   RealtimeChannel subscribeMessages(

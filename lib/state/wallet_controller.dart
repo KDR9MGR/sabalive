@@ -60,8 +60,8 @@ class WalletController extends ChangeNotifier {
   bool canAfford(int price) => _coins >= price;
 
   Future<void> _loadCatalog() async {
-    final giftRows = await supabase.from('gifts').select().eq('status', 'active').order('sort_order');
-    final packRows = await supabase.from('coin_packages').select().eq('status', 'active').order('sort_order');
+    final giftRows = await supabase.from('gifts').select().eq('status', 'active').order('sort_order', ascending: true);
+    final packRows = await supabase.from('coin_packages').select().eq('status', 'active').order('sort_order', ascending: true);
     _gifts = giftRows.map(Gift.fromRow).toList();
     _coinPacks = List.generate(
       packRows.length,

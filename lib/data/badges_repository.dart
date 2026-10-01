@@ -34,7 +34,7 @@ class BadgeInfo {
 class BadgesRepository {
   Future<List<BadgeInfo>> allWithOwnership(String profileId) async {
     final badgeRows =
-        await supabase.from('badges').select().eq('status', 'active').order('sort_order');
+        await supabase.from('badges').select().eq('status', 'active').order('sort_order', ascending: true);
     final ownedRows = await supabase
         .from('user_badges')
         .select('badge_id')

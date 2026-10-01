@@ -56,8 +56,8 @@ class StoreRepository {
         .from('store_items')
         .select()
         .eq('status', 'active')
-        .order('category')
-        .order('sort_order');
+        .order('category', ascending: true)
+        .order('sort_order', ascending: true);
     return rows.map(StoreItem.fromRow).toList();
   }
 
@@ -69,7 +69,7 @@ class StoreRepository {
         .select('expires_at, equipped, store_items(*)')
         .eq('profile_id', me)
         .gt('expires_at', DateTime.now().toUtc().toIso8601String())
-        .order('expires_at');
+        .order('expires_at', ascending: true);
     return [
       for (final r in rows)
         if (r['store_items'] case final Map<String, dynamic> item)
