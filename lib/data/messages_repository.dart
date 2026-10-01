@@ -92,6 +92,23 @@ class MessagesRepository {
     }
   }
 
+  /// Calls [onChange] whenever a message is inserted into any conversation I'm
+  /// part of (row-level security already limits `dm_messages` to mine), which
+  /// covers new messages AND brand-new chats / message requests. Returns a
+  /// function that stops listening.
+  void Function() watchInbox(void Function() onChange) {
+    final channel = supabase
+        .channel('inbox:$_me')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'dm_messages',
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+    return () => channel.unsubscribe();
+  }
+
   Future<void> acceptRequest(String conversationId) => supabase
       .from('conversation_participants')
       .update({'status': 'accepted'})

@@ -37,12 +37,13 @@ class MainShell extends StatelessWidget {
       extendBody: true,
       body: IndexedStack(
         index: index,
-        children: const [
-          HomeScreen(),
-          MessagesScreen(),
-          LiveFeedScreen(),
-          RankingsScreen(),
-          ProfileScreen(),
+        children: [
+          const HomeScreen(),
+          // refresh whenever this tab is switched to (tab index 1)
+          MessagesScreen(refreshOn: session, isActive: () => session.tab == 1),
+          const LiveFeedScreen(),
+          const RankingsScreen(),
+          const ProfileScreen(),
         ],
       ),
       bottomNavigationBar: _BottomBar(

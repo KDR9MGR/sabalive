@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/utils/errors.dart';
@@ -10,15 +12,26 @@ import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
 
 class MessagesScreen extends StatefulWidget {
-  const MessagesScreen({super.key});
+  /// [refreshOn] + [isActive] let the host tell this screen when its tab becomes
+  /// visible again: the main shell keeps every tab alive in an IndexedStack, so
+  /// without them the list is only ever loaded once, at app start. [repo] is
+  /// injectable for tests.
+  const MessagesScreen({super.key, this.repo, this.refreshOn, this.isActive});
+
+  final MessagesRepository? repo;
+  final Listenable? refreshOn;
+  final bool Function()? isActive;
 
   @override
   State<MessagesScreen> createState() => _MessagesScreenState();
 }
 
 class _MessagesScreenState extends State<MessagesScreen> {
-  final _repo = MessagesRepository();
+  late final MessagesRepository _repo = widget.repo ?? MessagesRepository();
   final _search = TextEditingController();
+  Timer? _debounce;
+  void Function()? _stopWatching;
+  bool _wasActive = true;
 
   int _tab = 0; // 0 = All, 1 = Requests
   bool _loading = true;
@@ -30,16 +43,40 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   void initState() {
     super.initState();
+    _wasActive = widget.isActive?.call() ?? true;
+    widget.refreshOn?.addListener(_onShellChanged);
     _load();
+    // a new message or a brand-new chat/request lands while this tab is open
+    _stopWatching = _repo.watchInbox(_scheduleReload);
   }
 
   @override
   void dispose() {
+    widget.refreshOn?.removeListener(_onShellChanged);
+    _stopWatching?.call();
+    _debounce?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// The tab was just switched to — a chat may have been started from a
+  /// profile, a live room or a notification since this list last loaded.
+  void _onShellChanged() {
+    final active = widget.isActive?.call() ?? true;
+    if (active && !_wasActive) _load(quiet: true);
+    _wasActive = active;
+  }
+
+  void _scheduleReload() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _load(quiet: true);
+    });
+  }
+
+  /// [quiet] reloads in the background: no spinner, and a failure keeps the
+  /// list that's already on screen instead of replacing it with an error.
+  Future<void> _load({bool quiet = false}) async {
     try {
       final results = await Future.wait([
         _repo.inbox(requests: false),
@@ -54,6 +91,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (quiet && (_all.isNotEmpty || _requests.isNotEmpty)) return;
       setState(() {
         _loading = false;
         _error = friendlyError(e);
