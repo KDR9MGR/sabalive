@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/feature_flags.dart';
 import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../data/calls_repository.dart';
@@ -180,7 +181,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          if (!_isGroup) ...[
+          if (FeatureFlags.callsEnabled && !_isGroup) ...[
             IconButton(
                 onPressed: () => _startCall(CallKind.audio),
                 icon: const Icon(Icons.call_rounded)),

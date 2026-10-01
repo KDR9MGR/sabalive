@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'config/feature_flags.dart';
 import 'features/auth/auth_flow.dart';
 import 'features/calls/incoming_call_banner.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -138,7 +139,9 @@ class _RootGate extends StatelessWidget {
       child: KeyedSubtree(key: ValueKey(status), child: child),
     );
 
-    if (status != AuthStatus.authenticated) return switcher;
+    if (status != AuthStatus.authenticated || !FeatureFlags.callsEnabled) {
+      return switcher;
+    }
     return Stack(children: [switcher, const IncomingCallBanner()]);
   }
 }

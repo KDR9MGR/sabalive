@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/feature_flags.dart';
 import '../config/supabase_client.dart';
 import '../data/calls_repository.dart';
 
@@ -28,6 +29,7 @@ class CallsController extends ChangeNotifier {
   CallInfo? get incoming => _incoming;
 
   void _bind() {
+    if (!FeatureFlags.callsEnabled) return; // calling is switched off app-wide
     _channel?.unsubscribe();
     _channel = _repo.subscribeIncoming((call) async {
       // enrich with the caller's name

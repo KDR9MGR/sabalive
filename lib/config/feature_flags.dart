@@ -29,6 +29,12 @@
 ///   create a real PK stream; the tools-sheet tiles were already gated this
 ///   way before this flag existed.
 ///
+/// - [callsEnabled]: voice/video calls between users are hidden everywhere
+///   (the two call buttons in a chat, the incoming-call banner, and the
+///   realtime listener for incoming calls — it is not even started while
+///   this is false). Per product decision (2026-10-01) the app has no calling
+///   for now. The calls code is left in place; flip this to bring it back.
+///
 /// ⚠️ Still on the pre-production checklist — wire the real thing behind it
 /// before shipping to real users.
 class FeatureFlags {
@@ -37,4 +43,5 @@ class FeatureFlags {
   static const bool socialLoginEnabled = true;
   static const bool paymentMethodsEnabled = false;
   static const bool pkBattleEnabled = false;
+  static const bool callsEnabled = false;
 }

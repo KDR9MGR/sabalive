@@ -20,7 +20,7 @@ const _pages = [
       'Broadcast your moments, connect with fans and grow your community worldwide.',
       AppColors.primary),
   _Page(Icons.videocam_rounded, 'Connect & Chat',
-      'Make real connections through live chat, video calls and private messages.',
+      'Make real connections through live chat and private messages.',
       AppColors.magenta),
   _Page(Icons.card_giftcard_rounded, 'Send Gifts,\nSpread Love',
       'Support your favourite creators with virtual gifts and climb the rankings.',
