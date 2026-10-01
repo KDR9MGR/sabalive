@@ -14,6 +14,8 @@ class AppUser {
     this.bio = '',
     this.location = 'India',
     this.level = 1,
+    this.wealthLevel = 1,
+    this.charmLevel = 1,
     this.followers = 0,
     this.following = 0,
     this.fans = 0,
@@ -34,6 +36,8 @@ class AppUser {
     bio: row['bio'] as String? ?? '',
     location: row['location'] as String? ?? 'India',
     level: row['level'] as int? ?? 1,
+    wealthLevel: row['wealth_level'] as int? ?? 1,
+    charmLevel: row['charm_level'] as int? ?? 1,
     followers: row['followers_count'] as int? ?? 0,
     following: row['following_count'] as int? ?? 0,
     fans: row['fans_count'] as int? ?? 0,
@@ -55,6 +59,11 @@ class AppUser {
   String bio;
   String location;
   int level;
+
+  /// Wealth (coins spent) and Charm (value received) tracks — the two stars
+  /// shown on profiles and next to a name when someone joins a live.
+  int wealthLevel;
+  int charmLevel;
   int followers;
   int following;
   int fans;
@@ -229,11 +238,24 @@ class Bubble {
 }
 
 class LiveChatLine {
-  LiveChatLine(this.user, this.text, {this.gift = false, this.pinned = false});
+  LiveChatLine(
+    this.user,
+    this.text, {
+    this.gift = false,
+    this.pinned = false,
+    this.system = false,
+  });
   final AppUser user;
   final String text;
   final bool gift;
   final bool pinned;
+
+  /// Server-generated notices (`live_chat_messages.kind = 'system'`): the
+  /// "joined the live stream" / "left the live stream" lines.
+  final bool system;
+
+  /// An entry notice — the one that gets the bold, shiny, level-badged look.
+  bool get isJoin => system && text.startsWith('joined');
 }
 
 class RankingEntry {

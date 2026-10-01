@@ -18,6 +18,7 @@ import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
+import '../../data/stream_end_watcher.dart';
 import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
 import '../../services/agora_service.dart';
@@ -27,6 +28,7 @@ import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/live_chat_bubble.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/tool_grid.dart';
@@ -49,6 +51,8 @@ class WatchAudioRoomScreen extends StatefulWidget {
 class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   late final bool _isReal = isRealId(widget.stream.id);
+  void Function()? _stopEndWatch;
+  bool _hostEndedHandled = false;
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
   final _rand = math.Random();
@@ -105,6 +109,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       _loadRealChat();
       _logViewerJoin();
       _subscribeSeats();
+      _stopEndWatch = watchStreamEnd(widget.stream.id, _onHostEnded);
       // Mirrors the host's own heartbeat: keeps this viewer (and, while
       // seated, this seat) from being swept by finalize_stale_presence if
       // the connection silently dies instead of a clean dispose.
@@ -441,6 +446,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       sender,
       row['body'] as String,
       gift: row['kind'] == 'gift',
+      system: row['kind'] == 'system',
       pinned: row['pinned'] as bool? ?? false,
     );
   }
@@ -480,9 +486,23 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     return true;
   }
 
+  /// The host ended the live (or it was ended as stale): take this viewer out
+  /// of the room instead of leaving them on a dead stream.
+  void _onHostEnded() {
+    if (_hostEndedHandled || !mounted) return;
+    _hostEndedHandled = true;
+    final messenger = ScaffoldMessenger.of(context);
+    final liveSession = context.read<ActiveLiveSessionController>();
+    messenger.showSnackBar(
+      SnackBar(content: Text('${widget.stream.host.name} ended the live')),
+    );
+    liveSession.end();
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _stopEndWatch?.call();
     _waitTimer?.cancel();
     _heartbeat?.cancel();
     _msgController.dispose();
@@ -1113,58 +1133,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
               onTap: isRealId(line.user.id)
                   ? () => AppNav.userProfile(context, line.user)
                   : null,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: line.pinned
-                      ? AppColors.primary.withValues(alpha: 0.35)
-                      : Colors.black.withValues(alpha: 0.32),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: RichText(
-                  text: TextSpan(
-                    style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 11.5,
-                    ),
-                    children: [
-                      if (line.pinned)
-                        const WidgetSpan(
-                          alignment: PlaceholderAlignment.middle,
-                          child: Padding(
-                            padding: EdgeInsets.only(right: 4),
-                            child: Icon(
-                              Icons.push_pin_rounded,
-                              size: 11,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      TextSpan(
-                        text: '${line.user.name}  ',
-                        style: TextStyle(
-                          color: line.gift
-                              ? AppColors.gold
-                              : AppColors.primaryBright,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      TextSpan(
-                        text: line.text,
-                        style: TextStyle(
-                          color: line.gift ? AppColors.gold : Colors.white,
-                          fontWeight: line.gift
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              child: LiveChatLineBubble(key: ObjectKey(line), line: line),
             ),
           );
         },

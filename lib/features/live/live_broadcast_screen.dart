@@ -23,6 +23,8 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/live_chat_bubble.dart';
+import 'widgets/lucky_box_badge.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/tool_grid.dart';
@@ -514,6 +516,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           sender,
           row['body'] as String,
           gift: row['kind'] == 'gift',
+          system: row['kind'] == 'system',
           pinned: row['pinned'] as bool? ?? false,
         ),
       );
@@ -1523,6 +1526,15 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                   ),
                 ),
 
+                // ── Lucky Box (left, under the time / diamonds pills) — a real
+                //    video live only; counts down to the host's reward
+                if (!widget.audioOnly && isRealId(widget.stream.id))
+                  Positioned(
+                    left: 12,
+                    top: 100,
+                    child: LuckyBoxBadge(streamId: widget.stream.id),
+                  ),
+
                 // ── beauty (top-right, below the top bar) — video only
                 if (!widget.audioOnly)
                   Positioned(
@@ -1750,48 +1762,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                 onTap: isRealId(line.user.id)
                     ? () => AppNav.userProfile(context, line.user)
                     : null,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: line.pinned
-                        ? AppColors.primary.withValues(alpha: 0.5)
-                        : Colors.black.withValues(alpha: 0.36),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 11.5,
-                      ),
-                      children: [
-                        if (line.pinned)
-                          const TextSpan(
-                            text: '📌 ',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                        TextSpan(
-                          text: '${line.user.name}  ',
-                          style: TextStyle(
-                            color: line.gift
-                                ? AppColors.gold
-                                : AppColors.primaryBright,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        TextSpan(
-                          text: line.text,
-                          style: TextStyle(
-                            color: line.gift ? AppColors.gold : Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                child: LiveChatLineBubble(key: ObjectKey(line), line: line, backgroundAlpha: 0.36, pinnedAlpha: 0.5),
               ),
             ),
           );

@@ -6,6 +6,7 @@ import '../../core/utils/avatar_picker.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
+import '../../core/widgets/level_star.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
@@ -92,11 +93,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   bg: AppColors.success.withValues(alpha: 0.18),
                                   fg: AppColors.success,
                                 ),
-                              _pill(
-                                icon: Icons.star_rounded,
-                                text: '${user.level}',
-                                bg: AppColors.card,
-                                fg: AppColors.gold,
+                              // Wealth (gold star) and Charm (shiny purple star);
+                              // tapping opens the My Level screen.
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => AppNav.myLevel(context),
+                                child: LevelStars(
+                                  wealth: user.wealthLevel,
+                                  charm: user.charmLevel,
+                                  size: 26,
+                                ),
                               ),
                               _pill(
                                 icon: Icons.diamond_rounded,

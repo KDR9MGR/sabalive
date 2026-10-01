@@ -7,6 +7,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
+import '../../core/widgets/level_star.dart';
 import '../../data/models.dart';
 import '../../data/profile_visits_repository.dart';
 import '../../data/social_repository.dart';
@@ -181,10 +182,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               ],
               const SizedBox(height: 28),
               Center(
-                child: Text(
-                  _user.isHost ? 'Host · Level ${_user.level}' : 'Level ${_user.level}',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.textMuted),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_user.isHost)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 10),
+                        child: Text('Host',
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.textMuted)),
+                      ),
+                    LevelStars(
+                      wealth: _user.wealthLevel,
+                      charm: _user.charmLevel,
+                      size: 24,
+                    ),
+                  ],
                 ),
               ),
             ],
