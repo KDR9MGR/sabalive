@@ -46,6 +46,16 @@ class AuthController extends ChangeNotifier {
       }
       return;
     }
+    // Admin-panel accounts (super_admin/admin/global_admin/country_admin/
+    // sub_admin/agency_manager) share the same Supabase project as the app
+    // but must never actually use it — sign them back out immediately. This
+    // is the single chokepoint every session-creating path funnels through
+    // (password, Google, OAuth redirect return, a restored cold-start
+    // session, and OTP), so it's the one place this needs to live.
+    if (await _isStaffAccount(session.user.id)) {
+      await supabase.auth.signOut();
+      return;
+    }
     // Session exists (sign-in, token refresh, restored on cold start, or —
     // importantly — the OAuth deep-link returning after Google/Apple).
     await _refreshProfile(session.user.id);
@@ -62,6 +72,15 @@ class AuthController extends ChangeNotifier {
       _status = AuthStatus.authenticated;
       notifyListeners();
     }
+  }
+
+  Future<bool> _isStaffAccount(String userId) async {
+    final row = await supabase
+        .from('staff_roles')
+        .select('user_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    return row != null;
   }
 
   Future<void> _refreshProfile(String userId) async {
@@ -120,6 +139,12 @@ class AuthController extends ChangeNotifier {
           );
         }
         final uid = supabase.auth.currentUser!.id;
+        if (await _isStaffAccount(uid)) {
+          await supabase.auth.signOut();
+          throw Exception(
+            'This is an admin-panel account. Sign in through the admin panel instead.',
+          );
+        }
         await _refreshProfile(uid);
         _status = AuthStatus.authenticated;
         notifyListeners();
@@ -150,6 +175,12 @@ class AuthController extends ChangeNotifier {
         accessToken: googleAuth.accessToken,
       );
       final uid = supabase.auth.currentUser!.id;
+      if (await _isStaffAccount(uid)) {
+        await supabase.auth.signOut();
+        throw Exception(
+          'This is an admin-panel account. Sign in through the admin panel instead.',
+        );
+      }
       await _refreshProfile(uid);
       _status = AuthStatus.authenticated;
       notifyListeners();
