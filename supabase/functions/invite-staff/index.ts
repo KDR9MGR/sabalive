@@ -7,7 +7,8 @@
 // The platform JWT check proves the caller holds a valid project key (the
 // anon key satisfies that), so we additionally resolve the caller to a
 // real user. Who may create WHICH role is decided in SQL, not here:
-//   super_admin   -> any role
+//   super_admin   -> admin (Master) only
+//   admin         -> global_admin, country_admin, sub_admin, agency_manager
 //   global_admin  -> country_admin, sub_admin, agency_manager
 //   country_admin -> sub_admin (owned by them), agency_manager (in their tree)
 //   sub_admin     -> agency_manager (for an agency they own)
@@ -40,7 +41,7 @@ const PLATFORM_ROLES = ["admin", "super_admin", "global_admin", "country_admin"]
 const AGENCY_ROLES = ["agency_manager", "sub_admin"];
 const ALL_ROLES = [...PLATFORM_ROLES, ...AGENCY_ROLES];
 // roles that may create accounts at all — the per-role / per-scope rules live in SQL
-const CREATOR_ROLES = ["super_admin", "global_admin", "country_admin", "sub_admin"];
+const CREATOR_ROLES = ["super_admin", "admin", "global_admin", "country_admin", "sub_admin"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
