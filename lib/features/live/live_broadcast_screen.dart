@@ -2,25 +2,30 @@ import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
+import '../../core/utils/share_sheet.dart';
+import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_service.dart';
+import '../../state/active_live_session_controller.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/tool_grid.dart';
 
 /// Host's own broadcast view — real Agora publish + real Realtime chat tied
 /// to the [LiveStream] row created just before this screen was pushed.
@@ -40,7 +45,8 @@ class LiveBroadcastScreen extends StatefulWidget {
   State<LiveBroadcastScreen> createState() => _LiveBroadcastScreenState();
 }
 
-class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
+class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
+    with WidgetsBindingObserver {
   RtcEngine? _engine;
   int _viewers = 0;
   final List<LiveChatLine> _chat = [];
@@ -54,10 +60,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   Duration _elapsed = Duration.zero;
   bool _micMuted = false;
   bool _speakerOn = true;
+
+  // Beauty — real Agora clear_vision filter (see AgoraService.setBeautyEffect),
+  // not just a UI toggle. Defaults chosen as a mild, natural-looking preset
+  // for the moment someone first turns it on — 0 on every slider would mean
+  // "on" but invisible, which reads as broken.
   bool _beautyOn = false;
-  bool _showWarning = true;
-  bool _showPip = true;
-  Offset _pipPos = const Offset(-1, -1); // resolved on first layout
+  double _beautySmooth = 0.5;
+  double _beautyWhiten = 0.3;
+  double _beautyRedness = 0.1;
+  double _beautySharpness = 0.1;
 
   // Seat controls — real and synced everywhere (live_stream_seats /
   // live_streams.seat_count / locked_seats). Video mode shows seats too now
@@ -69,34 +81,64 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   final Set<int> _mutedSeats = {};
   RealtimeChannel? _seatsChannel;
 
+  // Video-only: empty seats are host-approval-gated (same request_pk_seat/
+  // approve_pk_seat_request flow PK battles use), so viewers can't just
+  // self-serve claim one the way audio-room guests still can.
+  final List<({String requestId, AppUser requester})> _pendingSeatRequests = [];
+  RealtimeChannel? _seatRequestsChannel;
+
   Timer? _heartbeat;
 
   @override
   void initState() {
     super.initState();
+    // For didPopRoute() below — this screen is mounted by the app-root
+    // overlay in app.dart, not pushed as a Navigator route, so there's no
+    // ModalRoute for the usual PopScope/BackButtonListener mechanisms to
+    // attach to. WidgetsBindingObserver.didPopRoute() intercepts the
+    // system back button/gesture at the binding level instead, independent
+    // of Route nesting.
+    WidgetsBinding.instance.addObserver(this);
+    // Keeps the screen (and the Agora publish + heartbeat timers) from
+    // being suspended by a display timeout mid-broadcast — that was
+    // dropping the whole stream for every viewer, not just this device.
+    WakelockPlus.enable().catchError((_) {});
     _join();
     _subscribeChat();
+    _loadSeatLockState();
     _subscribeViewerCount();
     _subscribeSeats();
+    if (!widget.audioOnly) _subscribeSeatRequests();
     if (widget.audioOnly) {
       // Audio rooms no longer give the host a seat of their own outside the
       // numbered grid — the host just occupies seat 1 like anyone else,
       // and can move to any other open seat via the seat menu below.
-      supabase
-          .rpc('claim_seat', params: {'p_stream_id': widget.stream.id, 'p_seat': 1})
-          .catchError((e) => debugPrint('auto-claim host seat failed: $e'));
+      // Shown immediately (before the claim RPC even lands) so the host
+      // sees themself seated the instant the room opens, not after a
+      // round trip through the server and back via Realtime.
+      _seatOccupants[1] = widget.stream.host;
+      _autoClaimHostSeat();
     }
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
-    });
-    Future.delayed(const Duration(seconds: 12), () {
-      if (mounted) setState(() => _showWarning = false);
     });
     // Keeps the stream row from being auto-ended as stale while this
     // screen is genuinely up and broadcasting.
     final liveStreams = context.read<LiveStreamsController>();
     _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
       liveStreams.heartbeat(widget.stream.id);
+      // BUG FIX: this never existed before — in an audio room the host
+      // occupies a real live_stream_seats row (seat 1) same as any guest,
+      // but nothing ever refreshed its last_heartbeat_at. Every audio
+      // broadcast's own host seat went stale and got swept by
+      // finalize_stale_presence ~90-150s in, every single time (not an
+      // intermittent network thing like the viewer-side bug — this one
+      // was 100% guaranteed since the call was simply missing).
+      if (widget.audioOnly) {
+        supabase
+            .rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id})
+            .catchError((e) => debugPrint('host heartbeat_seat failed: $e'));
+      }
     });
   }
 
@@ -123,12 +165,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           onJoinChannelSuccess: (connection, elapsed) {
             final uid = connection.localUid;
             if (uid != null) {
-              supabase.rpc('set_host_agora_uid', params: {
-                'p_stream_id': widget.stream.id,
-                'p_uid': uid,
-              }).catchError((e) {
-                debugPrint('set_host_agora_uid failed: $e');
-              });
+              supabase
+                  .rpc(
+                    'set_host_agora_uid',
+                    params: {'p_stream_id': widget.stream.id, 'p_uid': uid},
+                  )
+                  .catchError((e) {
+                    debugPrint('set_host_agora_uid failed: $e');
+                  });
             }
           },
         ),
@@ -182,6 +226,27 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         .subscribe();
   }
 
+  /// One-time fetch of the stream's actual current lock/seat-count state.
+  /// Without this, `_lockedSeats`/`_seatCount` start from whatever
+  /// `widget.stream` happened to hold at navigation time (often stale/empty)
+  /// and only self-correct once some *other* live_streams update happens to
+  /// fire — so re-entering this screen with seats already locked would
+  /// wrongly show them unlocked until then.
+  Future<void> _loadSeatLockState() async {
+    final row = await supabase
+        .from('live_streams')
+        .select('locked_seats, seat_count')
+        .eq('id', widget.stream.id)
+        .maybeSingle();
+    if (row == null || !mounted) return;
+    final locked = row['locked_seats'] as List?;
+    final seatCount = row['seat_count'] as int?;
+    setState(() {
+      if (locked != null) _lockedSeats = locked.cast<int>().toSet();
+      if (seatCount != null) _seatCount = seatCount;
+    });
+  }
+
   /// Viewer count comes from the DB, not Agora's onUserJoined/onUserOffline
   /// — Agora's Live Broadcasting profile doesn't report audience-role joins
   /// to other participants (by design, for scale to large audiences), so
@@ -223,7 +288,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     final rows = await supabase
         .from('live_stream_seats')
         .select(
-            'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)')
+          'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)',
+        )
         .eq('live_stream_id', widget.stream.id);
     if (mounted) {
       setState(() {
@@ -276,7 +342,15 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           callback: (payload) {
             final seat = payload.newRecord['seat_number'] as int?;
             final muted = payload.newRecord['is_muted'] as bool?;
-            if (mounted && seat != null && muted != null) {
+            // heartbeat_seat touches this same row every ~30s (it's a plain
+            // UPDATE on last_heartbeat_at) and Postgres always broadcasts
+            // the full row, so this callback fires constantly for every
+            // seated person even when is_muted hasn't actually changed —
+            // skip the rebuild entirely when nothing observable did.
+            if (mounted &&
+                seat != null &&
+                muted != null &&
+                muted != _mutedSeats.contains(seat)) {
               setState(() {
                 if (muted) {
                   _mutedSeats.add(seat);
@@ -309,6 +383,120 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         .subscribe();
   }
 
+  /// Pending "may I have a seat?" requests for this video stream — mirrors
+  /// pk_battle_screen.dart's own _subscribeSeatRequests exactly, reusing the
+  /// same pk_seat_requests table/RPCs (a seat request isn't a PK-specific
+  /// thing, just host-approval-gated seating, same as PK's own side).
+  Future<void> _subscribeSeatRequests() async {
+    Future<void> load() async {
+      final rows =
+          (await supabase
+                      .from('pk_seat_requests')
+                      .select(
+                        'id, profiles!pk_seat_requests_requester_id_fkey(*)',
+                      )
+                      .eq('live_stream_id', widget.stream.id)
+                      .eq('status', 'pending')
+                  as List)
+              .cast<Map<String, dynamic>>();
+      if (!mounted) return;
+      setState(() {
+        _pendingSeatRequests
+          ..clear()
+          ..addAll([
+            for (final r in rows)
+              if (r['profiles'] != null)
+                (
+                  requestId: r['id'] as String,
+                  requester: AppUser.fromRow(
+                    r['profiles'] as Map<String, dynamic>,
+                  ),
+                ),
+          ]);
+      });
+    }
+
+    await load();
+    _seatRequestsChannel = supabase
+        .channel('live-seatreqs-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'pk_seat_requests',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (_) => load(),
+        )
+        .subscribe();
+  }
+
+  Future<void> _autoClaimHostSeat() async {
+    try {
+      await supabase.rpc(
+        'claim_seat',
+        params: {'p_stream_id': widget.stream.id, 'p_seat': 1},
+      );
+      // Narrows the window before the periodic heartbeat's next (up to
+      // 30s-away) tick has to land cleanly — see the fix in initState.
+      await supabase.rpc(
+        'heartbeat_seat',
+        params: {'p_stream_id': widget.stream.id},
+      );
+    } catch (e) {
+      debugPrint('auto-claim host seat failed: $e');
+    }
+  }
+
+  int? _firstEmptySeat() {
+    for (var i = 1; i <= _seatCount; i++) {
+      if (!_seatOccupants.containsKey(i)) return i;
+    }
+    return null;
+  }
+
+  // Removes the request from _pendingSeatRequests immediately on success
+  // rather than waiting for the Realtime round-trip back through
+  // _subscribeSeatRequests — the request sheet is a separate StatefulBuilder
+  // route, not part of this State's own widget tree, so a plain setState()
+  // here (paired with the sheet's own setSheetState call) is what actually
+  // makes the badge count and the open sheet agree immediately.
+  Future<void> _approveSeatRequest(String requestId, int seat) async {
+    try {
+      await supabase.rpc(
+        'approve_pk_seat_request',
+        params: {'p_request_id': requestId, 'p_seat': seat},
+      );
+      if (mounted) {
+        setState(
+          () =>
+              _pendingSeatRequests.removeWhere((r) => r.requestId == requestId),
+        );
+      }
+    } catch (e) {
+      if (mounted) _snack(friendlyError(e));
+    }
+  }
+
+  Future<void> _declineSeatRequest(String requestId) async {
+    try {
+      await supabase.rpc(
+        'decline_pk_seat_request',
+        params: {'p_request_id': requestId},
+      );
+      if (mounted) {
+        setState(
+          () =>
+              _pendingSeatRequests.removeWhere((r) => r.requestId == requestId),
+        );
+      }
+    } catch (e) {
+      if (mounted) _snack(friendlyError(e));
+    }
+  }
+
   Future<void> _appendChatRow(Map<String, dynamic> row) async {
     final senderId = row['sender_id'] as String;
     final profileRow = await supabase
@@ -332,14 +520,57 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     });
   }
 
+  Future<void> _openQuickEmoji() async {
+    const emojis = [
+      '❤️',
+      '🔥',
+      '👏',
+      '😂',
+      '😍',
+      '😮',
+      '👍',
+      '🎉',
+      '💯',
+      '😢',
+      '😡',
+      '🙌',
+      '✨',
+      '🥳',
+      '😎',
+      '🤝',
+    ];
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.bgElevated,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: GridView.count(
+            crossAxisCount: 6,
+            shrinkWrap: true,
+            children: [
+              for (final e in emojis)
+                GestureDetector(
+                  onTap: () => Navigator.pop(context, e),
+                  child: Center(
+                    child: Text(e, style: const TextStyle(fontSize: 26)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _input.text = picked;
+    await _sendChat();
+  }
+
   Future<void> _sendChat() async {
     final text = _input.text.trim();
     if (text.isEmpty) return;
     _input.clear();
     final me = supabase.auth.currentUser;
-    setState(() {
-      _chat.add(LiveChatLine(widget.stream.host, text));
-    });
     try {
       await supabase.from('live_chat_messages').insert({
         'live_stream_id': widget.stream.id,
@@ -347,25 +578,51 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         'body': text,
         'kind': 'text',
       });
-    } catch (_) {
-      /* optimistic line already shown */
+      // The insert lands back via the live-chat Realtime subscription
+      // (_appendChatRow), which appends it to _chat — no local echo here,
+      // or it would show twice.
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    WakelockPlus.disable().catchError((_) {});
     _ticker?.cancel();
     _heartbeat?.cancel();
     _input.dispose();
     _chatChannel?.unsubscribe();
     _viewerChannel?.unsubscribe();
     _seatsChannel?.unsubscribe();
+    _seatRequestsChannel?.unsubscribe();
     AgoraService.instance.release();
     super.dispose();
   }
 
+  /// Intercepts the system back button/gesture — see the note on
+  /// addObserver in initState for why this (not PopScope/BackButtonListener)
+  /// is what's used here. Returning true tells the platform "handled,
+  /// don't pop/exit"; false lets it propagate normally.
+  @override
+  Future<bool> didPopRoute() async {
+    if (!mounted) return false;
+    if (context.read<ActiveLiveSessionController>().isMinimized) {
+      return false;
+    }
+    await _end();
+    return true;
+  }
+
+  /// "Minimize" is hidden while already minimized (tapping the bubble's own
+  /// X) — offering to minimize what's already minimized was confusing.
   Future<void> _end() async {
-    final leave = await showDialog<bool>(
+    final session = context.read<ActiveLiveSessionController>();
+    final choice = await showDialog<String>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgElevated,
@@ -375,23 +632,36 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, 'keep'),
             child: const Text('Keep going'),
           ),
+          if (!session.isMinimized)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'minimize'),
+              child: const Text('Minimize'),
+            ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, 'end'),
             child: const Text('End', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
     );
-    if (leave != true || !mounted) return;
+    if (!mounted) return;
+    if (choice == 'minimize') {
+      session.minimize();
+      return;
+    }
+    if (choice != 'end') return;
     try {
       await context.read<LiveStreamsController>().endStream(widget.stream.id);
     } catch (_) {
       /* row may be gone; ending locally matters more */
     }
-    if (mounted) Navigator.pop(context);
+    // Ends the session slot — the root overlay (app.dart) stops building
+    // this widget, which is what actually triggers dispose() (and all the
+    // real cleanup above) now that this isn't a pushed route to pop.
+    session.end();
   }
 
   static String _fmt(Duration d) {
@@ -401,7 +671,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     return '$h:$m:$s';
   }
 
-  String get _hostIdLabel => 'ID: ${shortDisplayId(widget.stream.host.id)}';
+  String get _roomIdLabel => 'Room ID: ${shortDisplayId(widget.stream.id)}';
 
   void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
@@ -414,6 +684,35 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     try {
       await _engine?.muteLocalAudioStream(_micMuted);
     } catch (_) {}
+    // Audio rooms: the host occupies a numbered seat like anyone else, so
+    // their own mute needs to update that seat's is_muted too — otherwise
+    // everyone else's seat shows the mic-off badge when muted, but the
+    // host's own seat never did, since this only ever touched the local
+    // Agora stream, never the DB flag the seat grid actually renders from.
+    if (widget.audioOnly) {
+      int? mySeat;
+      for (final entry in _seatOccupants.entries) {
+        if (entry.value.id == widget.stream.host.id) {
+          mySeat = entry.key;
+          break;
+        }
+      }
+      if (mySeat case final seat?) {
+        setState(() {
+          if (_micMuted) {
+            _mutedSeats.add(seat);
+          } else {
+            _mutedSeats.remove(seat);
+          }
+        });
+      }
+      try {
+        await supabase.rpc(
+          'set_seat_mute',
+          params: {'p_stream_id': widget.stream.id, 'p_muted': _micMuted},
+        );
+      } catch (_) {}
+    }
   }
 
   Future<void> _toggleSpeaker() async {
@@ -423,64 +722,166 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     } catch (_) {}
   }
 
+  Future<void> _applyBeauty() async {
+    final engine = _engine;
+    if (engine == null) return;
+    await AgoraService.instance.setBeautyEffect(
+      engine,
+      enabled: _beautyOn,
+      options: BeautyOptions(
+        lighteningContrastLevel: LighteningContrastLevel.lighteningContrastNormal,
+        smoothnessLevel: _beautySmooth,
+        lighteningLevel: _beautyWhiten,
+        rednessLevel: _beautyRedness,
+        sharpnessLevel: _beautySharpness,
+      ),
+    );
+  }
+
+  Future<void> _openBeautyPanel() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.bgElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (_) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          Future<void> apply() async {
+            setSheetState(() {});
+            setState(() {});
+            await _applyBeauty();
+          }
+
+          Widget slider(String label, double value, ValueChanged<double> onChanged) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                Slider(
+                  value: value,
+                  onChanged: _beautyOn
+                      ? (v) {
+                          onChanged(v);
+                          apply();
+                        }
+                      : null,
+                  activeColor: AppColors.primaryBright,
+                ),
+              ],
+            );
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Beauty',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const Spacer(),
+                      Switch(
+                        value: _beautyOn,
+                        activeThumbColor: AppColors.primaryBright,
+                        onChanged: (v) {
+                          _beautyOn = v;
+                          apply();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  slider('Smooth', _beautySmooth, (v) => _beautySmooth = v),
+                  slider('Whiten', _beautyWhiten, (v) => _beautyWhiten = v),
+                  slider('Redness', _beautyRedness, (v) => _beautyRedness = v),
+                  slider('Sharpen', _beautySharpness, (v) => _beautySharpness = v),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   // ─────────────────────────────────────────────────────── Tools sheet
   Future<void> _openTools() async {
-    final tools = <_ToolSpec>[
-      _ToolSpec(
+    final tools = <ToolSpec>[
+      ToolSpec(
         Icons.bolt_rounded,
         'Invite PK',
         const Color(0xFFFF7A45),
         () => _soon('PK battles'),
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.casino_rounded,
         'Random PK',
         const Color(0xFFFF5C5C),
         () => _soon('PK battles'),
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.sports_esports_rounded,
         'Games',
         AppColors.primaryBright,
         () => AppNav.games(context),
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.savings_rounded,
         'Coin Bag',
         AppColors.gold,
         () => AppNav.wallet(context),
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.music_note_rounded,
         'Play music',
         AppColors.pink,
         () => _soon('Music'),
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.campaign_rounded,
         'Funny voice',
         AppColors.magenta,
         () => _soon('Voice effects'),
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.wallpaper_rounded,
         'Room skin',
         const Color(0xFF2DD4BF),
         () => _soon('Room skins'),
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.ios_share_rounded,
         'Share',
         AppColors.diamond,
         _shareStream,
       ),
-      _ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF818CF8), () {
+      ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF818CF8), () {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const MessagesScreen()),
         );
       }),
-      _ToolSpec(
+      ToolSpec(
         Icons.settings_voice_rounded,
         'Voice Control',
         const Color(0xFF34D399),
@@ -489,17 +890,17 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           _snack(_micMuted ? 'Microphone muted' : 'Microphone on');
         },
       ),
-      _ToolSpec(Icons.volume_up_rounded, 'Speaker', AppColors.success, () {
+      ToolSpec(Icons.volume_up_rounded, 'Speaker', AppColors.success, () {
         _toggleSpeaker();
         _snack(_speakerOn ? 'Speaker on' : 'Speaker off');
       }),
-      _ToolSpec(
+      ToolSpec(
         Icons.assignment_rounded,
         'Notice',
         AppColors.goldDeep,
         _editNotice,
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.speaker_notes_off_rounded,
         'Clear chat',
         const Color(0xFFFB923C),
@@ -508,7 +909,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           _snack('Chat cleared');
         },
       ),
-      _ToolSpec(
+      ToolSpec(
         Icons.block_rounded,
         'Block',
         AppColors.danger,
@@ -516,99 +917,99 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
       ),
     ];
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.bgElevated,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Tools',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Divider(color: AppColors.stroke, height: 1),
-              const SizedBox(height: 16),
-              GridView.count(
-                crossAxisCount: 4,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.86,
-                children: [
-                  for (final t in tools)
-                    _ToolTile(
-                      spec: t,
-                      onTap: () {
-                        Navigator.pop(context);
-                        t.onTap();
-                      },
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    await showToolGridSheet(context, title: 'Tools', tools: tools);
+  }
+
+  /// Gifting targets a seated participant — only people actually on a seat
+  /// are real enough participants to gift, per Rey's scoping. Who it goes to
+  /// (one seated person, or everyone via "All") is now picked inside the
+  /// gift sheet itself via its avatar row, not a separate picker step.
+  /// Everyone worth gifting: the host themself plus anyone currently
+  /// seated, deduped by id. Previously only seated guests were offered —
+  /// a video host (who, unlike audio, doesn't auto-occupy a seat) had no
+  /// way to gift themselves at all. Matches the same helper on the
+  /// viewer screens.
+  List<AppUser> _giftRecipients() {
+    final byId = <String, AppUser>{widget.stream.host.id: widget.stream.host};
+    for (final u in _seatOccupants.values) {
+      byId[u.id] = u;
+    }
+    return byId.values.toList();
   }
 
   Future<void> _pickGift() async {
-    final gift = await showGiftSheet(
+    final choice = await showGiftSheet(
       context,
       hostName: widget.stream.host.name,
+      recipients: _giftRecipients(),
     );
-    if (gift != null) await _sendGift(gift);
+    if (choice == null || !mounted) return;
+    if (choice.sendToAll) {
+      // Send All always sends exactly one copy per recipient regardless of
+      // the quantity picker — quantity × every seated guest could add up to
+      // a very large, surprising coin spend in one tap otherwise.
+      for (final recipient in _giftRecipients()) {
+        await _sendGift(choice.gift, recipient);
+      }
+      return;
+    }
+    final recipient = choice.recipient;
+    if (recipient == null) return;
+    await _sendGift(choice.gift, recipient, quantity: choice.quantity);
   }
 
-  /// Self-gift — really runs `send_gift` (coins → diamonds, backs your room).
-  Future<void> _sendGift(Gift gift) async {
+  // No local chat echo here anymore — send_gift now inserts a real kind
+  // 'gift' live_chat_messages row server-side (one per unit sent), which
+  // arrives back through this screen's own Realtime chat subscription like
+  // any other message, visible to the host AND every viewer, not just
+  // whoever tapped Send. Adding a local echo on top would double it up.
+  Future<void> _sendGift(
+    Gift gift,
+    AppUser recipient, {
+    int quantity = 1,
+  }) async {
     final wallet = context.read<WalletController>();
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await wallet.sendGift(
-        gift,
-        widget.stream.host,
-        liveStreamId: widget.stream.id,
-      );
-      if (mounted) {
-        setState(
-          () => _chat.add(
-            LiveChatLine(
-              widget.stream.host,
-              'sent ${gift.name} ${gift.emoji}',
-              gift: true,
-            ),
-          ),
-        );
+      for (var i = 0; i < quantity; i++) {
+        await wallet.sendGift(gift, recipient, liveStreamId: widget.stream.id);
       }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 
-  Future<void> _shareStream() async {
-    await Clipboard.setData(
-      ClipboardData(text: 'https://sabalive.app/live/${widget.stream.id}'),
-    );
-    if (mounted) _snack('Stream link copied');
-  }
+  Future<void> _shareStream() => showShareSheet(
+    context,
+    title: '${widget.stream.host.name} is live on SABALIVE — join now!',
+    url: 'sabalive://live/${widget.stream.id}',
+  );
 
+  /// Was a 100% local `_chat.add(...)` before — the host's own pin never
+  /// reached the actual live_chat_messages table, so no viewer (and not
+  /// even the host reopening the screen) ever actually saw it. Now a real
+  /// insert with pinned: true, same pattern as _sendChat — the existing
+  /// chat RLS insert policy already allows any signed-in sender to set
+  /// pinned on their own row, so no migration was needed here, only this
+  /// client fix. Arrives back via the same Realtime chat subscription
+  /// every screen already has, visible to the host and every viewer.
   Future<void> _editNotice() async {
-    final controller = TextEditingController();
-    final text = await showDialog<String>(
+    // At most one active pinned notice at a time — fetch it (if any) so the
+    // dialog can offer Unpin and prefill the text for editing.
+    final existing = await supabase
+        .from('live_chat_messages')
+        .select('id, body')
+        .eq('live_stream_id', widget.stream.id)
+        .eq('pinned', true)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    if (!mounted) return;
+    final controller = TextEditingController(
+      text: existing?['body'] as String? ?? '',
+    );
+    const unpinResult = '__unpin__';
+    final result = await showDialog<String>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgElevated,
@@ -626,6 +1027,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
+          if (existing != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, unpinResult),
+              child: const Text(
+                'Unpin',
+                style: TextStyle(color: AppColors.danger),
+              ),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
             child: const Text('Pin'),
@@ -633,11 +1042,38 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         ],
       ),
     );
-    if (text != null && text.isNotEmpty && mounted) {
-      setState(
-        () => _chat.add(LiveChatLine(widget.stream.host, text, pinned: true)),
-      );
-      _snack('Notice pinned');
+    if (result == null || !mounted) return;
+    try {
+      if (result == unpinResult) {
+        await supabase.rpc(
+          'set_chat_pin',
+          params: {'p_message_id': existing!['id'], 'p_pinned': false},
+        );
+        if (mounted) _snack('Notice unpinned');
+        return;
+      }
+      if (result.isEmpty) return;
+      // Only one pinned notice at a time — clear the old one (if the text
+      // actually changed) before pinning the new one, rather than leaving
+      // two simultaneously pinned rows.
+      if (existing != null && existing['body'] != result) {
+        await supabase.rpc(
+          'set_chat_pin',
+          params: {'p_message_id': existing['id'], 'p_pinned': false},
+        );
+      } else if (existing != null) {
+        return; // unchanged — nothing to do
+      }
+      await supabase.from('live_chat_messages').insert({
+        'live_stream_id': widget.stream.id,
+        'sender_id': supabase.auth.currentUser?.id,
+        'body': result,
+        'kind': 'text',
+        'pinned': true,
+      });
+      if (mounted) _snack('Notice pinned');
+    } catch (e) {
+      if (mounted) _snack(friendlyError(e));
     }
   }
 
@@ -645,10 +1081,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     final next = (_seatCount + delta).clamp(5, 25);
     setState(() => _seatCount = next);
     try {
-      await supabase.rpc('set_seat_count', params: {
-        'p_stream_id': widget.stream.id,
-        'p_count': next,
-      });
+      await supabase.rpc(
+        'set_seat_count',
+        params: {'p_stream_id': widget.stream.id, 'p_count': next},
+      );
     } catch (e) {
       if (mounted) _snack(friendlyError(e));
     }
@@ -656,12 +1092,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
 
   Future<void> _seatMenu(int seat) async {
     final locked = _lockedSeats.contains(seat);
+    final muted = _mutedSeats.contains(seat);
     final myId = supabase.auth.currentUser?.id;
-    final isMySeat = _seatOccupants[seat]?.id == myId;
+    final occupant = _seatOccupants[seat];
+    final isMySeat = occupant?.id == myId;
     // Audio rooms only — the host can move into any open seat, same as
     // guests, instead of only ever occupying a separate seat of their own.
-    final canSitHere =
-        widget.audioOnly && !isMySeat && _seatOccupants[seat] == null;
+    final canSitHere = widget.audioOnly && !isMySeat && occupant == null;
+    final canModerate = occupant != null && !isMySeat;
     final choice = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.bgElevated,
@@ -673,7 +1111,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                'Seat $seat',
+                occupant != null
+                    ? 'Seat $seat · ${occupant.name}'
+                    : 'Seat $seat',
                 style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w600,
@@ -693,11 +1133,64 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               title: Text(locked ? 'Unlock seat' : 'Lock seat'),
               onTap: () => Navigator.pop(context, 'lock'),
             ),
-            ListTile(
-              leading: const Icon(Icons.person_add_alt_1_rounded),
-              title: const Text('Invite someone'),
-              onTap: () => Navigator.pop(context, 'invite'),
-            ),
+            if (canModerate) ...[
+              ListTile(
+                leading: Icon(
+                  muted ? Icons.mic_rounded : Icons.mic_off_rounded,
+                ),
+                title: Text(muted ? 'Unmute' : 'Mute'),
+                onTap: () => Navigator.pop(context, 'mute'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_remove_rounded),
+                title: const Text('Kick from seat'),
+                onTap: () => Navigator.pop(context, 'kick'),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.block_rounded,
+                  color: AppColors.danger,
+                ),
+                title: const Text(
+                  'Ban from seats',
+                  style: TextStyle(color: AppColors.danger),
+                ),
+                onTap: () => Navigator.pop(context, 'ban'),
+              ),
+            ] else if (!widget.audioOnly && occupant == null) ...[
+              // Video seats are request-only — an empty seat's tap shows
+              // whoever's asked to join, approving them straight into this
+              // seat, instead of the old fake "Invite someone" stub.
+              if (_pendingSeatRequests.isEmpty)
+                const ListTile(
+                  leading: Icon(
+                    Icons.info_outline_rounded,
+                    color: AppColors.textMuted,
+                  ),
+                  title: Text(
+                    'No pending seat requests',
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                )
+              else
+                for (final r in _pendingSeatRequests)
+                  ListTile(
+                    leading: AppAvatar(
+                      name: r.requester.name,
+                      imageUrl: r.requester.avatarUrl,
+                      size: 36,
+                    ),
+                    title: Text(r.requester.name),
+                    trailing: const Text('Approve'),
+                    onTap: () =>
+                        Navigator.pop(context, 'approve:${r.requestId}'),
+                  ),
+            ] else
+              ListTile(
+                leading: const Icon(Icons.person_add_alt_1_rounded),
+                title: const Text('Invite someone'),
+                onTap: () => Navigator.pop(context, 'invite'),
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -713,27 +1206,106 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
       } catch (e) {
         if (mounted) _snack(friendlyError(e));
       }
+    } else if (choice == 'mute') {
+      try {
+        await supabase.rpc(
+          'host_set_seat_mute',
+          params: {
+            'p_stream_id': widget.stream.id,
+            'p_seat': seat,
+            'p_muted': !muted,
+          },
+        );
+        if (mounted) {
+          _snack(
+            '${occupant?.name ?? 'Seat $seat'} ${!muted ? 'muted' : 'unmuted'}',
+          );
+        }
+      } catch (e) {
+        if (mounted) _snack(friendlyError(e));
+      }
+    } else if (choice == 'kick') {
+      try {
+        await supabase.rpc(
+          'kick_seat_occupant',
+          params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
+        );
+        if (mounted)
+          _snack('${occupant?.name ?? 'User'} removed from the seat');
+      } catch (e) {
+        if (mounted) _snack(friendlyError(e));
+      }
+    } else if (choice == 'ban') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: AppColors.bgElevated,
+          title: const Text('Ban from seats?'),
+          content: Text(
+            '${occupant?.name ?? 'This user'} won\'t be able to take a seat in this stream again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Ban'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      try {
+        await supabase.rpc(
+          'ban_seat_occupant',
+          params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
+        );
+        if (mounted) _snack('${occupant?.name ?? 'User'} banned from seats');
+      } catch (e) {
+        if (mounted) _snack(friendlyError(e));
+      }
     } else if (choice == 'lock') {
+      final wantLocked = !locked;
       setState(() {
-        if (locked) {
-          _lockedSeats.remove(seat);
-        } else {
+        if (wantLocked) {
           _lockedSeats.add(seat);
+        } else {
+          _lockedSeats.remove(seat);
         }
       });
-      _snack('Seat $seat ${locked ? 'unlocked' : 'locked'}');
-      unawaited(
-        supabase.rpc(
+      try {
+        await supabase.rpc(
           'set_seat_lock',
           params: {
             'p_stream_id': widget.stream.id,
             'p_seat': seat,
-            'p_locked': !locked,
+            'p_locked': wantLocked,
           },
-        ),
-      );
+        );
+        if (mounted) _snack('Seat $seat ${wantLocked ? 'locked' : 'unlocked'}');
+      } catch (e) {
+        // Roll back the optimistic change — otherwise a failed write here
+        // leaves the UI showing "locked" while the DB (and everyone else)
+        // still sees it unlocked, until the next unrelated live_streams
+        // update silently snaps the display back — looking like the lock
+        // randomly reverted itself.
+        if (mounted) {
+          setState(() {
+            if (wantLocked) {
+              _lockedSeats.remove(seat);
+            } else {
+              _lockedSeats.add(seat);
+            }
+          });
+          _snack(friendlyError(e));
+        }
+      }
     } else if (choice == 'invite') {
       _soon('Seat invites');
+    } else if (choice != null && choice.startsWith('approve:')) {
+      await _approveSeatRequest(choice.substring('approve:'.length), seat);
     }
   }
 
@@ -744,32 +1316,78 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Co-host requests',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Seat requests',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Icon(
-                Icons.group_add_rounded,
-                size: 40,
-                color: AppColors.textMuted.withValues(alpha: 0.6),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'No one has asked to join yet.',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 12.5),
-              ),
-            ],
+                const SizedBox(height: 16),
+                if (_pendingSeatRequests.isEmpty) ...[
+                  Icon(
+                    Icons.group_add_rounded,
+                    size: 40,
+                    color: AppColors.textMuted.withValues(alpha: 0.6),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'No one has asked to join yet.',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ] else
+                  for (final r in _pendingSeatRequests)
+                    ListTile(
+                      leading: AppAvatar(
+                        name: r.requester.name,
+                        imageUrl: r.requester.avatarUrl,
+                        size: 40,
+                      ),
+                      title: Text(r.requester.name),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: AppColors.danger,
+                            ),
+                            onPressed: () async {
+                              await _declineSeatRequest(r.requestId);
+                              setSheetState(() {});
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.check_rounded,
+                              color: AppColors.success,
+                            ),
+                            onPressed: () async {
+                              final seat = _firstEmptySeat();
+                              if (seat == null) {
+                                _snack('No empty seats right now');
+                                return;
+                              }
+                              await _approveSeatRequest(r.requestId, seat);
+                              setSheetState(() {});
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
+            ),
           ),
         ),
       ),
@@ -777,12 +1395,39 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   }
 
   // ─────────────────────────────────────────────────────── build
+  //
+  // This widget is mounted by the app-root overlay in app.dart (via
+  // ActiveLiveSessionController), not pushed as a Navigator route. Back
+  // button handling is didPopRoute() above (WidgetsBindingObserver), not
+  // PopScope/BackButtonListener — see that method's own doc comment. When
+  // minimized, this returns just the bare bubble Stack with nothing
+  // wrapping it, so taps/back-navigation flow straight through to
+  // whatever's actually on screen underneath.
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    if (_pipPos.dx < 0) {
-      _pipPos = Offset(size.width - 132, size.height * 0.16);
-    }
+    final minimized = context.watch<ActiveLiveSessionController>().isMinimized;
+    return minimized ? _buildMinimized() : _buildFull(context);
+  }
+
+  Widget _buildMinimized() {
+    // No Material wrapper here on purpose — LiveMinimizedBubble doesn't use
+    // any Material-dependent widgets (no InkWell/splash), and Material's own
+    // ink-detection layer claims hit-tests across its ENTIRE bounds even
+    // with type: transparency and nothing painted. A bare Stack only
+    // hit-tests where its children actually are, letting empty space fall
+    // through to whatever's underneath.
+    return Stack(
+      children: [
+        LiveMinimizedBubble(
+          host: widget.stream.host,
+          onTap: () => context.read<ActiveLiveSessionController>().restore(),
+          onClose: _end,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFull(BuildContext context) {
     final diamonds = context.watch<WalletController>().diamonds;
 
     return Scaffold(
@@ -800,8 +1445,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
               mutedSeats: _mutedSeats,
               onSeatTap: _seatMenu,
               onAddSeat: _seatCount >= 25 ? null : () => _changeSeatCount(5),
-              onRemoveSeat:
-                  _seatCount <= 5 ? null : () => _changeSeatCount(-5),
+              onRemoveSeat: _seatCount <= 5 ? null : () => _changeSeatCount(-5),
             )
           else if (_engine != null)
             AgoraVideoView(
@@ -832,23 +1476,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           // subtle top + bottom scrims for legibility
           const _Scrim(),
 
-          if (!widget.audioOnly && _showPip)
-            Positioned(
-              left: _pipPos.dx,
-              top: _pipPos.dy,
-              child: GestureDetector(
-                onPanUpdate: (d) => setState(() {
-                  _pipPos = Offset(
-                    (_pipPos.dx + d.delta.dx).clamp(8.0, size.width - 124),
-                    (_pipPos.dy + d.delta.dy).clamp(80.0, size.height - 220),
-                  );
-                }),
-                child: _PipCard(
-                  onClose: () => setState(() => _showPip = false),
-                ),
-              ),
-            ),
-
           SafeArea(
             bottom: false,
             child: Stack(
@@ -866,7 +1493,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                         children: [
                           _hostChip(),
                           const Spacer(),
-                          _circle('$_viewers', onTap: _openRequests),
+                          _circle(
+                            '$_viewers',
+                            onTap: () =>
+                                showViewerListSheet(context, widget.stream.id),
+                          ),
                           const SizedBox(width: 8),
                           _circle(
                             null,
@@ -898,10 +1529,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                     right: 12,
                     top: 58,
                     child: GestureDetector(
-                      onTap: () {
-                        setState(() => _beautyOn = !_beautyOn);
-                        _snack(_beautyOn ? 'Beauty on' : 'Beauty off');
-                      },
+                      onTap: _openBeautyPanel,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -951,10 +1579,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_showWarning) _warningBanner(),
-                                if (_chat.isNotEmpty) _chatList(),
-                              ],
+                              children: [if (_chat.isNotEmpty) _chatList()],
                             ),
                           ),
                           _rightRail(),
@@ -984,24 +1609,33 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     );
   }
 
+  // Smaller, Instagram/TikTok-Live-style minimal host badge — was a larger
+  // chip showing the HOST's own id; now shows the ROOM's id instead (a
+  // stream is its own thing, distinct from whoever's hosting it), reusing
+  // the same shortDisplayId hash already used for user ids elsewhere, just
+  // fed the stream's id instead of a profile's.
   Widget _hostChip() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(3, 3, 10, 3),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(26),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AppAvatar(name: widget.stream.host.name, size: 30),
-          const SizedBox(width: 8),
+          AppAvatar(
+            name: widget.stream.host.name,
+            imageUrl: widget.stream.host.avatarUrl,
+            size: 24,
+          ),
+          const SizedBox(width: 6),
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 120),
+                constraints: const BoxConstraints(maxWidth: 110),
                 child: Text(
                   widget.stream.host.name,
                   maxLines: 1,
@@ -1009,14 +1643,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                   style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontWeight: FontWeight.w600,
-                    fontSize: 12,
+                    fontSize: 11,
                     color: Colors.white,
                   ),
                 ),
               ),
               Text(
-                _hostIdLabel,
-                style: const TextStyle(fontSize: 9.5, color: Colors.white70),
+                _roomIdLabel,
+                style: const TextStyle(fontSize: 8.5, color: Colors.white70),
               ),
             ],
           ),
@@ -1082,38 +1716,17 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     );
   }
 
-  Widget _iconCircle(IconData icon, VoidCallback onTap) {
+  Widget _iconCircle(IconData icon, VoidCallback onTap, {double size = 40}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 40,
-        height: 40,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.42),
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: Colors.white, size: 20),
-      ),
-    );
-  }
-
-  Widget _warningBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 0, 8, 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: const Text(
-        'Any sexual or violent content is strictly prohibited — violators are '
-        'banned. Do not share personal info such as phone or location.',
-        style: TextStyle(
-          color: Color(0xFFFF6B6B),
-          fontSize: 11,
-          height: 1.35,
-          fontWeight: FontWeight.w600,
-        ),
+        child: Icon(icon, color: Colors.white, size: size * 0.5),
       ),
     );
   }
@@ -1197,38 +1810,68 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             _micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
             _toggleMic,
           ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: _openRequests,
-            child: Container(
-              width: 64,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Column(
+          // Co-host requests — video only. Audio rooms already have real
+          // self-serve seating (claim_seat), so a separate "ask to co-host"
+          // queue doesn't apply there.
+          if (!widget.audioOnly) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: _openRequests,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  Icon(
-                    Icons.person_add_alt_1_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'REQUESTS',
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 8,
-                      letterSpacing: 0.3,
-                      color: Colors.white,
+                  Container(
+                    width: 64,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Column(
+                      children: [
+                        Icon(
+                          Icons.person_add_alt_1_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'REQUESTS',
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 8,
+                            letterSpacing: 0.3,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  if (_pendingSeatRequests.isNotEmpty)
+                    Positioned(
+                      right: -4,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: AppColors.danger,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '${_pendingSeatRequests.length}',
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -1243,35 +1886,34 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         8 + MediaQuery.of(context).padding.bottom,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          _iconCircle(Icons.more_horiz_rounded, _openTools),
-          const SizedBox(width: 8),
-          _iconCircle(
-            Icons.emoji_emotions_outlined,
-            () => _soon('Emoji picker'),
-          ),
-          const SizedBox(width: 8),
-          _iconCircle(Icons.card_giftcard_rounded, _pickGift),
-          const SizedBox(width: 8),
+          _iconCircle(Icons.more_horiz_rounded, _openTools, size: 34),
+          const SizedBox(width: 6),
+          _iconCircle(Icons.emoji_emotions_outlined, _openQuickEmoji, size: 34),
+          const SizedBox(width: 6),
+          _iconCircle(Icons.card_giftcard_rounded, _pickGift, size: 34),
+          const SizedBox(width: 6),
           Expanded(
             child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
+              constraints: const BoxConstraints(minHeight: 42),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(21),
                 border: Border.all(color: Colors.white24),
               ),
               child: TextField(
                 controller: _input,
                 style: const TextStyle(fontSize: 13, color: Colors.white),
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendChat(),
+                minLines: 1,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 decoration: const InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
-                  hintText: 'Say something…',
+                  hintText: 'Say something',
                   hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
               ),
@@ -1302,52 +1944,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
 
 // ─────────────────────────────────────────────────────── helper widgets
 
-class _ToolSpec {
-  _ToolSpec(this.icon, this.label, this.color, this.onTap);
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-}
-
-class _ToolTile extends StatelessWidget {
-  const _ToolTile({required this.spec, required this.onTap});
-  final _ToolSpec spec;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: spec.color.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: spec.color.withValues(alpha: 0.35)),
-            ),
-            child: Icon(spec.icon, color: spec.color, size: 26),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            spec.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 10.5,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _Scrim extends StatelessWidget {
   const _Scrim();
   @override
@@ -1367,92 +1963,6 @@ class _Scrim extends StatelessWidget {
             stops: const [0, 0.18, 0.68, 1],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Small draggable "featured live" window, dismissible. Placeholder content —
-/// wire to a real co-host / multi-guest feed later.
-class _PipCard extends StatelessWidget {
-  const _PipCard({required this.onClose});
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 116,
-      height: 168,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white24),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF5279B), Color(0xFFF5A623)],
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black45,
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: 6,
-            top: 6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'LIVE',
-                style: TextStyle(
-                  fontSize: 7,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 4,
-            top: 4,
-            child: GestureDetector(
-              onTap: onClose,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.4),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.close_rounded,
-                  size: 12,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          const Positioned(
-            left: 8,
-            right: 8,
-            bottom: 8,
-            child: Text(
-              'Featured live',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

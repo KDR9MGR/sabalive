@@ -139,13 +139,13 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                             _picked[u.id] = u;
                           }
                         }),
-                        secondary: AppAvatar(name: u.name, size: 40),
+                        secondary: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 40),
                         title: Text(u.name,
                             style: const TextStyle(
                                 fontFamily: 'Poppins',
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13.5)),
-                        subtitle: Text(u.username,
+                        subtitle: Text('ID: ${u.displayId}',
                             style: const TextStyle(
                                 fontSize: 11.5, color: AppColors.textMuted)),
                       );

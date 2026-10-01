@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../utils/formatters.dart';
 
-/// Deterministic gradient avatar with initials. Keeps the app fully offline
-/// while still giving every user a distinct, colourful identity.
+/// Shows the user's real uploaded photo when [imageUrl] is set; otherwise
+/// falls back to a deterministic gradient with initials, keeping every user
+/// visually distinct even with no photo.
 class AppAvatar extends StatelessWidget {
   const AppAvatar({
     super.key,
@@ -13,6 +14,7 @@ class AppAvatar extends StatelessWidget {
     this.ring = false,
     this.ringColor,
     this.live = false,
+    this.imageUrl,
   });
 
   final String name;
@@ -20,20 +22,30 @@ class AppAvatar extends StatelessWidget {
   final bool ring;
   final Color? ringColor;
   final bool live;
+  final String? imageUrl;
 
   @override
   Widget build(BuildContext context) {
     final tint = AppColors.tints[name.hashCode.abs() % AppColors.tints.length];
+    final hasPhoto = imageUrl != null && imageUrl!.isNotEmpty;
     final avatar = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: tint,
-        ),
+        gradient: hasPhoto
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: tint,
+              ),
+        image: hasPhoto
+            ? DecorationImage(
+                image: NetworkImage(imageUrl!),
+                fit: BoxFit.cover,
+              )
+            : null,
         border: ring
             ? Border.all(
                 color: ringColor ?? AppColors.gold,
@@ -42,15 +54,17 @@ class AppAvatar extends StatelessWidget {
             : null,
       ),
       alignment: Alignment.center,
-      child: Text(
-        initialsOf(name),
-        style: TextStyle(
-          fontFamily: 'Poppins',
-          fontWeight: FontWeight.w600,
-          fontSize: size * 0.38,
-          color: Colors.white,
-        ),
-      ),
+      child: hasPhoto
+          ? null
+          : Text(
+              initialsOf(name),
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+                fontSize: size * 0.38,
+                color: Colors.white,
+              ),
+            ),
     );
 
     if (!live) return avatar;

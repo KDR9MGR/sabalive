@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../core/utils/errors.dart';
 import '../data/messages_repository.dart';
@@ -11,6 +12,8 @@ import '../features/live/go_live_setup_screen.dart';
 import '../features/live/watch_audio_room_screen.dart';
 import '../features/live/watch_live_screen.dart';
 import '../features/live/watch_pk_battle_screen.dart';
+import '../state/active_live_session_controller.dart';
+import '../theme/app_colors.dart';
 import '../features/messages/chat_screen.dart';
 import '../features/messages/new_group_screen.dart';
 import '../features/profile/apply_agency_screen.dart';
@@ -28,6 +31,7 @@ import '../features/profile/user_profile_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/wallet/bag_screen.dart';
 import '../features/wallet/buy_coins_screen.dart';
+import '../features/wallet/coin_sellers_screen.dart';
 import '../features/wallet/sell_coins_screen.dart';
 import '../features/wallet/store_screen.dart';
 import '../features/wallet/wallet_screen.dart';
@@ -37,26 +41,90 @@ class AppNav {
   AppNav._();
 
   static Future<T?> _push<T>(BuildContext context, Widget page) {
-    return Navigator.of(context).push<T>(
-      MaterialPageRoute(builder: (_) => page),
-    );
+    return Navigator.of(
+      context,
+    ).push<T>(MaterialPageRoute(builder: (_) => page));
   }
 
-  static Future<void> watchLive(BuildContext context, LiveStream stream) =>
-      _push(
-        context,
-        switch (stream.mode) {
-          LiveMode.video => WatchLiveScreen(stream: stream),
-          LiveMode.audio => WatchAudioRoomScreen(stream: stream),
-          LiveMode.pk => WatchPkBattleScreen(stream: stream),
-        },
-      );
+  /// True when the caller should NOT proceed — either a DIFFERENT live is
+  /// already active (shows "Return to Live" / "Cancel", per spec) or this
+  /// exact room is already the active session (just restores it instead of
+  /// starting a second connection to the same room). The app only ever
+  /// runs one Agora engine at a time, so a second concurrent session would
+  /// break the first rather than running both.
+  static Future<bool> _blockedByActiveSession(
+    BuildContext context,
+    String? requestedRoomId,
+  ) async {
+    final session = context.read<ActiveLiveSessionController>();
+    if (!session.isActive) return false;
+    if (requestedRoomId != null && session.roomId == requestedRoomId) {
+      session.restore();
+      return true;
+    }
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        title: const Text('Already in a live'),
+        content: Text(
+          "You're still live in ${session.hostName}'s room — finish or "
+          'return to it before starting or joining another one.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'return'),
+            child: const Text('Return to Live'),
+          ),
+        ],
+      ),
+    );
+    if (choice == 'return') session.restore();
+    return true;
+  }
+
+  /// Video/audio watch screens register with the global
+  /// ActiveLiveSessionController instead of being pushed — the root
+  /// overlay in app.dart (see that file) mounts them above every route,
+  /// which is what lets minimizing keep the whole app genuinely
+  /// interactive underneath, not just whatever screen happened to be on
+  /// top of this Navigator at the time. PK has no minimize option (it's
+  /// naturally self-blocking — no way to background it and reach another
+  /// live without ending it first), so it keeps the normal opaque route
+  /// and never touches the session controller.
+  static Future<void> watchLive(BuildContext context, LiveStream stream) async {
+    if (await _blockedByActiveSession(context, stream.id)) return;
+    if (!context.mounted) return;
+    if (stream.mode == LiveMode.pk) {
+      await _push(context, WatchPkBattleScreen(stream: stream));
+      return;
+    }
+    context.read<ActiveLiveSessionController>().start(
+      roomId: stream.id,
+      hostName: stream.host.name,
+      hostAvatarUrl: stream.host.avatarUrl,
+      builder: (_) => switch (stream.mode) {
+        LiveMode.video => WatchLiveScreen(stream: stream),
+        LiveMode.audio => WatchAudioRoomScreen(stream: stream),
+        LiveMode.pk => WatchPkBattleScreen(stream: stream),
+      },
+    );
+  }
 
   /// Routes through the agency-request gate; only lands on go-live setup once
   /// the user has host access — i.e. an agency approved their request (they
   /// enter that agency's ID; the agency sees it in the admin panel). No host
-  /// code any more.
-  static Future<void> goLive(BuildContext context) {
+  /// code any more. There's no roomId yet at
+  /// this point (the stream doesn't exist until go_live_setup_screen.dart's
+  /// own _start() creates it) — blocked purely on "is ANY session already
+  /// active", same as trying to watch while already live.
+  static Future<void> goLive(BuildContext context) async {
+    if (await _blockedByActiveSession(context, null)) return;
+    if (!context.mounted) return;
     final repo = SocialRepository();
     return _push(
       context,
@@ -76,8 +144,7 @@ class AppNav {
     BuildContext context,
     AppUser user, {
     required String conversationId,
-  }) =>
-      _push(context, ChatScreen(user: user, conversationId: conversationId));
+  }) => _push(context, ChatScreen(user: user, conversationId: conversationId));
 
   /// Opens (creating if needed) the 1:1 conversation with [user], then the
   /// chat screen. Shows a snackbar if the conversation can't be started.
@@ -86,9 +153,11 @@ class AppNav {
     final navigator = Navigator.of(context);
     try {
       final id = await MessagesRepository().findOrCreateConversation(user);
-      await navigator.push(MaterialPageRoute(
-        builder: (_) => ChatScreen(user: user, conversationId: id),
-      ));
+      await navigator.push(
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(user: user, conversationId: id),
+        ),
+      );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
@@ -101,8 +170,7 @@ class AppNav {
     BuildContext context,
     String userId, {
     required bool followers,
-  }) =>
-      _push(context, FollowListScreen(userId: userId, followers: followers));
+  }) => _push(context, FollowListScreen(userId: userId, followers: followers));
 
   static Future<void> kyc(BuildContext context) =>
       _push(context, const KycScreen());
@@ -139,6 +207,9 @@ class AppNav {
 
   static Future<void> buyCoins(BuildContext context) =>
       _push(context, const BuyCoinsScreen());
+
+  static Future<void> coinSellers(BuildContext context) =>
+      _push(context, const CoinSellersScreen());
 
   static Future<void> notifications(BuildContext context) =>
       _push(context, const NotificationsScreen());

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/utils/formatters.dart';
+import '../../core/widgets/pills.dart';
 import '../../data/levels_repository.dart';
 import '../../theme/app_colors.dart';
 
-/// Real level/XP progress — profiles.xp/level, earned by sending or
-/// receiving gifts (award_gift_xp trigger), against the level_thresholds
-/// catalog.
+/// Wealth (coins spent) and Charm (value received) — two separate level
+/// tracks, both to level 100. See levels_repository.dart's own doc comment
+/// for how these relate to the older combined xp/level "LV X" badge shown
+/// elsewhere in the app, which this screen no longer shows at all.
 class MyLevelScreen extends StatefulWidget {
   const MyLevelScreen({super.key});
 
@@ -15,12 +17,13 @@ class MyLevelScreen extends StatefulWidget {
 }
 
 class _MyLevelScreenState extends State<MyLevelScreen> {
-  MyLevel? _data;
+  WealthCharmLevels? _data;
+  int _tab = 0; // 0 = Charm, 1 = Wealth
 
   @override
   void initState() {
     super.initState();
-    LevelsRepository().mine().then((v) {
+    LevelsRepository().wealthAndCharm().then((v) {
       if (mounted) setState(() => _data = v);
     });
   }
@@ -28,17 +31,24 @@ class _MyLevelScreenState extends State<MyLevelScreen> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
+    final selected = data == null ? null : (_tab == 0 ? data.charm : data.wealth);
     return Scaffold(
       appBar: AppBar(title: const Text('My Level')),
-      body: data == null
+      body: data == null || selected == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
               children: [
-                _header(data),
+                SegmentedTabs(
+                  tabs: const ['Charm', 'Wealth'],
+                  index: _tab,
+                  onChanged: (i) => setState(() => _tab = i),
+                ),
+                const SizedBox(height: 20),
+                _header(selected, isCharm: _tab == 0),
                 const SizedBox(height: 24),
-                const Text('All Levels',
-                    style: TextStyle(
+                Text('All ${_tab == 0 ? 'Charm' : 'Wealth'} Levels',
+                    style: const TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,
                         fontSize: 15)),
@@ -51,8 +61,8 @@ class _MyLevelScreenState extends State<MyLevelScreen> {
                   crossAxisSpacing: 12,
                   childAspectRatio: 1.3,
                   children: [
-                    for (final t in data.thresholds)
-                      _levelCard(t, current: t.level == data.level, unlocked: t.level <= data.level),
+                    for (final t in selected.thresholds)
+                      _levelCard(t, current: t.level == selected.level, unlocked: t.level <= selected.level),
                   ],
                 ),
               ],
@@ -60,7 +70,7 @@ class _MyLevelScreenState extends State<MyLevelScreen> {
     );
   }
 
-  Widget _header(MyLevel data) {
+  Widget _header(MyLevel data, {required bool isCharm}) {
     final next = data.next;
     return Container(
       padding: const EdgeInsets.all(20),
@@ -82,7 +92,8 @@ class _MyLevelScreenState extends State<MyLevelScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.military_tech_rounded, color: Colors.white, size: 22),
+                Icon(isCharm ? Icons.favorite_rounded : Icons.diamond_rounded,
+                    color: Colors.white, size: 22),
                 Text('${data.level}',
                     style: const TextStyle(
                         fontFamily: 'Poppins',
@@ -93,7 +104,7 @@ class _MyLevelScreenState extends State<MyLevelScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Text('Level ${data.level}',
+          Text('${isCharm ? 'Charm' : 'Wealth'} Level ${data.level}',
               style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w700,

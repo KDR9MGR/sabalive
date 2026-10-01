@@ -10,6 +10,7 @@ import 'package:sabalive/features/live/watch_audio_room_screen.dart';
 import 'package:sabalive/features/live/watch_live_screen.dart';
 import 'package:sabalive/features/live/watch_pk_battle_screen.dart';
 import 'package:sabalive/router/app_nav.dart';
+import 'package:sabalive/state/active_live_session_controller.dart';
 import 'package:sabalive/state/session_controller.dart';
 import 'package:sabalive/theme/app_theme.dart';
 
@@ -27,21 +28,34 @@ void main() {
     );
   });
 
-  AppUser host(String id) => AppUser(id: id, name: 'Test Host', username: '@host');
+  AppUser host(String id) =>
+      AppUser(id: id, name: 'Test Host', username: '@host');
 
   LiveStream stream(String id, LiveMode mode) => LiveStream(
-        id: id,
-        host: host('host-$id'),
-        title: 'Test stream',
-        category: 'Chatting',
-        viewers: 0,
-        mode: mode,
-      );
+    id: id,
+    host: host('host-$id'),
+    title: 'Test stream',
+    category: 'Chatting',
+    viewers: 0,
+    mode: mode,
+  );
 
+  // Video/audio watch screens are no longer pushed as a Navigator route —
+  // AppNav.watchLive registers them with ActiveLiveSessionController
+  // instead, and app.dart's own MaterialApp.builder is what actually
+  // mounts the active session above everything else (see app.dart's own
+  // doc comment on why: a root-level overlay, not tied to any one route's
+  // position in the stack). This harness mirrors that same wiring — both
+  // providers, and the same builder shape — so "does watchLive route to
+  // the right widget type" stays meaningful for all 3 modes; PK still
+  // goes through a real Navigator.push (unaffected by any of this).
   Future<void> pumpWatch(WidgetTester tester, LiveStream s) async {
     await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => SessionController(),
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => SessionController()),
+          ChangeNotifierProvider(create: (_) => ActiveLiveSessionController()),
+        ],
         child: MaterialApp(
           theme: AppTheme.dark(),
           home: Builder(
@@ -49,6 +63,16 @@ void main() {
               onPressed: () => AppNav.watchLive(context, s),
               child: const Text('go'),
             ),
+          ),
+          builder: (context, child) => Stack(
+            children: [
+              ?child,
+              Consumer<ActiveLiveSessionController>(
+                builder: (context, session, _) => session.isActive
+                    ? session.buildActive(context)
+                    : const SizedBox.shrink(),
+              ),
+            ],
           ),
         ),
       ),
@@ -62,15 +86,18 @@ void main() {
     expect(find.byType(WatchLiveScreen), findsOneWidget);
   });
 
-  testWidgets('audio mode routes to WatchAudioRoomScreen, not the video screen',
-      (tester) async {
-    await pumpWatch(tester, stream('test-audio', LiveMode.audio));
-    expect(find.byType(WatchAudioRoomScreen), findsOneWidget);
-    expect(find.byType(WatchLiveScreen), findsNothing);
-  });
+  testWidgets(
+    'audio mode routes to WatchAudioRoomScreen, not the video screen',
+    (tester) async {
+      await pumpWatch(tester, stream('test-audio', LiveMode.audio));
+      expect(find.byType(WatchAudioRoomScreen), findsOneWidget);
+      expect(find.byType(WatchLiveScreen), findsNothing);
+    },
+  );
 
-  testWidgets('pk mode routes to WatchPkBattleScreen, not the video screen',
-      (tester) async {
+  testWidgets('pk mode routes to WatchPkBattleScreen, not the video screen', (
+    tester,
+  ) async {
     await pumpWatch(tester, stream('test-pk', LiveMode.pk));
     expect(find.byType(WatchPkBattleScreen), findsOneWidget);
     expect(find.byType(WatchLiveScreen), findsNothing);

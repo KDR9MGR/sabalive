@@ -5,11 +5,14 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
+import '../../core/utils/share_sheet.dart';
+import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
@@ -20,9 +23,11 @@ import '../../services/agora_service.dart';
 import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import '../messages/messages_screen.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/pk_arena.dart';
 import 'widgets/pk_score_bar.dart';
+import 'widgets/tool_grid.dart';
 
 /// Viewer of a PK battle — same proven audience-join + chat/gift chrome as
 /// [WatchAudioRoomScreen]/[WatchLiveScreen], with a PK-themed shell instead
@@ -48,6 +53,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
   Gift? _giftBurst;
+  bool _giftBurstOnSideA = true;
 
   RtcEngine? _engine;
   int? _remoteUid;
@@ -65,6 +71,13 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   Timer? _heartbeat;
   String? _agoraChannelTarget;
 
+  // The host's own side seats — real occupants, host-approval-gated (see
+  // request_pk_seat/claim_seat). The opponent's side is that host's own
+  // business from their own screen, stays decorative here as it always was.
+  final Map<int, AppUser> _mySeatOccupants = {};
+  int? _mySeat;
+  RealtimeChannel? _seatsChannel;
+
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
@@ -79,15 +92,21 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       }
     });
     if (_isReal) {
+      // See the same note in watch_live_screen.dart.
+      WakelockPlus.enable().catchError((_) {});
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
       _loadBattle();
+      _subscribeSeats();
       _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted && _battle?.isLive == true) setState(() {});
       });
       _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
-        supabase.rpc('heartbeat_viewer', params: {'p_stream_id': widget.stream.id});
+        supabase.rpc(
+          'heartbeat_viewer',
+          params: {'p_stream_id': widget.stream.id},
+        );
       });
     } else {
       _chat.addAll(Mock.liveChat());
@@ -112,7 +131,29 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     if (!mounted) return;
     final wasId = _battle?.id;
     final prevStatus = _battle?.status;
+    final prevGiftSeq = _battle?.lastGiftSeq ?? 0;
     setState(() => _battle = battle);
+
+    // Previously this only played for whoever tapped send themselves — now
+    // reacts to the shared battle row, so every viewer (and the host, and
+    // the opponent's own viewers) sees a gift land, not just the sender.
+    if (battle.lastGiftSeq > prevGiftSeq && battle.lastGiftId != null) {
+      final gifts = context.read<WalletController>().gifts;
+      Gift? gift;
+      for (final g in gifts) {
+        if (g.id == battle.lastGiftId) {
+          gift = g;
+          break;
+        }
+      }
+      if (gift != null && mounted) {
+        setState(() {
+          _giftBurst = gift;
+          _giftBurstOnSideA = battle.lastGiftSide == 'a';
+        });
+        _burstCtl.forward(from: 0);
+      }
+    }
 
     if (wasId != battle.id) {
       _discoveryChannel?.unsubscribe();
@@ -355,7 +396,9 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     _chatChannel?.unsubscribe();
     _discoveryChannel?.unsubscribe();
     _battleChannel?.unsubscribe();
+    _seatsChannel?.unsubscribe();
     if (_isReal) {
+      WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
       unawaited(
         supabase.rpc(
@@ -363,6 +406,14 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           params: {'p_stream_id': widget.stream.id},
         ),
       );
+      if (_mySeat != null) {
+        unawaited(
+          supabase.rpc(
+            'release_seat',
+            params: {'p_stream_id': widget.stream.id},
+          ),
+        );
+      }
     }
     super.dispose();
   }
@@ -398,18 +449,21 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       await _openBattleGift(battle);
       return;
     }
-    final gift = await showGiftSheet(
+    final choice = await showGiftSheet(
       context,
       hostName: widget.stream.host.name,
     );
-    if (gift == null || !mounted) return;
+    if (choice == null || !mounted) return;
+    final gift = choice.gift;
     final me = context.read<AuthController>().user ?? Mock.me;
     try {
-      await context.read<WalletController>().sendGift(
-        gift,
-        widget.stream.host,
-        liveStreamId: _isReal ? widget.stream.id : null,
-      );
+      for (var i = 0; i < choice.quantity; i++) {
+        await context.read<WalletController>().sendGift(
+          gift,
+          widget.stream.host,
+          liveStreamId: _isReal ? widget.stream.id : null,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -420,18 +474,23 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     if (!mounted) return;
     setState(() {
       _giftBurst = gift;
-      if (!_isReal)
-        _chat.add(LiveChatLine(me, 'sent ${gift.name}', gift: true));
+      if (!_isReal) {
+        final label = choice.quantity > 1
+            ? 'sent ${choice.quantity}x ${gift.name}'
+            : 'sent ${gift.name}';
+        _chat.add(LiveChatLine(me, label, gift: true));
+      }
     });
     _burstCtl.forward(from: 0);
   }
 
   Future<void> _openBattleGift(PkBattleInfo battle) async {
-    final gift = await showGiftSheet(
+    final choice = await showGiftSheet(
       context,
       hostName: widget.stream.host.name,
     );
-    if (gift == null || !mounted) return;
+    if (choice == null || !mounted) return;
+    final gift = choice.gift;
 
     final hostSide = battle.sideFor(widget.stream.id)!;
     final oppName = _opponentUser?.name ?? 'Opponent';
@@ -463,7 +522,21 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     if (confirmed != true || !mounted) return;
     final side = pickedIndex == 0 ? hostSide : (hostSide == 'a' ? 'b' : 'a');
     try {
-      await _pkRepo.sendGift(battle.id, side, gift);
+      for (var i = 0; i < choice.quantity; i++) {
+        await _pkRepo.sendGift(battle.id, side, gift);
+      }
+      // send_pk_gift's chat announcement lands on the RECEIVING side's
+      // stream — a gift to the opponent lands on their stream, which this
+      // viewer never subscribes to for chat, so it needs a local line here
+      // or the sender sees no confirmation at all. A gift to this stream's
+      // own host arrives back via the normal Realtime chat subscription.
+      if (mounted && side != hostSide) {
+        final label = choice.quantity > 1
+            ? 'sent ${choice.quantity}x ${gift.name} ${gift.emoji}'
+            : 'sent ${gift.name} ${gift.emoji}';
+        final me = context.read<AuthController>().user ?? Mock.me;
+        setState(() => _chat.add(LiveChatLine(me, label, gift: true)));
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -471,9 +544,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       return;
     }
-    if (!mounted) return;
-    setState(() => _giftBurst = gift);
-    _burstCtl.forward(from: 0);
+    // No local burst call here — sendGift updates the pk_battles row's
+    // last_gift_seq, which arrives back through this same screen's own
+    // _onBattleUpdate subscription, so triggering it here too would
+    // double it for the sender.
   }
 
   String get _statusLabel => switch (_battle?.status) {
@@ -512,7 +586,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
               ],
             ),
             if (_giftBurst != null)
-              Center(
+              Align(
+                alignment: _giftBurstOnSideA
+                    ? const Alignment(-0.5, -0.3)
+                    : const Alignment(0.5, -0.3),
                 child: AnimatedBuilder(
                   animation: _burstCtl,
                   builder: (context, _) {
@@ -520,11 +597,14 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                     return IgnorePointer(
                       child: Opacity(
                         opacity: (1 - v).clamp(0.0, 1.0),
-                        child: Transform.scale(
-                          scale: 0.6 + v * 1.8,
-                          child: Text(
-                            _giftBurst!.emoji,
-                            style: const TextStyle(fontSize: 90),
+                        child: Transform.translate(
+                          offset: Offset(0, -v * 40),
+                          child: Transform.scale(
+                            scale: 0.7 + v * 0.5,
+                            child: Text(
+                              _giftBurst!.emoji,
+                              style: const TextStyle(fontSize: 44),
+                            ),
                           ),
                         ),
                       ),
@@ -556,6 +636,23 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           ),
           const Spacer(),
           GestureDetector(
+            onTap: () => showViewerListSheet(context, widget.stream.id),
+            child: Container(
+              width: 30,
+              height: 30,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.groups_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Container(
               width: 30,
@@ -586,7 +683,119 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       hostB: _opponentUser,
       seatsPerSide: 2,
       bottomBar: _connectionStatus(),
+      occupantsA: _mySeatOccupants,
+      onSeatTapA: _onSeatTapA,
     );
+  }
+
+  Future<void> _subscribeSeats() async {
+    final rows = await supabase
+        .from('live_stream_seats')
+        .select('seat_number, profiles!live_stream_seats_occupant_id_fkey(*)')
+        .eq('live_stream_id', widget.stream.id);
+    if (mounted) {
+      final myId = supabase.auth.currentUser?.id;
+      setState(() {
+        for (final r in rows as List) {
+          final profileRow = r['profiles'] as Map<String, dynamic>?;
+          if (profileRow != null) {
+            final seat = r['seat_number'] as int;
+            _mySeatOccupants[seat] = AppUser.fromRow(profileRow);
+            if (profileRow['id'] == myId) _mySeat = seat;
+          }
+        }
+      });
+    }
+    _seatsChannel = supabase
+        .channel('watchpk-seats-${widget.stream.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) async {
+            final seat = payload.newRecord['seat_number'] as int;
+            final occupantId = payload.newRecord['occupant_id'] as String;
+            final profileRow = await supabase
+                .from('profiles')
+                .select()
+                .eq('id', occupantId)
+                .maybeSingle();
+            if (mounted && profileRow != null) {
+              setState(() {
+                _mySeatOccupants[seat] = AppUser.fromRow(profileRow);
+                if (occupantId == supabase.auth.currentUser?.id) _mySeat = seat;
+              });
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'live_stream_seats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'live_stream_id',
+            value: widget.stream.id,
+          ),
+          callback: (payload) {
+            final seat = payload.oldRecord['seat_number'] as int?;
+            if (mounted && seat != null) {
+              setState(() {
+                _mySeatOccupants.remove(seat);
+                if (_mySeat == seat) _mySeat = null;
+              });
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _onSeatTapA(int seat) async {
+    final occupant = _mySeatOccupants[seat];
+    final myId = supabase.auth.currentUser?.id;
+    if (occupant?.id == myId) {
+      try {
+        await supabase.rpc(
+          'release_seat',
+          params: {'p_stream_id': widget.stream.id},
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+        }
+      }
+      return;
+    }
+    if (occupant != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Seat $seat is taken')));
+      return;
+    }
+    try {
+      await supabase.rpc(
+        'request_pk_seat',
+        params: {'p_stream_id': widget.stream.id},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Request sent — waiting for the host')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    }
   }
 
   Widget? _connectionStatus() {
@@ -686,27 +895,85 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     );
   }
 
+  // Matches the other 3 live screens: a "More" tile grid (same shared
+  // tool_grid.dart widget) — PK never had one at all before. Gift stays as
+  // its own dedicated GiftTrayButton (already above this bar), so it's not
+  // duplicated inside the grid, same as the other screens' pattern.
+  Future<void> _moreActions() async {
+    await showToolGridSheet(
+      context,
+      title: 'More',
+      tools: [
+        ToolSpec(
+          Icons.sports_esports_rounded,
+          'Games',
+          AppColors.primaryBright,
+          () => AppNav.games(context),
+        ),
+        ToolSpec(
+          Icons.savings_rounded,
+          'Coin Bag',
+          AppColors.gold,
+          () => AppNav.wallet(context),
+        ),
+        ToolSpec(
+          Icons.notifications_none_rounded,
+          'Notifications',
+          const Color(0xFF818CF8),
+          () => AppNav.notifications(context),
+        ),
+        ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF34D399), () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const MessagesScreen()),
+          );
+        }),
+        ToolSpec(
+          Icons.ios_share_rounded,
+          'Share',
+          AppColors.diamond,
+          () => showShareSheet(
+            context,
+            title: '${widget.stream.host.name} is live on SABALIVE — join now!',
+            url: 'sabalive://live/${widget.stream.id}',
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _inputBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          GestureDetector(
+            onTap: _moreActions,
+            child: const Icon(Icons.more_horiz_rounded, color: Colors.white70),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              constraints: const BoxConstraints(minHeight: 42),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(21),
                 border: Border.all(color: Colors.white24),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
                     child: TextField(
                       controller: _msgController,
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                       cursorColor: AppColors.primaryBright,
+                      minLines: 1,
+                      maxLines: 4,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
                       decoration: const InputDecoration(
                         isDense: true,
                         border: InputBorder.none,
@@ -716,7 +983,6 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                           fontSize: 13,
                         ),
                       ),
-                      onSubmitted: (_) => _send(),
                     ),
                   ),
                   GestureDetector(

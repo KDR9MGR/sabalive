@@ -20,6 +20,14 @@
 ///   to call `dev_purchase_coins` (a test RPC that instantly grants coins,
 ///   no real charge) regardless of this flag, so tapping Pay silently gave
 ///   free coins. Now shows "coming soon" instead while this is false.
+/// - [pkBattleEnabled]: PK Battle mode stays visible throughout the app
+///   (Go Live's mode picker, the host tools sheet's Invite/Random PK tiles,
+///   the Home/Live-feed PK filter) so people know it's coming, but every
+///   place that would actually start or join one shows "coming soon"
+///   instead while this is false (2026-09-28, per Rey). Go Live's PK tab
+///   checks this directly since it's the one remaining action that used to
+///   create a real PK stream; the tools-sheet tiles were already gated this
+///   way before this flag existed.
 ///
 /// ⚠️ Still on the pre-production checklist — wire the real thing behind it
 /// before shipping to real users.
@@ -28,4 +36,5 @@ class FeatureFlags {
 
   static const bool socialLoginEnabled = true;
   static const bool paymentMethodsEnabled = false;
+  static const bool pkBattleEnabled = false;
 }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "511851020120",
+    "project_id": "sabalive-d1d95",
+    "storage_bucket": "sabalive-d1d95.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:511851020120:android:13e637fa91546bc56fef2d",
+        "android_client_info": {
+          "package_name": "com.sabalive.in"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSORNBCsQ_eulleWTggEEXMRsyF9_Pco0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

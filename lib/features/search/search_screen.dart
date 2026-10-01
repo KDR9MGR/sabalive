@@ -76,7 +76,7 @@ class _SearchScreenState extends State<SearchScreen> {
           autofocus: true,
           onChanged: _onChanged,
           decoration: const InputDecoration(
-            hintText: 'Search people & live rooms',
+            hintText: 'Search by name or user ID',
             border: InputBorder.none,
           ),
         ),
@@ -105,7 +105,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _peopleList() {
     if (_people.isEmpty) {
-      return _empty(_q.isEmpty ? 'Search for people by name or @username' : 'No people found');
+      return _empty(_q.isEmpty ? 'Search for people by name or user ID' : 'No people found');
     }
     return ListView.builder(
       itemCount: _people.length,
@@ -113,11 +113,11 @@ class _SearchScreenState extends State<SearchScreen> {
         final u = _people[i];
         return ListTile(
           onTap: () => AppNav.userProfile(context, u),
-          leading: AppAvatar(name: u.name, size: 44),
+          leading: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 44),
           title: Text(u.name,
               style: const TextStyle(
                   fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 14)),
-          subtitle: Text(u.username,
+          subtitle: Text('ID: ${u.displayId}',
               style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
           trailing: u.isLive
               ? const _LiveDot()
@@ -137,7 +137,7 @@ class _SearchScreenState extends State<SearchScreen> {
         final s = _streams[i];
         return ListTile(
           onTap: () => AppNav.watchLive(context, s),
-          leading: AppAvatar(name: s.host.name, size: 44),
+          leading: AppAvatar(name: s.host.name, imageUrl: s.host.avatarUrl, size: 44),
           title: Text(s.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

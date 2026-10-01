@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../config/feature_flags.dart';
 import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/aurora_background.dart';
@@ -9,6 +10,7 @@ import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
 import '../../services/agora_service.dart';
+import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
 import '../../state/live_streams_controller.dart';
 import '../../theme/app_colors.dart';
@@ -36,8 +38,15 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
 
   Future<void> _start() async {
     final messenger = ScaffoldMessenger.of(context);
+    if (_mode == LiveMode.pk && !FeatureFlags.pkBattleEnabled) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('PK Battles are coming soon')),
+      );
+      return;
+    }
     final navigator = Navigator.of(context);
     final liveStreams = context.read<LiveStreamsController>();
+    final session = context.read<ActiveLiveSessionController>();
     setState(() => _starting = true);
     try {
       final granted = await AgoraService.instance.requestBroadcastPermissions();
@@ -45,7 +54,9 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
         throw Exception('Camera and microphone access are required to go live');
       }
 
-      final title = _title.text.trim().isEmpty ? 'Live now' : _title.text.trim();
+      final title = _title.text.trim().isEmpty
+          ? 'Live now'
+          : _title.text.trim();
       final stream = await liveStreams.createStream(
         title: title,
         category: _category,
@@ -57,17 +68,36 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
       );
 
       if (!mounted) return;
-      navigator.pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => switch (_mode) {
-            LiveMode.pk => PkBattleScreen(stream: stream, token: token),
-            LiveMode.audio =>
-              LiveBroadcastScreen(stream: stream, token: token, audioOnly: true),
-            LiveMode.video =>
-              LiveBroadcastScreen(stream: stream, token: token),
-          },
+      if (_mode == LiveMode.pk) {
+        // PK has no minimize (it's naturally self-blocking — there's no
+        // way to background it and reach another live without ending it
+        // first), so it stays a normal pushed route.
+        navigator.pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => PkBattleScreen(stream: stream, token: token),
+          ),
+        );
+        return;
+      }
+      // Video/audio broadcasts register with the global session instead of
+      // being pushed — the root overlay in app.dart mounts them above
+      // EVERY route, not just whatever's on top of this Navigator right
+      // now, which is what lets minimizing keep the whole app (not just
+      // MainShell's own tabs) genuinely interactive underneath. Unwind
+      // back through this screen and the host-code gate screen beneath it
+      // so the user lands on MainShell, with the live view now rendered
+      // full-screen on top by that overlay.
+      session.start(
+        roomId: stream.id,
+        hostName: stream.host.name,
+        hostAvatarUrl: stream.host.avatarUrl,
+        builder: (_) => LiveBroadcastScreen(
+          stream: stream,
+          token: token,
+          audioOnly: _mode == LiveMode.audio,
         ),
       );
+      navigator.popUntil((route) => route.isFirst);
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
@@ -87,8 +117,10 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
               children: [
                 Row(
                   children: [
-                    Text('Go Live',
-                        style: Theme.of(context).textTheme.headlineSmall),
+                    Text(
+                      'Go Live',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
@@ -100,15 +132,23 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                 Stack(
                   alignment: Alignment.bottomRight,
                   children: [
-                    AppAvatar(name: me.name, size: 104, ring: true),
+                    AppAvatar(
+                      name: me.name,
+                      imageUrl: me.avatarUrl,
+                      size: 104,
+                      ring: true,
+                    ),
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: const BoxDecoration(
                         gradient: AppColors.primaryGradient,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.photo_camera_rounded,
-                          size: 16, color: Colors.white),
+                      child: const Icon(
+                        Icons.photo_camera_rounded,
+                        size: 16,
+                        color: Colors.white,
+                      ),
                     ),
                   ],
                 ),
@@ -116,8 +156,18 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                 SegmentedTabs(
                   tabs: const ['Video', 'Audio', 'PK'],
                   index: _mode.index,
-                  onChanged: (i) =>
-                      setState(() => _mode = LiveMode.values[i]),
+                  onChanged: (i) {
+                    final mode = LiveMode.values[i];
+                    if (mode == LiveMode.pk && !FeatureFlags.pkBattleEnabled) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('PK Battles are coming soon'),
+                        ),
+                      );
+                      return;
+                    }
+                    setState(() => _mode = mode);
+                  },
                 ),
                 const SizedBox(height: 20),
                 _label('Stream Title'),
@@ -153,13 +203,13 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
   }
 
   Widget _label(String t) => Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text(t,
-              style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 12.5)),
-        ),
-      );
-
+    alignment: Alignment.centerLeft,
+    child: Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        t,
+        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+      ),
+    ),
+  );
 }

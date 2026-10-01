@@ -57,7 +57,7 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
                     final v = _visitors[i];
                     return ListTile(
                       onTap: () => AppNav.userProfile(context, v.user),
-                      leading: AppAvatar(name: v.user.name, size: 44),
+                      leading: AppAvatar(name: v.user.name, imageUrl: v.user.avatarUrl, size: 44),
                       title: Text(v.user.name,
                           style: const TextStyle(
                               fontFamily: 'Poppins',

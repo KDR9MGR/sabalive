@@ -5,7 +5,12 @@ import '../config/agora_config.dart';
 import '../config/supabase_client.dart';
 
 class AgoraToken {
-  AgoraToken({required this.token, required this.appId, required this.channelName, required this.uid});
+  AgoraToken({
+    required this.token,
+    required this.appId,
+    required this.channelName,
+    required this.uid,
+  });
   final String token;
   final String appId;
   final String channelName;
@@ -29,17 +34,33 @@ class AgoraService {
     final engine = createAgoraRtcEngine();
     await engine.initialize(RtcEngineContext(appId: AgoraConfig.appId));
     await engine.enableVideo();
+    // Required once, before any setBeautyEffectOptions call actually does
+    // anything — Agora's beauty filter ships as an opt-in native extension,
+    // not part of the base video pipeline. Viewer-only engines never call
+    // setBeautyEffectOptions, so enabling it for them is a harmless no-op,
+    // not extra per-frame cost — simpler than conditionally skipping it.
+    try {
+      await engine.enableExtension(
+        provider: 'agora_video_filters_clear_vision',
+        extension: 'clear_vision',
+      );
+    } catch (_) {
+      // Beauty just won't visibly do anything on a device/build without
+      // this extension available — never worth failing engine setup over.
+    }
     // Raw SDK defaults are 960x540@15fps and a generic audio profile — too
     // soft for a live-streaming app. Portrait HD at 30fps with an
     // auto-managed bitrate is the standard profile for vertical social
     // live streaming; the chatroom audio scenario suits seats/guests
     // joining and leaving mid-stream.
-    await engine.setVideoEncoderConfiguration(const VideoEncoderConfiguration(
-      dimensions: VideoDimensions(width: 720, height: 1280),
-      frameRate: 30,
-      bitrate: 0, // standardBitrate — SDK auto-picks the optimal bitrate
-      orientationMode: OrientationMode.orientationModeAdaptive,
-    ));
+    await engine.setVideoEncoderConfiguration(
+      const VideoEncoderConfiguration(
+        dimensions: VideoDimensions(width: 720, height: 1280),
+        frameRate: 30,
+        bitrate: 0, // standardBitrate — SDK auto-picks the optimal bitrate
+        orientationMode: OrientationMode.orientationModeAdaptive,
+      ),
+    );
     await engine.setAudioProfile(
       profile: AudioProfileType.audioProfileDefault,
       scenario: AudioScenarioType.audioScenarioChatroom,
@@ -59,23 +80,27 @@ class AgoraService {
   }) {
     _asBroadcaster = asBroadcaster;
     _channelName = channelName;
-    engine.registerEventHandler(RtcEngineEventHandler(
-      onTokenPrivilegeWillExpire: (connection, token) async {
-        try {
-          // Reads _asBroadcaster/_channelName live rather than the captured
-          // params, so a mid-session switchRole()/switchChannel() call (e.g.
-          // claiming a seat, or a PK battle moving to its shared channel) is
-          // honored on the next renewal instead of renewing a token for a
-          // role or channel this client isn't actually in anymore.
-          final fresh = await fetchToken(
-              channelName: _channelName ?? channelName, asBroadcaster: _asBroadcaster);
-          await engine.renewToken(fresh.token);
-        } catch (_) {
-          // Best-effort — if this fails the SDK will surface a connection
-          // failure via onConnectionStateChanged when the old token expires.
-        }
-      },
-    ));
+    engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onTokenPrivilegeWillExpire: (connection, token) async {
+          try {
+            // Reads _asBroadcaster/_channelName live rather than the captured
+            // params, so a mid-session switchRole()/switchChannel() call (e.g.
+            // claiming a seat, or a PK battle moving to its shared channel) is
+            // honored on the next renewal instead of renewing a token for a
+            // role or channel this client isn't actually in anymore.
+            final fresh = await fetchToken(
+              channelName: _channelName ?? channelName,
+              asBroadcaster: _asBroadcaster,
+            );
+            await engine.renewToken(fresh.token);
+          } catch (_) {
+            // Best-effort — if this fails the SDK will surface a connection
+            // failure via onConnectionStateChanged when the old token expires.
+          }
+        },
+      ),
+    );
   }
 
   /// Switches an already-joined client between audience and broadcaster —
@@ -91,7 +116,10 @@ class AgoraService {
     required bool asBroadcaster,
   }) async {
     try {
-      final fresh = await fetchToken(channelName: channelName, asBroadcaster: asBroadcaster);
+      final fresh = await fetchToken(
+        channelName: channelName,
+        asBroadcaster: asBroadcaster,
+      );
       await engine.renewToken(fresh.token);
       await engine.setClientRole(
         role: asBroadcaster
@@ -109,7 +137,10 @@ class AgoraService {
       }
       _asBroadcaster = asBroadcaster;
     } catch (_) {
-      final fresh = await fetchToken(channelName: channelName, asBroadcaster: asBroadcaster);
+      final fresh = await fetchToken(
+        channelName: channelName,
+        asBroadcaster: asBroadcaster,
+      );
       await engine.leaveChannel();
       await engine.joinChannel(
         token: fresh.token,
@@ -141,7 +172,10 @@ class AgoraService {
     required String newChannelName,
     required bool asBroadcaster,
   }) async {
-    final fresh = await fetchToken(channelName: newChannelName, asBroadcaster: asBroadcaster);
+    final fresh = await fetchToken(
+      channelName: newChannelName,
+      asBroadcaster: asBroadcaster,
+    );
     await engine.leaveChannel();
     await engine.joinChannel(
       token: fresh.token,
@@ -162,6 +196,21 @@ class AgoraService {
     _channelName = newChannelName;
   }
 
+  /// Applies (or clears, when [enabled] is false) real-time beauty
+  /// filtering to the local camera feed. Swallows failures the same way
+  /// enabling the extension above does — a low-end device or a build
+  /// without the clear_vision extension just won't visibly change anything,
+  /// which is preferable to the whole broadcast erroring out over a filter.
+  Future<void> setBeautyEffect(
+    RtcEngine engine, {
+    required bool enabled,
+    required BeautyOptions options,
+  }) async {
+    try {
+      await engine.setBeautyEffectOptions(enabled: enabled, options: options);
+    } catch (_) {}
+  }
+
   /// Camera + microphone are only needed to broadcast, not to watch.
   Future<bool> requestBroadcastPermissions() async {
     final statuses = await [Permission.camera, Permission.microphone].request();
@@ -170,11 +219,17 @@ class AgoraService {
 
   /// Mints a short-lived token via the `agora-token` Edge Function. Throws
   /// if the caller isn't signed in or the function rejects the request.
-  Future<AgoraToken> fetchToken({required String channelName, required bool asBroadcaster}) async {
-    final res = await supabase.functions.invoke('agora-token', body: {
-      'channelName': channelName,
-      'role': asBroadcaster ? 'publisher' : 'subscriber',
-    });
+  Future<AgoraToken> fetchToken({
+    required String channelName,
+    required bool asBroadcaster,
+  }) async {
+    final res = await supabase.functions.invoke(
+      'agora-token',
+      body: {
+        'channelName': channelName,
+        'role': asBroadcaster ? 'publisher' : 'subscriber',
+      },
+    );
     final data = res.data as Map<String, dynamic>;
     return AgoraToken(
       token: data['token'] as String,

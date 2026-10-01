@@ -5,24 +5,31 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
+import '../../core/utils/share_sheet.dart';
+import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
+import '../messages/messages_screen.dart';
 import '../../services/agora_service.dart';
+import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/tool_grid.dart';
 
 /// Viewer of an audio room — same proven audience-join + chat/gift/like
 /// chrome as [WatchLiveScreen] (lib/features/live/watch_live_screen.dart),
@@ -68,6 +75,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   bool _myMuted = false;
   Timer? _heartbeat;
 
+  // widget.stream.viewers is a one-time snapshot from whenever this stream
+  // object was fetched (e.g. the live feed) — it never changes on its own,
+  // so the "N in room" display looked frozen for the whole session. This
+  // mirrors the host's own broadcast screen, which already tracks it live.
+  late int _viewerCount = widget.stream.viewers;
+
   late final AnimationController _burstCtl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
@@ -84,6 +97,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       }
     });
     if (_isReal) {
+      // See the same note in watch_live_screen.dart — without this, a
+      // screen timeout suspends the Agora connection and this screen's own
+      // heartbeat/seat timers, which looked exactly like a random disconnect.
+      WakelockPlus.enable().catchError((_) {});
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
@@ -92,9 +109,17 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       // seated, this seat) from being swept by finalize_stale_presence if
       // the connection silently dies instead of a clean dispose.
       _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
-        supabase.rpc('heartbeat_viewer', params: {'p_stream_id': widget.stream.id});
+        // See the same note in watch_live_screen.dart — these used to be
+        // pure fire-and-forget with no error handling, so a silently-failed
+        // heartbeat_seat looked identical to a real disconnect once
+        // finalize_stale_presence swept the seat 90+ seconds later.
+        supabase
+            .rpc('heartbeat_viewer', params: {'p_stream_id': widget.stream.id})
+            .catchError((e) => debugPrint('heartbeat_viewer failed: $e'));
         if (_mySeat != null) {
-          supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id});
+          supabase
+              .rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id})
+              .catchError((e) => debugPrint('heartbeat_seat failed: $e'));
         }
       });
     } else {
@@ -119,7 +144,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     final rows = await supabase
         .from('live_stream_seats')
         .select(
-            'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)')
+          'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)',
+        )
         .eq('live_stream_id', widget.stream.id);
     final streamRow = await supabase
         .from('live_streams')
@@ -127,6 +153,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         .eq('id', widget.stream.id)
         .maybeSingle();
     if (mounted) {
+      final myId = supabase.auth.currentUser?.id;
       setState(() {
         for (final r in rows as List) {
           final profileRow = r['profiles'] as Map<String, dynamic>?;
@@ -134,6 +161,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             final seat = r['seat_number'] as int;
             _seatOccupants[seat] = AppUser.fromRow(profileRow);
             if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
+            // Without this, reopening the screen while already seated never
+            // restores _mySeat — see the same note in watch_live_screen.dart.
+            if (profileRow['id'] == myId) _mySeat = seat;
           }
         }
         final locked = streamRow?['locked_seats'] as List?;
@@ -181,7 +211,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           callback: (payload) {
             final seat = payload.newRecord['seat_number'] as int?;
             final muted = payload.newRecord['is_muted'] as bool?;
-            if (mounted && seat != null && muted != null) {
+            // heartbeat_seat touches this same row every ~30s (it's a plain
+            // UPDATE on last_heartbeat_at) and Postgres always broadcasts
+            // the full row, so this callback fires constantly for every
+            // seated person even when is_muted hasn't actually changed —
+            // skip the rebuild entirely when nothing observable did.
+            if (mounted &&
+                seat != null &&
+                muted != null &&
+                muted != _mutedSeats.contains(seat)) {
               setState(() {
                 if (muted) {
                   _mutedSeats.add(seat);
@@ -189,6 +227,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                   _mutedSeats.remove(seat);
                 }
               });
+              // Covers both the self-mute echo and the host forcing a mute —
+              // either way, the DB row is the source of truth, so bring the
+              // real mic state in line with it rather than only updating the
+              // icon (a host-forced mute previously showed the muted icon
+              // while the mic stayed live).
+              if (seat == _mySeat && muted != _myMuted) {
+                setState(() => _myMuted = muted);
+                _engine?.muteLocalAudioStream(muted);
+              }
             }
           },
         )
@@ -204,11 +251,30 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           callback: (payload) {
             final seat = payload.oldRecord['seat_number'] as int?;
             if (mounted && seat != null) {
+              final wasMe = _mySeat == seat;
               setState(() {
                 _seatOccupants.remove(seat);
                 _mutedSeats.remove(seat);
-                if (_mySeat == seat) _mySeat = null;
+                if (wasMe) {
+                  _mySeat = null;
+                  _myMuted = false;
+                }
               });
+              if (wasMe) {
+                final engine = _engine;
+                if (engine != null) {
+                  AgoraService.instance.switchRole(
+                    engine,
+                    channelName: widget.stream.id,
+                    asBroadcaster: false,
+                  );
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('The host removed you from your seat'),
+                  ),
+                );
+              }
             }
           },
         )
@@ -227,10 +293,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           callback: (payload) {
             final locked = payload.newRecord['locked_seats'] as List?;
             final count = payload.newRecord['seat_count'] as int?;
+            final viewers = payload.newRecord['viewer_count'] as int?;
             if (!mounted) return;
             setState(() {
               if (locked != null) _lockedSeats = locked.cast<int>().toSet();
               if (count != null) _seatCount = count;
+              if (viewers != null) _viewerCount = viewers;
             });
           },
         )
@@ -397,6 +465,21 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     }
   }
 
+  /// This screen is mounted by the app-root overlay in app.dart, not
+  /// pushed as a Navigator route — see live_broadcast_screen.dart's own
+  /// didPopRoute() for why WidgetsBindingObserver (already mixed in here
+  /// for the app-lifecycle handling above), not PopScope/BackButtonListener,
+  /// is what intercepts the system back button/gesture.
+  @override
+  Future<bool> didPopRoute() async {
+    if (!mounted) return false;
+    if (context.read<ActiveLiveSessionController>().isMinimized) {
+      return false;
+    }
+    await _showCloseDialog();
+    return true;
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -408,6 +491,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _seatsChannel?.unsubscribe();
     _seatStreamChannel?.unsubscribe();
     if (_isReal) {
+      WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
       unawaited(
         supabase.rpc(
@@ -498,6 +582,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         );
       }
       if (mounted) setState(() => _mySeat = seat);
+      // Narrows the window before the periodic heartbeat's next tick has to
+      // land cleanly to stay under finalize_stale_presence's 90s threshold
+      // — see the same note in watch_live_screen.dart.
+      supabase
+          .rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id})
+          .catchError((e) => debugPrint('heartbeat_seat failed: $e'));
     } catch (e) {
       if (mounted)
         messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
@@ -511,15 +601,16 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     setState(() => _myMuted = next);
     try {
       await _engine?.muteLocalAudioStream(next);
-      await supabase.rpc('set_seat_mute', params: {
-        'p_stream_id': widget.stream.id,
-        'p_muted': next,
-      });
+      await supabase.rpc(
+        'set_seat_mute',
+        params: {'p_stream_id': widget.stream.id, 'p_muted': next},
+      );
     } catch (e) {
       if (mounted) {
         setState(() => _myMuted = !next);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     }
   }
@@ -549,19 +640,42 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     setState(() => _chat.add(LiveChatLine(me, text)));
   }
 
+  /// Everyone worth gifting: the host plus anyone currently seated (the host
+  /// auto-occupies seat 1 in audio rooms, so this is usually redundant but
+  /// harmless — deduped by id either way). Feeds the gift sheet's own
+  /// avatar row.
+  List<AppUser> _giftRecipients() {
+    final byId = <String, AppUser>{widget.stream.host.id: widget.stream.host};
+    for (final u in _seatOccupants.values) {
+      byId[u.id] = u;
+    }
+    return byId.values.toList();
+  }
+
   Future<void> _openGifts() async {
-    final gift = await showGiftSheet(
+    final giftChoice = await showGiftSheet(
       context,
       hostName: widget.stream.host.name,
+      recipients: _giftRecipients(),
     );
-    if (gift == null || !mounted) return;
+    if (giftChoice == null || !mounted) return;
+    final gift = giftChoice.gift;
     final me = context.read<AuthController>().user ?? Mock.me;
+    final recipients = giftChoice.sendToAll
+        ? _giftRecipients()
+        : [if (giftChoice.recipient != null) giftChoice.recipient!];
+    if (recipients.isEmpty) return;
     try {
-      await context.read<WalletController>().sendGift(
-        gift,
-        widget.stream.host,
-        liveStreamId: _isReal ? widget.stream.id : null,
-      );
+      for (final recipient in recipients) {
+        final qty = giftChoice.sendToAll ? 1 : giftChoice.quantity;
+        for (var i = 0; i < qty; i++) {
+          await context.read<WalletController>().sendGift(
+            gift,
+            recipient,
+            liveStreamId: _isReal ? widget.stream.id : null,
+          );
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -570,10 +684,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       return;
     }
     if (!mounted) return;
+    final label = giftChoice.sendToAll
+        ? 'sent everyone ${gift.name}'
+        : giftChoice.quantity > 1
+        ? 'sent ${giftChoice.quantity}x ${gift.name}'
+        : 'sent ${gift.name}';
     if (!_isReal) {
       setState(() {
         _giftBurst = gift;
-        _chat.add(LiveChatLine(me, 'sent ${gift.name}', gift: true));
+        _chat.add(LiveChatLine(me, label, gift: true));
       });
     } else {
       setState(() => _giftBurst = gift);
@@ -581,38 +700,127 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _burstCtl.forward(from: 0);
   }
 
+  // Same 4-column icon-tile grid as the host's own Tools sheet
+  // (tool_grid.dart) — was a plain ListTile list before, which looked
+  // nothing like the host's screen despite covering the same actions.
   Future<void> _moreActions() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.bgElevated,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(
-                Icons.card_giftcard_rounded,
-                color: AppColors.gold,
-              ),
-              title: Text('Send a gift · ${compactCount(widget.stream.gifts)}'),
-              onTap: () => Navigator.pop(context, 'gift'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.reply_rounded),
-              title: const Text('Share'),
-              onTap: () => Navigator.pop(context, 'share'),
-            ),
-            const SizedBox(height: 8),
-          ],
+    await showToolGridSheet(
+      context,
+      title: 'More',
+      tools: [
+        ToolSpec(
+          Icons.card_giftcard_rounded,
+          'Gift',
+          AppColors.gold,
+          _openGifts,
         ),
-      ),
+        ToolSpec(
+          Icons.sports_esports_rounded,
+          'Games',
+          AppColors.primaryBright,
+          () => AppNav.games(context),
+        ),
+        ToolSpec(
+          Icons.savings_rounded,
+          'Coin Bag',
+          AppColors.gold,
+          () => AppNav.wallet(context),
+        ),
+        ToolSpec(
+          Icons.notifications_none_rounded,
+          'Notifications',
+          const Color(0xFF818CF8),
+          () => AppNav.notifications(context),
+        ),
+        ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF34D399), () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const MessagesScreen()),
+          );
+        }),
+        ToolSpec(
+          Icons.ios_share_rounded,
+          'Share',
+          AppColors.diamond,
+          () => showShareSheet(
+            context,
+            title: '${widget.stream.host.name} is live on SABALIVE — join now!',
+            url: 'sabalive://live/${widget.stream.id}',
+          ),
+        ),
+      ],
     );
-    if (choice == 'gift') await _openGifts();
   }
 
+  // This widget is mounted by the app-root overlay in app.dart, not pushed
+  // as a Navigator route. Back button handling is didPopRoute() above, not
+  // PopScope/BackButtonListener — see live_broadcast_screen.dart's own
+  // didPopRoute() doc comment for why.
   @override
   Widget build(BuildContext context) {
+    final minimized = context.watch<ActiveLiveSessionController>().isMinimized;
+    return minimized ? _buildMinimized() : _buildFull(context);
+  }
+
+  Widget _buildMinimized() {
+    // No Material wrapper — see the same note in live_broadcast_screen.dart.
+    return Stack(
+      children: [
+        LiveMinimizedBubble(
+          host: widget.stream.host,
+          onTap: () => context.read<ActiveLiveSessionController>().restore(),
+          onClose: _showCloseDialog,
+        ),
+      ],
+    );
+  }
+
+  /// "Minimize" is hidden while already minimized — see the same note in
+  /// watch_live_screen.dart.
+  Future<void> _showCloseDialog() async {
+    final session = context.read<SessionController>();
+    final liveSession = context.read<ActiveLiveSessionController>();
+    final following = session.isFollowing(widget.stream.host.id);
+    final minimized = liveSession.isMinimized;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        title: Text(minimized ? 'Leave live?' : 'Leaving already?'),
+        actions: [
+          if (!minimized)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'minimize'),
+              child: const Text('Minimize'),
+            ),
+          if (!following)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'follow'),
+              child: const Text('Follow & Leave'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'leave'),
+            child: const Text(
+              'Leave',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case 'minimize':
+        liveSession.minimize();
+      case 'follow':
+        session.toggleFollow(widget.stream.host.id);
+        liveSession.end();
+      case 'leave':
+        liveSession.end();
+    }
+  }
+
+  Widget _buildFull(BuildContext context) {
     final session = context.watch<SessionController>();
     final following = session.isFollowing(widget.stream.host.id);
 
@@ -788,7 +996,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          AppAvatar(name: widget.stream.host.name, size: 32),
+                          AppAvatar(
+                            name: widget.stream.host.name,
+                            imageUrl: widget.stream.host.avatarUrl,
+                            size: 32,
+                          ),
                           const SizedBox(width: 8),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -803,11 +1015,21 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                                   color: Colors.white,
                                 ),
                               ),
-                              Text(
-                                '${compactCount(widget.stream.viewers)} in room',
-                                style: const TextStyle(
-                                  fontSize: 9.5,
-                                  color: Colors.white70,
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => showViewerListSheet(
+                                  context,
+                                  widget.stream.id,
+                                ),
+                                child: Text(
+                                  '${compactCount(_viewerCount)} in room · '
+                                  '${_seatOccupants.length} on seat',
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    color: Colors.white70,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Colors.white38,
+                                  ),
                                 ),
                               ),
                             ],
@@ -848,7 +1070,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
               const LiveBadge(),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () => Navigator.pop(context),
+                onTap: _showCloseDialog,
                 child: Container(
                   width: 30,
                   height: 30,
@@ -994,7 +1216,6 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             _like,
             color: AppColors.live,
           ),
-          item(Icons.more_horiz_rounded, 'More', _moreActions),
           if (_mySeat != null)
             item(
               _myMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
@@ -1007,54 +1228,52 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     );
   }
 
+  // Same structure/order as the video watch screen's own _inputBar() (which
+  // itself matches the host's _bottomBar()) — More, Emoji, Gift, input
+  // pill, then a separate circular Send button. Was previously
+  // More/Gift/Emoji with the send icon inline in the pill, which had
+  // drifted from the other two live screens.
   Widget _inputBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          _barIcon(Icons.more_horiz_rounded, _moreActions),
+          const SizedBox(width: 6),
+          _barIcon(Icons.emoji_emotions_outlined, _openQuickEmoji),
+          const SizedBox(width: 6),
+          _barIcon(Icons.card_giftcard_rounded, _openGifts),
+          const SizedBox(width: 6),
           Expanded(
             child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              constraints: const BoxConstraints(minHeight: 42),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(24),
+                color: Colors.black.withValues(alpha: 0.42),
+                borderRadius: BorderRadius.circular(21),
                 border: Border.all(color: Colors.white24),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _msgController,
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      cursorColor: AppColors.primaryBright,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        hintText: 'Say something nice…',
-                        hintStyle: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 13,
-                        ),
-                      ),
-                      onSubmitted: (_) => _send(),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _send,
-                    child: const Icon(
-                      Icons.send_rounded,
-                      color: AppColors.primaryBright,
-                      size: 20,
-                    ),
-                  ),
-                ],
+              child: TextField(
+                controller: _msgController,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                cursorColor: AppColors.primaryBright,
+                minLines: 1,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: 'Say something nice…',
+                  hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
               ),
             ),
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: _like,
+            onTap: _send,
             child: Container(
               width: 42,
               height: 42,
@@ -1063,15 +1282,76 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.favorite_rounded,
+                Icons.send_rounded,
                 color: Colors.white,
-                size: 20,
+                size: 19,
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _barIcon(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.42),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 18),
+      ),
+    );
+  }
+
+  Future<void> _openQuickEmoji() async {
+    const emojis = [
+      '❤️',
+      '🔥',
+      '👏',
+      '😂',
+      '😍',
+      '😮',
+      '👍',
+      '🎉',
+      '💯',
+      '😢',
+      '😡',
+      '🙌',
+      '✨',
+      '🥳',
+      '😎',
+      '🤝',
+    ];
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.bgElevated,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: GridView.count(
+            crossAxisCount: 6,
+            shrinkWrap: true,
+            children: [
+              for (final e in emojis)
+                GestureDetector(
+                  onTap: () => Navigator.pop(context, e),
+                  child: Center(
+                    child: Text(e, style: const TextStyle(fontSize: 26)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _msgController.text = picked;
+    await _send();
   }
 }
 

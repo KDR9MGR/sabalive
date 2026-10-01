@@ -161,7 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
               : () => AppNav.userProfile(context, widget.user),
           child: Row(
             children: [
-              AppAvatar(name: widget.user.name, size: 36),
+              AppAvatar(name: widget.user.name, imageUrl: widget.user.avatarUrl, size: 36),
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,7 +171,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           fontFamily: 'Poppins',
                           fontWeight: FontWeight.w600,
                           fontSize: 15)),
-                  Text(widget.user.username == '@group' ? 'Group' : widget.user.username,
+                  Text(widget.user.username == '@group' ? 'Group' : 'ID: ${widget.user.displayId}',
                       style: const TextStyle(
                           fontSize: 11, color: AppColors.textMuted)),
                 ],

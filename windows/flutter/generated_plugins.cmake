@@ -5,6 +5,8 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   agora_rtc_engine
   app_links
+  file_selector_windows
+  firebase_core
   iris_method_channel
   permission_handler_windows
   share_plus
@@ -12,6 +14,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  flutter_local_notifications_windows
   jni
 )
 

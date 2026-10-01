@@ -67,7 +67,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     return _all
         .where((c) =>
             c.other.name.toLowerCase().contains(q) ||
-            c.other.username.toLowerCase().contains(q))
+            c.other.displayId.contains(q))
         .toList();
   }
 
@@ -259,7 +259,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
             onTap: () => _openChat(c),
             child: Column(
               children: [
-                AppAvatar(name: c.other.name, size: 52),
+                AppAvatar(name: c.other.name, imageUrl: c.other.avatarUrl, size: 52),
                 const SizedBox(height: 4),
                 SizedBox(
                   width: 56,
@@ -282,7 +282,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     return ListTile(
       onTap: () => _openChat(c),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-      leading: AppAvatar(name: c.other.name, size: 48),
+      leading: AppAvatar(name: c.other.name, imageUrl: c.other.avatarUrl, size: 48),
       title: Row(
         children: [
           Expanded(
@@ -344,7 +344,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              AppAvatar(name: c.other.name, size: 46),
+              AppAvatar(name: c.other.name, imageUrl: c.other.avatarUrl, size: 46),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -513,13 +513,13 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                             final u = _results[i];
                             return ListTile(
                               onTap: () => Navigator.pop(context, u),
-                              leading: AppAvatar(name: u.name, size: 42),
+                              leading: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 42),
                               title: Text(u.name,
                                   style: const TextStyle(
                                       fontFamily: 'Poppins',
                                       fontWeight: FontWeight.w600,
                                       fontSize: 13.5)),
-                              subtitle: Text(u.username,
+                              subtitle: Text('ID: ${u.displayId}',
                                   style: const TextStyle(
                                       fontSize: 11.5,
                                       color: AppColors.textMuted)),

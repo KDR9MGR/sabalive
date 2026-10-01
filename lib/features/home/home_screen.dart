@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/pills.dart';
 import '../../core/widgets/saba_logo.dart';
 import '../../core/widgets/section_header.dart';
+import '../../data/banners_repository.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
-import '../../state/auth_controller.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
@@ -25,20 +26,21 @@ class HomeScreen extends StatefulWidget {
 const _liveModes = [LiveMode.video, LiveMode.audio, LiveMode.pk];
 
 String _modeLabel(LiveMode m) => switch (m) {
-      LiveMode.video => 'Video',
-      LiveMode.audio => 'Audio',
-      LiveMode.pk => 'PK',
-    };
+  LiveMode.video => 'Video',
+  LiveMode.audio => 'Audio',
+  LiveMode.pk => 'PK',
+};
 
 IconData _modeIcon(LiveMode m) => switch (m) {
-      LiveMode.video => Icons.videocam_rounded,
-      LiveMode.audio => Icons.mic_rounded,
-      LiveMode.pk => Icons.bolt_rounded,
-    };
+  LiveMode.video => Icons.videocam_rounded,
+  LiveMode.audio => Icons.mic_rounded,
+  LiveMode.pk => Icons.bolt_rounded,
+};
 
 class _HomeScreenState extends State<HomeScreen> {
   int _cat = 0;
   final _cats = ['All', ..._liveModes.map(_modeLabel)];
+  late final Future<List<PromoBanner>> _banners = BannersRepository().homeTop();
 
   @override
   Widget build(BuildContext context) {
@@ -52,90 +54,93 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
-          onRefresh: () =>
-              context.read<LiveStreamsController>().refresh(),
+          onRefresh: () => context.read<LiveStreamsController>().refresh(),
           child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _header(context)),
-            SliverToBoxAdapter(child: _banner(context)),
-            const SliverToBoxAdapter(child: SizedBox(height: 18)),
-            SliverToBoxAdapter(
-              child: ChipRow(
-                items: _cats,
-                index: _cat,
-                onChanged: (i) => setState(() => _cat = i),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 18)),
-            SliverToBoxAdapter(
-              child: SectionHeader(
-                  title: source.isNotEmpty ? '🔴 Live Now' : 'Live Now',
-                  onAction: () => AppNav.search(context)),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            if (streams.isEmpty)
+            slivers: [
+              SliverToBoxAdapter(child: _header(context)),
+              SliverToBoxAdapter(child: _promoBannerCarousel()),
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                  child: Text(
-                    source.isEmpty
-                        ? "No one's live right now — be the first!"
-                        : 'No live rooms in this category right now.',
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-                  ),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverGrid(
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.82,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) => LiveCard(
-                      stream: streams[i],
-                      onTap: () => AppNav.watchLive(context, streams[i]),
-                    ),
-                    childCount: streams.length,
-                  ),
+                child: ChipRow(
+                  items: _cats,
+                  index: _cat,
+                  onChanged: (i) => setState(() => _cat = i),
                 ),
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            SliverToBoxAdapter(
-              child: SectionHeader(title: 'Categories', onAction: () {}),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            SliverToBoxAdapter(child: _categoryStrip(source)),
-            if (trending.isNotEmpty) ...[
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
               SliverToBoxAdapter(
                 child: SectionHeader(
-                  title: 'Trending Now',
+                  title: source.isNotEmpty ? '🔴 Live Now' : 'Live Now',
                   onAction: () => AppNav.search(context),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 4)),
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) => LiveListTile(
-                      stream: trending[i],
-                      rank: i + 1,
-                      onTap: () => AppNav.watchLive(context, trending[i]),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              if (streams.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                    child: Text(
+                      source.isEmpty
+                          ? "No one's live right now — be the first!"
+                          : 'No live rooms in this category right now.',
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 13,
+                      ),
                     ),
-                    childCount: trending.length < 4 ? trending.length : 4,
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 0.82,
+                        ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => LiveCard(
+                        stream: streams[i],
+                        onTap: () => AppNav.watchLive(context, streams[i]),
+                      ),
+                      childCount: streams.length,
+                    ),
                   ),
                 ),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              SliverToBoxAdapter(
+                child: SectionHeader(title: 'Categories', onAction: () {}),
               ),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(child: _categoryStrip(source)),
+              if (trending.isNotEmpty) ...[
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                SliverToBoxAdapter(
+                  child: SectionHeader(
+                    title: 'Trending Now',
+                    onAction: () => AppNav.search(context),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 4)),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => LiveListTile(
+                        stream: trending[i],
+                        rank: i + 1,
+                        onTap: () => AppNav.watchLive(context, trending[i]),
+                      ),
+                      childCount: trending.length < 4 ? trending.length : 4,
+                    ),
+                  ),
+                ),
+              ],
+              const SliverToBoxAdapter(child: SizedBox(height: 120)),
             ],
-            const SliverToBoxAdapter(child: SizedBox(height: 120)),
-          ],
           ),
         ),
       ),
@@ -149,21 +154,27 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const SabaLogo(size: 34, glow: false),
           const SizedBox(width: 10),
-          const Text('SABA LIVE',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                letterSpacing: 0.4,
-                color: AppColors.textPrimary,
-              )),
+          const Text(
+            'SABA LIVE',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              letterSpacing: 0.4,
+              color: AppColors.textPrimary,
+            ),
+          ),
           const Spacer(),
           _iconBtn(Icons.search_rounded, () => AppNav.search(context)),
-          _iconBtn(Icons.emoji_events_rounded,
-              () => context.read<SessionController>().tab = 3,
-              color: AppColors.gold),
-          _iconBtn(Icons.notifications_none_rounded,
-              () => AppNav.notifications(context)),
+          _iconBtn(
+            Icons.emoji_events_rounded,
+            () => context.read<SessionController>().tab = 3,
+            color: AppColors.gold,
+          ),
+          _iconBtn(
+            Icons.notifications_none_rounded,
+            () => AppNav.notifications(context),
+          ),
         ],
       ),
     );
@@ -177,43 +188,46 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _banner(BuildContext context) {
-    final name = context.watch<AuthController>().user?.name;
-    final greeting = (name == null || name.isEmpty)
-        ? 'Welcome back'
-        : 'Welcome back, ${name.split(' ').first}';
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: AppColors.brandGradient,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.magenta.withValues(alpha: 0.3),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
+  /// Real admin-managed promo banners (`banners` table, placement
+  /// `home_top`) — the sole home-top banner now (the old hardcoded
+  /// "Welcome back" text banner was removed per Rey, 2026-09-29: this slot
+  /// is admin-pushed ad content only). Sized to the 1600×580 ratio the
+  /// banner images are cut to. Tapping a banner with a link opens it.
+  Widget _promoBannerCarousel() {
+    return FutureBuilder<List<PromoBanner>>(
+      future: _banners,
+      builder: (context, snap) {
+        final banners = snap.data ?? const [];
+        if (banners.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: AspectRatio(
+              aspectRatio: 1600 / 580,
+              child: PageView.builder(
+                itemCount: banners.length,
+                itemBuilder: (context, i) {
+                  final banner = banners[i];
+                  return GestureDetector(
+                    onTap: banner.linkUrl == null
+                        ? null
+                        : () => launchUrl(
+                              Uri.parse(banner.linkUrl!),
+                              mode: LaunchMode.externalApplication,
+                            ),
+                    child: Image.network(
+                      banner.imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(greeting,
-              style: const TextStyle(
-                fontFamily: 'Poppins',
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-                color: Colors.white,
-              )),
-          const SizedBox(height: 4),
-          Text('Go live or find someone to watch right now',
-              style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontSize: 12.5)),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -240,20 +254,32 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: selected
-                            ? AppColors.primaryBright
-                            : AppColors.stroke),
+                      color: selected
+                          ? AppColors.primaryBright
+                          : AppColors.stroke,
+                    ),
                   ),
-                  child: Icon(_modeIcon(mode),
-                      color: AppColors.primaryBright, size: 26),
+                  child: Icon(
+                    _modeIcon(mode),
+                    color: AppColors.primaryBright,
+                    size: 26,
+                  ),
                 ),
                 const SizedBox(height: 6),
-                Text(_modeLabel(mode),
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary)),
-                Text('${compactCount(liveCount)} live',
-                    style: const TextStyle(
-                        fontSize: 9, color: AppColors.textMuted)),
+                Text(
+                  _modeLabel(mode),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  '${compactCount(liveCount)} live',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: AppColors.textMuted,
+                  ),
+                ),
               ],
             ),
           );

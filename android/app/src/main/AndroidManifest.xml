@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Android 13+ requires this to actually show FCM push notifications;
+         firebase_messaging's requestPermission() call (see
+         push_notifications_service.dart) prompts for it at runtime. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- We don't use the Advertising ID (no ads, no ad-attribution SDK). Explicitly
          removed so a future transitive dependency (e.g. a Google Play services
          library) can't silently merge it back in and contradict the "No" answer
@@ -54,6 +58,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.sabalive.in" />
             </intent-filter>
+            <!-- Content share links (e.g. sabalive://live/<id> from the Share
+                 sheet) — a separate scheme from the auth callback above so the
+                 two can never be confused with each other. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sabalive" />
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
@@ -70,6 +83,21 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- So url_launcher's canLaunchUrl/launchUrl can find WhatsApp/
+             Instagram on Android 11+, which restricts package visibility
+             by default. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="whatsapp"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="instagram"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

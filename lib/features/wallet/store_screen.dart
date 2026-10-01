@@ -30,7 +30,7 @@ class _StoreScreenState extends State<StoreScreen> {
 
   static const _categories = [
     (StoreCategory.frame, 'Frame'),
-    (StoreCategory.vip, 'VIP'),
+    (StoreCategory.vip, 'Lucky ID'),
     (StoreCategory.entryEffect, 'Entry'),
     (StoreCategory.vehicle, 'Garage'),
   ];

@@ -2,21 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/avatar_picker.dart';
 import '../../core/utils/formatters.dart';
-import '../../core/utils/ids.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
-import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import 'blocked_users_screen.dart';
 import 'widgets/equipped_cosmetics.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _uploadingPhoto = false;
 
   @override
   Widget build(BuildContext context) {
@@ -29,36 +36,83 @@ class ProfileScreen extends StatelessWidget {
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 120),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _cover(context, user),
-              const SizedBox(height: 56),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(user.name,
-                      style: Theme.of(context).textTheme.titleLarge),
-                  if (user.verified) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.verified_rounded,
-                        color: AppColors.primaryBright, size: 18),
-                  ],
-                ],
-              ),
-              _copyableLine(context, user.username),
-              const SizedBox(height: 2),
-              _copyableLine(context, 'ID: ${shortDisplayId(user.id)}'),
-              EquippedCosmetics(profileId: user.id),
-              const SizedBox(height: 12),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Text(
-                  user.bio.isEmpty ? 'Living the SABALIVE life ✨' : user.bio,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12.5, height: 1.5),
+                padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+                child: Row(
+                  children: [
+                    Text('My Profile', style: Theme.of(context).textTheme.headlineSmall),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => AppNav.settings(context),
+                      icon: const Icon(Icons.settings_outlined),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _photo(context, user),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(user.name,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.titleMedium),
+                              ),
+                              if (user.verified) ...[
+                                const SizedBox(width: 6),
+                                const Icon(Icons.verified_rounded,
+                                    color: AppColors.primaryBright, size: 16),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          _copyableLine(context, 'ID: ${user.displayId}'),
+                          const SizedBox(height: 6),
+                          EquippedCosmetics(profileId: user.id),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              if (user.gender != null)
+                                _pill(
+                                  icon: _genderIcon(user.gender!),
+                                  text: _genderLabel(user.gender!),
+                                  bg: AppColors.success.withValues(alpha: 0.18),
+                                  fg: AppColors.success,
+                                ),
+                              _pill(
+                                icon: Icons.star_rounded,
+                                text: '${user.level}',
+                                bg: AppColors.card,
+                                fg: AppColors.gold,
+                              ),
+                              _pill(
+                                icon: Icons.diamond_rounded,
+                                text: compactCount(wallet.diamonds),
+                                bg: AppColors.primary.withValues(alpha: 0.18),
+                                fg: AppColors.primaryBright,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Row(
@@ -74,39 +128,110 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
+              if (user.bio.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(user.bio,
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12.5, height: 1.5)),
+                ),
+              if (user.bio.isNotEmpty) const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GradientButton(
-                        label: 'Edit Profile',
-                        height: 46,
-                        onPressed: () => AppNav.editProfile(context),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinePillButton(
-                        label: 'Go Live',
-                        icon: Icons.podcasts_rounded,
-                        height: 46,
-                        onPressed: () => AppNav.goLive(context),
-                      ),
-                    ),
-                  ],
+                child: GradientButton(
+                  label: 'Edit Profile',
+                  height: 46,
+                  onPressed: () => AppNav.editProfile(context),
                 ),
               ),
-              const SizedBox(height: 20),
-              _walletStrip(context, wallet),
               const SizedBox(height: 18),
-              _badges(context, user),
-              const SizedBox(height: 10),
-              _menu(context),
+              _vipBanner(context),
+              const SizedBox(height: 16),
+              _walletStrip(context, wallet),
+              const SizedBox(height: 20),
+              _menuGrid(context, user),
+              const SizedBox(height: 8),
+              _signOut(context),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _photo(BuildContext context, AppUser user) {
+    return GestureDetector(
+      onTap: _uploadingPhoto
+          ? null
+          : () => pickAndUploadAvatar(context,
+              onBusyChanged: (busy) {
+                if (mounted) setState(() => _uploadingPhoto = busy);
+              }),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AppAvatar(name: user.name, imageUrl: user.avatarUrl, size: 92, ring: true),
+          if (_uploadingPhoto)
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                    shape: BoxShape.circle, color: Colors.black54),
+                alignment: Alignment.center,
+                child: const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+              ),
+            ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.bg, width: 2),
+              ),
+              child: const Icon(Icons.camera_alt_rounded, size: 13, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _genderIcon(String g) => switch (g) {
+        'female' => Icons.female_rounded,
+        'male' => Icons.male_rounded,
+        _ => Icons.transgender_rounded,
+      };
+
+  String _genderLabel(String g) => switch (g) {
+        'female' => 'F',
+        'male' => 'M',
+        _ => 'O',
+      };
+
+  Widget _pill({
+    required IconData icon,
+    required String text,
+    required Color bg,
+    required Color fg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 3),
+          Text(text,
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: fg)),
+        ],
       ),
     );
   }
@@ -133,61 +258,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _cover(BuildContext context, AppUser user) {
-    return SizedBox(
-      height: 150,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            height: 130,
-            decoration: const BoxDecoration(gradient: AppColors.brandGradient),
-          ),
-          Positioned(
-            top: 12,
-            right: 8,
-            child: IconButton(
-              onPressed: () => AppNav.settings(context),
-              icon: const Icon(Icons.settings_outlined, color: Colors.white),
-            ),
-          ),
-          Positioned(
-            bottom: -44,
-            left: 0,
-            right: 0,
-            child: Column(
-              children: [
-                AppAvatar(name: user.name, size: 96, ring: true),
-                Transform.translate(
-                  offset: const Offset(0, -14),
-                  child: GestureDetector(
-                    onTap: () => AppNav.myLevel(context),
-                    child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                        gradient: AppColors.goldGradient,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.bg, width: 2),
-                      ),
-                      child: Text('Lv ${user.level}',
-                          style: const TextStyle(
-                            fontFamily: 'Poppins',
-                            fontWeight: FontWeight.w700,
-                            fontSize: 10,
-                            color: Color(0xFF3A1A5E),
-                          )),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _stat(
           BuildContext context, String label, String value, VoidCallback? onTap) =>
       GestureDetector(
@@ -209,6 +279,36 @@ class ProfileScreen extends StatelessWidget {
 
   Widget _divider() =>
       Container(width: 1, height: 28, color: AppColors.stroke);
+
+  Widget _vipBanner(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _soon(context, 'VIP'),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: AppColors.goldGradient,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.diamond_rounded, color: Color(0xFF3A1A5E), size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('VIP  ·  Luxury Privileges',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: Color(0xFF3A1A5E),
+                  )),
+            ),
+            Icon(Icons.chevron_right_rounded, color: Color(0xFF3A1A5E)),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _walletStrip(BuildContext context, WalletController wallet) {
     return Container(
@@ -265,118 +365,91 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _badges(BuildContext context, AppUser user) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => AppNav.badges(context, user.id),
-            child: Row(
-              children: [
-                const Text('Badges',
-                    style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15)),
-                const Spacer(),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.textMuted, size: 18),
-              ],
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 62,
-          child: FutureBuilder<List<({String emoji, String name})>>(
-            future: SocialRepository().userBadges(user.id),
-            builder: (context, snap) {
-              final badges = snap.data ?? const [];
-              if (snap.connectionState == ConnectionState.done && badges.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Text('No badges yet — earn them by streaming & gifting.',
-                      style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                );
-              }
-              return ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: badges.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (context, i) => Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: AppColors.tints[i % AppColors.tints.length],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.center,
-                  child:
-                      Text(badges[i].emoji, style: const TextStyle(fontSize: 24)),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+  void _soon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$feature is coming soon')),
     );
   }
 
-  Widget _menu(BuildContext context) {
+  Widget _menuGrid(BuildContext context, AppUser user) {
     final items = <(IconData, String, VoidCallback)>[
-      (Icons.bar_chart_rounded, 'Creator Dashboard',
-          () => AppNav.hostDashboard(context)),
-      (Icons.account_balance_wallet_rounded, 'Wallet & Earnings',
-          () => AppNav.wallet(context)),
-      (Icons.storefront_rounded, 'Coin Reseller',
-          () => AppNav.sellCoins(context)),
-      (Icons.apartment_rounded, 'Apply for Agency',
-          () => AppNav.applyAgency(context)),
-      (Icons.visibility_outlined, 'Profile Visitors',
-          () => AppNav.profileVisitors(context)),
-      (Icons.person_add_alt_1_rounded, 'My Invites',
-          () => AppNav.referrals(context)),
-      (Icons.military_tech_rounded, 'My Level', () => AppNav.myLevel(context)),
+      (Icons.bar_chart_rounded, 'Creator Dashboard', () => AppNav.hostDashboard(context)),
+      (Icons.account_balance_wallet_rounded, 'Wallet & Earnings', () => AppNav.wallet(context)),
       (Icons.storefront_rounded, 'Store', () => AppNav.store(context)),
+      (Icons.military_tech_rounded, 'My Level', () => AppNav.myLevel(context)),
       (Icons.shopping_bag_outlined, 'My Bag', () => AppNav.bag(context)),
+      (Icons.apartment_rounded, 'Apply for Agency', () => AppNav.applyAgency(context)),
+      (Icons.workspace_premium_rounded, 'Badges', () => AppNav.badges(context, user.id)),
+      (Icons.person_add_alt_1_rounded, 'Invite a Friend', () => AppNav.referrals(context)),
+      (Icons.visibility_outlined, 'Profile Visitors', () => AppNav.profileVisitors(context)),
+      (
+        Icons.block_rounded,
+        'Blocked Users',
+        () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const BlockedUsersScreen())),
+      ),
+      (Icons.auto_awesome_outlined, 'Room Effects', () => _soon(context, 'Room Effects')),
       (Icons.feedback_outlined, 'Feedback', () => AppNav.feedback(context)),
-      (Icons.notifications_none_rounded, 'Notifications',
-          () => AppNav.notifications(context)),
-      (Icons.shield_outlined, 'Privacy & Safety',
-          () => AppNav.settings(context)),
+      (Icons.notifications_none_rounded, 'Notifications', () => AppNav.notifications(context)),
+      (Icons.translate_rounded, 'Language', () => _soon(context, 'Language selection')),
+      (Icons.shield_outlined, 'Privacy & Safety', () => AppNav.settings(context)),
+      (Icons.help_outline_rounded, 'Help & Support', () => AppNav.settings(context)),
+      (Icons.groups_rounded, 'Family', () => _soon(context, 'Family')),
       (Icons.settings_outlined, 'Settings', () => AppNav.settings(context)),
-      (Icons.help_outline_rounded, 'Help & Support',
-          () => AppNav.settings(context)),
-      (Icons.logout_rounded, 'Sign Out',
-          () => context.read<AuthController>().signOut()),
     ];
-    return Column(
-      children: [
-        for (final (icon, label, onTap) in items)
-          ListTile(
-            onTap: onTap,
-            leading: Icon(icon,
-                color: label == 'Sign Out'
-                    ? AppColors.danger
-                    : AppColors.primaryBright,
-                size: 20),
-            title: Text(label,
-                style: TextStyle(
-                    fontSize: 13.5,
-                    color: label == 'Sign Out'
-                        ? AppColors.danger
-                        : AppColors.textPrimary)),
-            trailing: label == 'Sign Out'
-                ? null
-                : const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.textMuted),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GridView.count(
+        crossAxisCount: 3,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        childAspectRatio: 0.86,
+        children: [
+          for (final (icon, label, onTap) in items) _gridTile(icon, label, onTap),
+        ],
+      ),
+    );
+  }
+
+  Widget _gridTile(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.stroke),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: AppColors.primaryBright, size: 23),
           ),
-      ],
+          const SizedBox(height: 6),
+          Text(label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 10.5, color: AppColors.textSecondary, height: 1.2)),
+        ],
+      ),
+    );
+  }
+
+  Widget _signOut(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: ListTile(
+        onTap: () => context.read<AuthController>().signOut(),
+        leading: const Icon(Icons.logout_rounded, color: AppColors.danger, size: 20),
+        title: const Text('Sign Out',
+            style: TextStyle(fontSize: 13.5, color: AppColors.danger)),
+      ),
     );
   }
 }

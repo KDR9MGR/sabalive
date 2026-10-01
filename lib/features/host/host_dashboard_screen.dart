@@ -53,44 +53,10 @@ class _HostDashboardScreenState extends State<HostDashboardScreen> {
     }
   }
 
-  Future<void> _withdraw() async {
-    final wallet = context.read<WalletController>();
-    final diamonds = wallet.diamonds;
-    if (diamonds < HostRepository.minWithdrawalDiamonds) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Need at least ${HostRepository.minWithdrawalDiamonds} diamonds to withdraw'),
-      ));
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        title: const Text('Request withdrawal'),
-        content: Text(
-            'Withdraw all $diamonds diamonds (≈ ₹${(diamonds * 0.82).toStringAsFixed(0)})? '
-            'An admin reviews payout requests.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Request')),
-        ],
-      ),
+  void _withdraw() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Withdrawals are coming soon')),
     );
-    if (confirmed != true || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await _repo.requestWithdrawal(diamonds);
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Withdrawal requested')));
-      await _load();
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
   }
 
   @override

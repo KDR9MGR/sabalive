@@ -9,8 +9,8 @@ import '../../data/social_repository.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 
-/// Coin reseller / agent tool — send coins to another user by @username.
-/// Open to any signed-in user.
+/// Coin reseller / agent tool — send coins to another user by their real ID
+/// (the "ID: …" shown/copied on every profile). Open to any signed-in user.
 class SellCoinsScreen extends StatefulWidget {
   const SellCoinsScreen({super.key});
 
@@ -63,13 +63,13 @@ class _SellCoinsScreenState extends State<SellCoinsScreen> {
     setState(() => _sending = true);
     try {
       await _repo.sellCoins(
-        recipientUsername: to,
+        recipientId: to,
         coins: amount,
         note: _note.text.trim().isEmpty ? null : _note.text.trim(),
       );
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(
-          content: Text('Sent ${withThousands(amount)} coins to @$to')));
+          content: Text('Sent ${withThousands(amount)} coins to ID $to')));
       _to.clear();
       _amount.clear();
       _note.clear();
@@ -116,12 +116,14 @@ class _SellCoinsScreenState extends State<SellCoinsScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text('Recipient @username',
+          const Text('Recipient ID',
               style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
           const SizedBox(height: 6),
           TextField(
             controller: _to,
-            decoration: const InputDecoration(hintText: 'e.g. priya_23'),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(hintText: 'e.g. 100234'),
           ),
           const SizedBox(height: 14),
           const Text('Amount (coins)',

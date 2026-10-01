@@ -5,6 +5,7 @@ import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_thumb.dart';
 import '../../../core/widgets/pills.dart';
 import '../../../data/models.dart';
+import '../../../router/app_nav.dart';
 import '../../../theme/app_colors.dart';
 
 /// Grid / list card for a live stream. [aspect] controls the thumbnail shape.
@@ -24,6 +25,7 @@ class LiveCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final photo = stream.host.avatarUrl;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -31,74 +33,112 @@ class LiveCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: AspectRatio(
           aspectRatio: aspect,
-          child: AppThumb(
-            seed: stream.id + stream.host.name,
-            borderRadius: 18,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const LiveBadge(dense: true),
-                      const Spacer(),
-                      CountChip(
-                          icon: Icons.visibility_rounded,
-                          label: compactCount(stream.viewers)),
+          // No real video thumbnail exists for a card — the host's own
+          // photo makes a far more recognizable background than an
+          // abstract gradient once they've actually set one.
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              AppThumb(seed: stream.id + stream.host.name, borderRadius: 18),
+              if (photo != null && photo.isNotEmpty)
+                Image.network(
+                  photo,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black38,
+                      Colors.transparent,
+                      Colors.black54,
                     ],
+                    stops: [0, 0.4, 1],
                   ),
-                  if (rank != null) ...[
-                    const SizedBox(height: 6),
-                    Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        gradient: AppColors.goldGradient,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text('#$rank',
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const LiveBadge(dense: true),
+                        const Spacer(),
+                        CountChip(
+                          icon: Icons.visibility_rounded,
+                          label: compactCount(stream.viewers),
+                        ),
+                      ],
+                    ),
+                    if (rank != null) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: AppColors.goldGradient,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '#$rank',
                           style: const TextStyle(
                             fontFamily: 'Poppins',
                             fontWeight: FontWeight.w700,
                             fontSize: 10,
                             color: Color(0xFF3A1A5E),
-                          )),
-                    ),
-                  ],
-                  const Spacer(),
-                  Row(
-                    children: [
-                      AppAvatar(name: stream.host.name, size: 26),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          stream.host.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'Poppins',
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                            color: Colors.white,
                           ),
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    stream.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: Colors.white.withValues(alpha: 0.75),
+                    const Spacer(),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => AppNav.userProfile(context, stream.host),
+                      child: Row(
+                        children: [
+                          AppAvatar(
+                            name: stream.host.name,
+                            imageUrl: stream.host.avatarUrl,
+                            size: 26,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              stream.host.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Poppins',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 3),
+                    Text(
+                      stream.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: Colors.white.withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -108,7 +148,12 @@ class LiveCard extends StatelessWidget {
 
 /// Compact horizontal row entry (Trending Now, list feeds).
 class LiveListTile extends StatelessWidget {
-  const LiveListTile({super.key, required this.stream, required this.onTap, this.rank});
+  const LiveListTile({
+    super.key,
+    required this.stream,
+    required this.onTap,
+    this.rank,
+  });
 
   final LiveStream stream;
   final VoidCallback onTap;
@@ -135,7 +180,14 @@ class LiveListTile extends StatelessWidget {
                   Positioned(
                     left: 4,
                     top: 4,
-                    child: AppAvatar(name: stream.host.name, size: 22),
+                    child: GestureDetector(
+                      onTap: () => AppNav.userProfile(context, stream.host),
+                      child: AppAvatar(
+                        name: stream.host.name,
+                        imageUrl: stream.host.avatarUrl,
+                        size: 22,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -148,11 +200,14 @@ class LiveListTile extends StatelessWidget {
                   Row(
                     children: [
                       if (rank != null) ...[
-                        Text('#$rank ',
-                            style: const TextStyle(
-                                color: AppColors.gold,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13)),
+                        Text(
+                          '#$rank ',
+                          style: const TextStyle(
+                            color: AppColors.gold,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
                       ],
                       Flexible(
                         child: Text(
@@ -169,8 +224,11 @@ class LiveListTile extends StatelessWidget {
                       ),
                       if (stream.host.verified) ...[
                         const SizedBox(width: 4),
-                        const Icon(Icons.verified_rounded,
-                            size: 13, color: AppColors.primaryBright),
+                        const Icon(
+                          Icons.verified_rounded,
+                          size: 13,
+                          color: AppColors.primaryBright,
+                        ),
                       ],
                     ],
                   ),
@@ -180,7 +238,9 @@ class LiveListTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12),
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -193,12 +253,19 @@ class LiveListTile extends StatelessWidget {
                 const SizedBox(height: 5),
                 Row(
                   children: [
-                    const Icon(Icons.visibility_rounded,
-                        size: 12, color: AppColors.textMuted),
+                    const Icon(
+                      Icons.visibility_rounded,
+                      size: 12,
+                      color: AppColors.textMuted,
+                    ),
                     const SizedBox(width: 3),
-                    Text(compactCount(stream.viewers),
-                        style: const TextStyle(
-                            color: AppColors.textMuted, fontSize: 11)),
+                    Text(
+                      compactCount(stream.viewers),
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
                   ],
                 ),
               ],

@@ -289,7 +289,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
                     fontWeight: FontWeight.w700,
                     color: AppColors.textMuted)),
           ),
-          AppAvatar(name: e.user.name, size: 40),
+          AppAvatar(name: e.user.name, imageUrl: e.user.avatarUrl, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -344,6 +344,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
                   color: AppColors.gold, size: 22),
             AppAvatar(
               name: e.user.name,
+              imageUrl: e.user.avatarUrl,
               size: place == 1 ? 64 : 52,
               ring: true,
               ringColor: medal,

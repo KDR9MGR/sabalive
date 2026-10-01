@@ -70,6 +70,37 @@ class SocialRepository {
         row, AppUser.fromRow(row['profiles'] as Map<String, dynamic>));
   }
 
+  /// Everyone currently watching [streamId] — public (any viewer can see
+  /// who else is watching, not just the host), most recent join first.
+  Future<List<AppUser>> currentViewers(String streamId) async {
+    final rows = (await supabase
+            .from('live_stream_viewers')
+            .select('joined_at, profiles!live_stream_viewers_viewer_id_fkey(*)')
+            .eq('live_stream_id', streamId)
+            .isFilter('left_at', null)
+            .order('joined_at', ascending: false) as List)
+        .cast<Map<String, dynamic>>();
+    return [
+      for (final r in rows)
+        if (r['profiles'] != null) AppUser.fromRow(r['profiles'] as Map<String, dynamic>),
+    ];
+  }
+
+  /// Used by the share-link deep-link handler to resolve a stream id (from
+  /// a `sabalive://live/<id>` link) back into a real, currently-live stream.
+  Future<LiveStream?> streamById(String id) async {
+    if (!isRealId(id)) return null;
+    final row = await supabase
+        .from('live_streams')
+        .select('*, profiles!live_streams_host_id_fkey(*)')
+        .eq('id', id)
+        .eq('status', 'live')
+        .maybeSingle();
+    if (row == null || row['profiles'] == null) return null;
+    return LiveStream.fromRow(
+        row, AppUser.fromRow(row['profiles'] as Map<String, dynamic>));
+  }
+
   Future<List<AppUser>> followList(String userId, {required bool followers}) async {
     final col = followers ? 'follower_id' : 'followee_id';
     final other = followers ? 'followee_id' : 'follower_id';
@@ -87,13 +118,19 @@ class SocialRepository {
   }
 
   // ───────────────────────────────── search
+  /// Usernames aren't shown or shared between users anymore — people find
+  /// each other by display name or by the real `display_id` (the "ID: …"
+  /// shown/copied on every profile).
   Future<List<AppUser>> searchUsers(String query) async {
     final q = query.trim().replaceAll(RegExp(r'[,()*]'), '');
     if (q.isEmpty) return const [];
+    final asId = int.tryParse(q);
+    final filter =
+        asId != null ? 'display_id.eq.$asId,name.ilike.%$q%' : 'name.ilike.%$q%';
     final rows = (await supabase
             .from('profiles')
             .select()
-            .or('username.ilike.%$q%,name.ilike.%$q%')
+            .or(filter)
             .limit(30) as List)
         .cast<Map<String, dynamic>>();
     return [for (final r in rows) AppUser.fromRow(r)];
@@ -237,15 +274,16 @@ class SocialRepository {
   }
 
   // ───────────────────────────────── coin selling
-  /// Transfers [coins] from the caller (an approved reseller) to the user with
-  /// [recipientUsername]. Server-authoritative (`resell_coins`).
+  /// Transfers [coins] from the caller to the user with [recipientId] (their
+  /// real display_id, the "ID: …" shown/copied on every profile).
+  /// Server-authoritative (`resell_coins`); open to any signed-in user.
   Future<void> sellCoins({
-    required String recipientUsername,
+    required String recipientId,
     required int coins,
     String? note,
   }) async {
     await supabase.rpc('resell_coins', params: {
-      'p_recipient': recipientUsername,
+      'p_recipient': recipientId,
       'p_coins': coins,
       'p_note': note,
     });

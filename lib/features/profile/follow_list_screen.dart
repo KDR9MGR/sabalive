@@ -75,13 +75,13 @@ class _FollowListScreenState extends State<FollowListScreen> {
                           final u = _users[i];
                           return ListTile(
                             onTap: () => AppNav.userProfile(context, u),
-                            leading: AppAvatar(name: u.name, size: 44),
+                            leading: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 44),
                             title: Text(u.name,
                                 style: const TextStyle(
                                     fontFamily: 'Poppins',
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14)),
-                            subtitle: Text(u.username,
+                            subtitle: Text('ID: ${u.displayId}',
                                 style: const TextStyle(
                                     fontSize: 11.5, color: AppColors.textMuted)),
                             trailing: u.isLive

@@ -264,7 +264,7 @@ class _MyInvitesTabState extends State<_MyInvitesTab> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: [
-                  AppAvatar(name: e.user.name, size: 40),
+                  AppAvatar(name: e.user.name, imageUrl: e.user.avatarUrl, size: 40),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(e.user.name,

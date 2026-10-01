@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
@@ -87,7 +88,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              Center(child: AppAvatar(name: _user.name, size: 96, ring: true)),
+              Center(child: AppAvatar(name: _user.name, imageUrl: _user.avatarUrl, size: 96, ring: true)),
               const SizedBox(height: 12),
               Center(
                 child: Row(
@@ -103,11 +104,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   ],
                 ),
               ),
-              Center(
-                child: Text(_user.username,
-                    style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 12.5)),
-              ),
+              Center(child: _copyableId(context, _user.displayId)),
               Center(child: EquippedCosmetics(profileId: _user.id)),
               if (_user.bio.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -216,6 +213,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       );
 
   Widget _dot() => Container(width: 1, height: 28, color: AppColors.stroke);
+
+  Widget _copyableId(BuildContext context, String id) {
+    final text = 'ID: $id';
+    return GestureDetector(
+      onTap: () async {
+        await Clipboard.setData(ClipboardData(text: id));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Copied "$id"'), duration: const Duration(seconds: 1)),
+          );
+        }
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+          const SizedBox(width: 4),
+          const Icon(Icons.copy_rounded, size: 13, color: AppColors.textMuted),
+        ],
+      ),
+    );
+  }
 
   Future<void> _overflowMenu() async {
     final choice = await showModalBottomSheet<String>(

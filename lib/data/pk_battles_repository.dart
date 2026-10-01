@@ -19,21 +19,31 @@ class PkBattleInfo {
     this.startedAt,
     this.endsAt,
     this.winner,
+    this.lastGiftId,
+    this.lastGiftSide,
+    this.lastGiftSeq = 0,
   });
 
   factory PkBattleInfo.fromRow(Map<String, dynamic> r) => PkBattleInfo(
-        id: r['id'] as String,
-        streamAId: r['stream_a_id'] as String,
-        streamBId: r['stream_b_id'] as String,
-        hostAId: r['host_a_id'] as String,
-        hostBId: r['host_b_id'] as String,
-        status: r['status'] as String,
-        scoreA: r['score_a'] as int? ?? 0,
-        scoreB: r['score_b'] as int? ?? 0,
-        startedAt: r['started_at'] == null ? null : DateTime.parse(r['started_at'] as String),
-        endsAt: r['ends_at'] == null ? null : DateTime.parse(r['ends_at'] as String),
-        winner: r['winner'] as String?,
-      );
+    id: r['id'] as String,
+    streamAId: r['stream_a_id'] as String,
+    streamBId: r['stream_b_id'] as String,
+    hostAId: r['host_a_id'] as String,
+    hostBId: r['host_b_id'] as String,
+    status: r['status'] as String,
+    scoreA: r['score_a'] as int? ?? 0,
+    scoreB: r['score_b'] as int? ?? 0,
+    startedAt: r['started_at'] == null
+        ? null
+        : DateTime.parse(r['started_at'] as String),
+    endsAt: r['ends_at'] == null
+        ? null
+        : DateTime.parse(r['ends_at'] as String),
+    winner: r['winner'] as String?,
+    lastGiftId: r['last_gift_id'] as String?,
+    lastGiftSide: r['last_gift_side'] as String?,
+    lastGiftSeq: r['last_gift_seq'] as int? ?? 0,
+  );
 
   final String id;
   final String streamAId;
@@ -46,6 +56,15 @@ class PkBattleInfo {
   final DateTime? startedAt;
   final DateTime? endsAt;
   final String? winner;
+
+  /// Piggybacks on this same realtime-subscribed row (rather than a
+  /// separate ephemeral broadcast channel) so a gift landing is visible to
+  /// both hosts and every viewer on both sides — lastGiftSeq always
+  /// increments, so a repeat of the same gift/side is still detectable as
+  /// a new event.
+  final String? lastGiftId;
+  final String? lastGiftSide;
+  final int lastGiftSeq;
 
   String get agoraChannel => 'pk-$id';
   bool get isLive => status == 'live';
@@ -66,18 +85,21 @@ class PkBattlesRepository {
   String? get _me => supabase.auth.currentUser?.id;
 
   Future<PkBattleInfo> invite(String myStreamId, String targetStreamId) async {
-    final row = await supabase.rpc('invite_pk_opponent', params: {
-      'p_my_stream_id': myStreamId,
-      'p_target_stream_id': targetStreamId,
-    });
+    final row = await supabase.rpc(
+      'invite_pk_opponent',
+      params: {
+        'p_my_stream_id': myStreamId,
+        'p_target_stream_id': targetStreamId,
+      },
+    );
     return PkBattleInfo.fromRow(row as Map<String, dynamic>);
   }
 
   Future<PkBattleInfo> respond(String battleId, bool accept) async {
-    final row = await supabase.rpc('respond_to_pk_invite', params: {
-      'p_battle_id': battleId,
-      'p_accept': accept,
-    });
+    final row = await supabase.rpc(
+      'respond_to_pk_invite',
+      params: {'p_battle_id': battleId, 'p_accept': accept},
+    );
     return PkBattleInfo.fromRow(row as Map<String, dynamic>);
   }
 
@@ -85,24 +107,29 @@ class PkBattlesRepository {
     await supabase.rpc('cancel_pk_battle', params: {'p_battle_id': battleId});
   }
 
-  Future<PkBattleInfo> begin(String battleId, {int durationSeconds = 300}) async {
-    final row = await supabase.rpc('begin_pk_battle', params: {
-      'p_battle_id': battleId,
-      'p_duration_seconds': durationSeconds,
-    });
+  Future<PkBattleInfo> begin(
+    String battleId, {
+    int durationSeconds = 300,
+  }) async {
+    final row = await supabase.rpc(
+      'begin_pk_battle',
+      params: {'p_battle_id': battleId, 'p_duration_seconds': durationSeconds},
+    );
     return PkBattleInfo.fromRow(row as Map<String, dynamic>);
   }
 
   Future<void> sendGift(String battleId, String side, Gift gift) async {
-    await supabase.rpc('send_pk_gift', params: {
-      'p_battle_id': battleId,
-      'p_side': side,
-      'p_gift_id': gift.id,
-    });
+    await supabase.rpc(
+      'send_pk_gift',
+      params: {'p_battle_id': battleId, 'p_side': side, 'p_gift_id': gift.id},
+    );
   }
 
   Future<PkBattleInfo> finalizeNow(String battleId) async {
-    final row = await supabase.rpc('finalize_pk_battle', params: {'p_battle_id': battleId});
+    final row = await supabase.rpc(
+      'finalize_pk_battle',
+      params: {'p_battle_id': battleId},
+    );
     return PkBattleInfo.fromRow(row as Map<String, dynamic>);
   }
 
@@ -122,7 +149,9 @@ class PkBattlesRepository {
   }
 
   /// Fires whenever someone invites me (my stream is `host_b_id`).
-  RealtimeChannel subscribeIncomingInvites(void Function(PkBattleInfo) onInvite) {
+  RealtimeChannel subscribeIncomingInvites(
+    void Function(PkBattleInfo) onInvite,
+  ) {
     final me = _me;
     return supabase
         .channel('pk-invites:$me')
@@ -141,7 +170,10 @@ class PkBattlesRepository {
   }
 
   /// Watches one battle row for status/score transitions.
-  RealtimeChannel subscribeBattle(String battleId, void Function(PkBattleInfo) onChange) {
+  RealtimeChannel subscribeBattle(
+    String battleId,
+    void Function(PkBattleInfo) onChange,
+  ) {
     return supabase
         .channel('pk-battle:$battleId')
         .onPostgresChanges(
@@ -161,7 +193,10 @@ class PkBattlesRepository {
   /// Before my stream has a battle yet, this is how I learn one exists —
   /// unfiltered (mirrors LiveStreamsController's existing table-wide
   /// subscription), checked client-side against [streamId].
-  RealtimeChannel subscribeDiscovery(String streamId, void Function(PkBattleInfo) onMatch) {
+  RealtimeChannel subscribeDiscovery(
+    String streamId,
+    void Function(PkBattleInfo) onMatch,
+  ) {
     return supabase
         .channel('pk-discovery:$streamId')
         .onPostgresChanges(
@@ -170,14 +205,19 @@ class PkBattlesRepository {
           table: 'pk_battles',
           callback: (p) {
             final row = PkBattleInfo.fromRow(p.newRecord);
-            if (row.streamAId == streamId || row.streamBId == streamId) onMatch(row);
+            if (row.streamAId == streamId || row.streamBId == streamId)
+              onMatch(row);
           },
         )
         .subscribe();
   }
 
   Future<AppUser?> profile(String userId) async {
-    final row = await supabase.from('profiles').select().eq('id', userId).maybeSingle();
+    final row = await supabase
+        .from('profiles')
+        .select()
+        .eq('id', userId)
+        .maybeSingle();
     return row == null ? null : AppUser.fromRow(row);
   }
 }

@@ -75,13 +75,13 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
                       itemBuilder: (context, i) {
                         final u = _users[i];
                         return ListTile(
-                          leading: AppAvatar(name: u.name, size: 42),
+                          leading: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 42),
                           title: Text(u.name,
                               style: const TextStyle(
                                   fontFamily: 'Poppins',
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13.5)),
-                          subtitle: Text(u.username,
+                          subtitle: Text('ID: ${u.displayId}',
                               style: const TextStyle(
                                   fontSize: 11.5, color: AppColors.textMuted)),
                           trailing: TextButton(

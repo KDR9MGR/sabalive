@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/widgets/pills.dart';
 import '../../core/widgets/section_header.dart';
+import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/session_controller.dart';
@@ -18,19 +19,18 @@ class LiveFeedScreen extends StatefulWidget {
 
 class _LiveFeedScreenState extends State<LiveFeedScreen> {
   int _tab = 1; // 0 Following, 1 Recommended
-  int _cat = 0;
-  final _cats = ['All', 'Music', 'Gaming', 'Chatting', 'Dance', 'PK Battles'];
+  int _modeFilter = 0;
+  static const _modes = [LiveMode.video, LiveMode.audio, LiveMode.pk];
+  static const _modeLabels = ['Video', 'Audio', 'PK'];
 
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>();
     final all = context.watch<LiveStreamsController>().streams;
-    final byCat = _cat == 0
-        ? all
-        : all.where((s) => s.category == _cats[_cat]).toList();
+    final byMode = all.where((s) => s.mode == _modes[_modeFilter]).toList();
     final list = _tab == 0
-        ? byCat.where((s) => session.isFollowing(s.host.id)).toList()
-        : byCat;
+        ? byMode.where((s) => session.isFollowing(s.host.id)).toList()
+        : byMode;
     final trending = all.take(4).toList();
 
     return Scaffold(
@@ -64,9 +64,9 @@ class _LiveFeedScreenState extends State<LiveFeedScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 6)),
                 SliverToBoxAdapter(
                   child: ChipRow(
-                    items: _cats,
-                    index: _cat,
-                    onChanged: (i) => setState(() => _cat = i),
+                    items: _modeLabels,
+                    index: _modeFilter,
+                    onChanged: (i) => setState(() => _modeFilter = i),
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 16)),

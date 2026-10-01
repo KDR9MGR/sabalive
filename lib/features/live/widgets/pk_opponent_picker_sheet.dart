@@ -102,7 +102,7 @@ class _PkOpponentPickerSheetState extends State<_PkOpponentPickerSheet> {
                     final s = candidates[i];
                     final busy = _inviting == s.id;
                     return ListTile(
-                      leading: AppAvatar(name: s.host.name, size: 40),
+                      leading: AppAvatar(name: s.host.name, imageUrl: s.host.avatarUrl, size: 40),
                       title: Text(s.host.name),
                       subtitle: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                       trailing: busy

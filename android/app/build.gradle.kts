@@ -6,6 +6,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 // All signing secrets live outside the repo in one dedicated folder, never
@@ -30,6 +31,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Required by flutter_local_notifications (used for local
+        // notifications when a push arrives while the app is foregrounded)
+        // even though we don't schedule anything — see its own README.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -70,4 +75,8 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
