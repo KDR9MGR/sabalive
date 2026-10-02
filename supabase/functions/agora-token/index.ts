@@ -26,8 +26,10 @@ const TOKEN_TTL_SECONDS = 3600;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id",
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -35,6 +37,12 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+// The mint of a token is the real media gate: without one a banned user can't
+// watch or listen, whatever the join RPC did. Bans, a banned device (the app
+// sends its id as `x-device-id`, which the database reads for the check below),
+// a host who removed or blocked the caller — all are decided in SQL by
+// live_access_denied_reason so the app, the triggers and this function agree.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -48,8 +56,14 @@ Deno.serve(async (req) => {
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
+  const deviceId = req.headers.get("x-device-id") ?? "";
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
+    global: {
+      headers: {
+        Authorization: authHeader,
+        ...(deviceId ? { "x-device-id": deviceId } : {}),
+      },
+    },
   });
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) {
@@ -69,6 +83,22 @@ Deno.serve(async (req) => {
   }
 
   const role = body.role === "subscriber" ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
+
+  // 1:1 call channels ("call-<uuid>") aren't lives; everything else is. A
+  // channel that is a live_streams id also gets the per-room checks (removed by
+  // the host, blocked by the host).
+  if (!channelName.startsWith("call-")) {
+    const { data: denied, error: deniedError } = await userClient.rpc(
+      "live_access_denied_reason",
+      { p_user: user.id, p_stream: UUID_RE.test(channelName) ? channelName : null },
+    );
+    if (deniedError) {
+      return json({ error: "Could not check live access" }, 500);
+    }
+    if (Array.isArray(denied) && denied.length > 0) {
+      return json({ error: denied[0].message, code: denied[0].code }, 403);
+    }
+  }
 
   // Publisher tokens let the holder actually broadcast into the channel.
   // A "pk-<battleId>" channel is the shared arena two matched PK hosts
