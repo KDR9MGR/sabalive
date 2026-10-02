@@ -24,6 +24,7 @@ import '../../state/auth_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
+import 'live_access_exit.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/pk_arena.dart';
 import 'widgets/pk_score_bar.dart';
@@ -60,6 +61,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   RealtimeChannel? _chatChannel;
   String? _joinError;
   bool _reconnecting = false;
+  bool _accessDeniedHandled = false;
   Timer? _waitTimer;
   bool _waitingTooLong = false;
 
@@ -239,9 +241,19 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
         'join_live_stream',
         params: {'p_stream_id': widget.stream.id},
       );
-    } catch (_) {
-      /* best-effort — a missed count beats a broken screen */
+    } catch (e) {
+      // Banned from live, or removed by the host: this must stop the join (the
+      // server has already refused it). Anything else is best-effort — a missed
+      // count beats a broken screen.
+      if (isLiveAccessError(e)) _leaveDenied(friendlyError(e));
     }
+  }
+
+  /// Out of the room, with the reason, because the server won't let this user in.
+  void _leaveDenied(String message) {
+    if (_accessDeniedHandled || !mounted) return;
+    _accessDeniedHandled = true;
+    leaveLiveBecauseDenied(context, message, popRoute: true);
   }
 
   Future<void> _joinReal() async {
@@ -306,7 +318,11 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       });
       if (mounted) setState(() {});
     } catch (e) {
-      if (mounted) setState(() => _joinError = friendlyError(e));
+      if (isLiveAccessError(e)) {
+        _leaveDenied(friendlyError(e));
+      } else if (mounted) {
+        setState(() => _joinError = friendlyError(e));
+      }
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'config/feature_flags.dart';
 import 'core/widgets/permissions_prompt_host.dart';
 import 'features/auth/auth_flow.dart';
+import 'features/live/live_access_exit.dart';
 import 'features/calls/incoming_call_banner.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/main_shell.dart';
@@ -55,12 +56,51 @@ class SabaLiveApp extends StatelessWidget {
           // lets a minimized (or even full-screen) live session stay
           // mounted and interactive-underneath no matter where the user
           // navigates elsewhere in the app.
-          builder: (context, child) =>
-              Stack(children: [?child, const _ActiveLiveSessionOverlay()]),
+          builder: (context, child) => _LiveBanWatcher(
+            child: Stack(children: [?child, const _ActiveLiveSessionOverlay()]),
+          ),
         ),
       ),
     );
   }
+}
+
+/// When a live / ID / device ban lands while the user is inside a live (placed
+/// from the admin panel; the app hears about it over Realtime), take them out of
+/// the room and say why. Nothing happens if they aren't in one — the next time
+/// they try to join they get the same message.
+class _LiveBanWatcher extends StatefulWidget {
+  const _LiveBanWatcher({required this.child});
+  final Widget child;
+
+  @override
+  State<_LiveBanWatcher> createState() => _LiveBanWatcherState();
+}
+
+class _LiveBanWatcherState extends State<_LiveBanWatcher> {
+  String? _lastMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = context.select<AuthController, String?>(
+      (auth) => auth.restrictions.liveBlockMessage(),
+    );
+    if (message != null && message != _lastMessage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _leaveLive(message));
+    }
+    _lastMessage = message;
+    return widget.child;
+  }
+
+  void _leaveLive(String message) {
+    if (!mounted) return;
+    final session = context.read<ActiveLiveSessionController>();
+    if (!session.isActive) return;
+    session.end();
+    final navContext = rootNavigatorKey.currentContext;
+    if (navContext != null) showLiveBlockedDialog(navContext, message);
+  }
+
 }
 
 /// Renders whichever live screen is currently active (video/audio

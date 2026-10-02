@@ -12,7 +12,9 @@ import '../features/live/go_live_setup_screen.dart';
 import '../features/live/watch_audio_room_screen.dart';
 import '../features/live/watch_live_screen.dart';
 import '../features/live/watch_pk_battle_screen.dart';
+import '../features/live/live_access_exit.dart';
 import '../state/active_live_session_controller.dart';
+import '../state/auth_controller.dart';
 import '../theme/app_colors.dart';
 import '../features/messages/chat_screen.dart';
 import '../features/messages/new_group_screen.dart';
@@ -87,6 +89,19 @@ class AppNav {
     return true;
   }
 
+  /// True (after saying why) when the user is banned from live — an ID, device
+  /// or live ban. The database refuses the join anyway; this just spares them a
+  /// room that would throw them straight back out.
+  static Future<bool> _blockedByLiveBan(BuildContext context) async {
+    final message = context
+        .read<AuthController>()
+        .restrictions
+        .liveBlockMessage();
+    if (message == null) return false;
+    await showLiveBlockedDialog(context, message);
+    return true;
+  }
+
   /// Video/audio watch screens register with the global
   /// ActiveLiveSessionController instead of being pushed — the root
   /// overlay in app.dart (see that file) mounts them above every route,
@@ -97,6 +112,8 @@ class AppNav {
   /// live without ending it first), so it keeps the normal opaque route
   /// and never touches the session controller.
   static Future<void> watchLive(BuildContext context, LiveStream stream) async {
+    if (await _blockedByLiveBan(context)) return;
+    if (!context.mounted) return;
     if (await _blockedByActiveSession(context, stream.id)) return;
     if (!context.mounted) return;
     if (stream.mode == LiveMode.pk) {
@@ -123,6 +140,8 @@ class AppNav {
   /// own _start() creates it) — blocked purely on "is ANY session already
   /// active", same as trying to watch while already live.
   static Future<void> goLive(BuildContext context) async {
+    if (await _blockedByLiveBan(context)) return;
+    if (!context.mounted) return;
     if (await _blockedByActiveSession(context, null)) return;
     if (!context.mounted) return;
     final repo = SocialRepository();

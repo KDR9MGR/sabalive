@@ -22,6 +22,7 @@ import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
 import '../../data/store_repository.dart';
 import '../../data/stream_end_watcher.dart';
+import '../../data/viewer_ban_watcher.dart';
 import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
 import '../../services/agora_service.dart';
@@ -30,6 +31,7 @@ import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import 'live_access_exit.dart';
 import 'widgets/room_effect.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/live_emoji_sheet.dart';
@@ -58,6 +60,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   late final bool _isReal = isRealId(widget.stream.id);
   void Function()? _stopEndWatch;
   bool _hostEndedHandled = false;
+  bool _accessDeniedHandled = false;
+  void Function()? _stopKickWatch;
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
   final _rand = math.Random();
@@ -106,6 +110,14 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       _logViewerJoin();
       _subscribeSeats();
       _stopEndWatch = watchStreamEnd(widget.stream.id, _onHostEnded);
+      final me = supabase.auth.currentUser?.id;
+      if (me != null) {
+        _stopKickWatch = watchViewerRemoval(
+          widget.stream.id,
+          me,
+          () => _leaveDenied('The host removed you from this live.'),
+        );
+      }
       // Mirrors the host's own heartbeat: keeps this viewer (and, while
       // seated, this seat) from being swept by finalize_stale_presence if
       // the connection silently dies instead of a clean dispose.
@@ -134,9 +146,19 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         'join_live_stream',
         params: {'p_stream_id': widget.stream.id},
       );
-    } catch (_) {
-      /* best-effort — a missed count beats a broken screen */
+    } catch (e) {
+      // Banned from live, or removed by the host: this must stop the join (the
+      // server has already refused it). Anything else is best-effort — a missed
+      // count beats a broken screen.
+      if (isLiveAccessError(e)) _leaveDenied(friendlyError(e));
     }
+  }
+
+  /// Out of the room, with the reason, because the server won't let this user in.
+  void _leaveDenied(String message) {
+    if (_accessDeniedHandled || !mounted) return;
+    _accessDeniedHandled = true;
+    leaveLiveBecauseDenied(context, message);
   }
 
   /// Live seat occupancy + locks — mirrors the host's own subscription in
@@ -383,7 +405,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           setState(() => _waitingTooLong = true);
       });
     } catch (e) {
-      if (mounted) setState(() => _joinError = friendlyError(e));
+      if (isLiveAccessError(e)) {
+        _leaveDenied(friendlyError(e));
+      } else if (mounted) {
+        setState(() => _joinError = friendlyError(e));
+      }
     }
   }
 
@@ -543,6 +569,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopEndWatch?.call();
+    _stopKickWatch?.call();
     _waitTimer?.cancel();
     _heartbeat?.cancel();
     _msgController.dispose();

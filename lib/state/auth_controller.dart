@@ -8,7 +8,10 @@ import '../config/google_config.dart';
 import '../config/supabase_client.dart';
 import '../config/supabase_config.dart';
 import '../data/models.dart';
+import '../data/restrictions_repository.dart';
+import '../services/device_identity_service.dart';
 import '../services/push_notifications_service.dart';
+import 'access_guard.dart';
 import 'staff_account_gate.dart';
 
 enum AuthStatus { unknown, onboarding, unauthenticated, authenticated }
@@ -38,14 +41,45 @@ class AuthController extends ChangeNotifier {
     cache: DeviceVerifiedUserCache(),
   );
 
+  /// Asks the server whether this account / device is banned — see
+  /// [AccessGuard]. Bans are enforced by the database; this lets the app react.
+  final RestrictionsRepository _restrictionsRepo = RestrictionsRepository();
+  late final AccessGuard _access = AccessGuard(
+    fetch: _restrictionsRepo.mine,
+    registerDevice: () async => _restrictionsRepo.registerDevice(
+      await DeviceIdentityService.instance.load(),
+    ),
+  );
+  Restrictions _restrictions = Restrictions.none;
+  String? _notice;
+  RealtimeChannel? _bansChannel;
+  String? _bansChannelUser;
+  bool _endingForBan = false;
+
   AuthStatus get status => _status;
   AppUser? get user => _user;
+
+  /// What currently restricts this user (a live ban, say). Changes the moment a
+  /// ban is placed or lifted from the panel.
+  Restrictions get restrictions => _restrictions;
+
+  /// Why the user was just signed out (e.g. their account was banned), for the
+  /// login screen to show once.
+  String? get notice => _notice;
+  void clearNotice() {
+    if (_notice == null) return;
+    _notice = null;
+    notifyListeners();
+  }
   bool get busy => _busy;
   String get pendingPhone => _pendingPhone ?? '';
 
   Future<void> _onAuthEvent(AuthState state) async {
     final session = state.session;
     if (session == null) {
+      _stopWatchingBans();
+      _access.reset();
+      _restrictions = Restrictions.none;
       if (_status == AuthStatus.authenticated) {
         _user = null;
         _status = AuthStatus.unauthenticated;
@@ -70,6 +104,13 @@ class AuthController extends ChangeNotifier {
     // Couldn't check and never verified: don't let it in (the session itself
     // is left alone — a transient network error shouldn't sign anyone out).
     if (verdict == StaffGateVerdict.unverified) return;
+    // A banned account (or a banned phone) is signed out with the reason.
+    // (During an explicit sign-in the sign-in method itself ends the session and
+    // throws the reason, so the handler only holds back from entering the app.)
+    if (await _enforceBan(session.user.id, notice: true, endSession: !_busy) !=
+        null) {
+      return;
+    }
     // Session exists (sign-in, token refresh, restored on cold start, or —
     // importantly — the OAuth deep-link returning after Google/Apple).
     await _refreshProfile(session.user.id);
@@ -105,6 +146,87 @@ class AuthController extends ChangeNotifier {
     if (message == null) return;
     await supabase.auth.signOut();
     throw Exception(message);
+  }
+
+  /// Checks the user against the ban system. If the whole app is closed to them
+  /// (ID ban or banned device) they are signed out and the reason is returned;
+  /// otherwise null, and a live watch on their ban rows begins so a ban placed
+  /// later reaches them at once. [notice] says whether the login screen should
+  /// show the reason (not needed when an explicit sign-in is about to throw it).
+  Future<String?> _enforceBan(
+    String userId, {
+    required bool notice,
+    bool endSession = true,
+  }) async {
+    final check = await _access.check(userId);
+    _setRestrictions(check.restrictions);
+    final message = check.blockedMessage;
+    if (message != null) {
+      if (endSession) await _endSessionForBan(message, notice: notice);
+      return message;
+    }
+    _watchBans(userId);
+    return null;
+  }
+
+  void _setRestrictions(Restrictions next) {
+    if (next == _restrictions) return;
+    _restrictions = next;
+    notifyListeners();
+  }
+
+  Future<void> _endSessionForBan(String message, {required bool notice}) async {
+    if (_endingForBan) return;
+    _endingForBan = true;
+    try {
+      if (notice) _notice = message;
+      _stopWatchingBans();
+      try {
+        await PushNotificationsService.instance.onSignOut();
+      } catch (_) {}
+      await _signOutOfGoogle();
+      await supabase.auth.signOut();
+      _access.reset();
+      _restrictions = Restrictions.none;
+      _user = null;
+      // at the splash screen completeSplash() decides where to go next
+      if (_status != AuthStatus.unknown) _status = AuthStatus.unauthenticated;
+      _awaitingOtpFinish = false;
+      notifyListeners();
+    } finally {
+      _endingForBan = false;
+    }
+  }
+
+  void _watchBans(String userId) {
+    if (_bansChannelUser == userId) return;
+    _stopWatchingBans();
+    _bansChannelUser = userId;
+    _bansChannel = _restrictionsRepo.watchMine(userId, () async {
+      // re-read from the server rather than trusting the payload
+      _access.reset();
+      await _enforceBan(userId, notice: true);
+    });
+  }
+
+  void _stopWatchingBans() {
+    _bansChannel?.unsubscribe();
+    _bansChannel = null;
+    _bansChannelUser = null;
+  }
+
+  /// Before any sign-in or sign-up: a banned phone can't even start one.
+  /// Fails open if the server can't be reached.
+  Future<void> _requireDeviceAllowed() async {
+    String? message;
+    try {
+      final device = await DeviceIdentityService.instance.load();
+      final ban = await _restrictionsRepo.checkDevice(device.id);
+      if (ban != null && ban.isActive()) {
+        message = 'This device is banned ${ban.phrase}.';
+      }
+    } catch (_) {}
+    if (message != null) throw Exception(message);
   }
 
   Future<void> _refreshProfile(String userId) async {
@@ -148,6 +270,13 @@ class AuthController extends ChangeNotifier {
     if (_status != AuthStatus.unknown) return; // the event handler got there first
     switch (verdict) {
       case StaffGateVerdict.allowed:
+        final banMessage = await _enforceBan(session.user.id, notice: true);
+        if (_status != AuthStatus.unknown) return;
+        if (banMessage != null) {
+          _status = AuthStatus.unauthenticated;
+          notifyListeners();
+          return;
+        }
         _status = AuthStatus.authenticated;
         notifyListeners();
         unawaited(_refreshProfile(session.user.id));
@@ -168,6 +297,8 @@ class AuthController extends ChangeNotifier {
 
   Future<void> loginWithPassword(String id, String password) =>
       _guard(() async {
+        clearNotice();
+        await _requireDeviceAllowed();
         final trimmed = id.trim();
         if (trimmed.contains('@')) {
           await supabase.auth.signInWithPassword(
@@ -182,6 +313,8 @@ class AuthController extends ChangeNotifier {
         }
         final user = supabase.auth.currentUser!;
         await _requireNormalUser(user);
+        final banned = await _enforceBan(user.id, notice: false);
+        if (banned != null) throw Exception(banned);
         await _refreshProfile(user.id);
         _status = AuthStatus.authenticated;
         notifyListeners();
@@ -196,6 +329,8 @@ class AuthController extends ChangeNotifier {
   /// (see google_config.dart's own doc comment) is actually done — it just
   /// starts using the native picker the moment isConfigured flips true.
   Future<void> loginWithSocial(String provider) => _guard(() async {
+    clearNotice();
+    await _requireDeviceAllowed();
     if (provider == 'Google' && GoogleConfig.isConfigured) {
       final googleUser = await GoogleSignIn(
         serverClientId: GoogleConfig.webClientId,
@@ -213,6 +348,8 @@ class AuthController extends ChangeNotifier {
       );
       final user = supabase.auth.currentUser!;
       await _requireNormalUser(user);
+      final banned = await _enforceBan(user.id, notice: false);
+      if (banned != null) throw Exception(banned);
       await _refreshProfile(user.id);
       _status = AuthStatus.authenticated;
       notifyListeners();
@@ -233,6 +370,8 @@ class AuthController extends ChangeNotifier {
   /// to be configured in the Supabase dashboard (Auth → Providers → Phone);
   /// throws otherwise.
   Future<void> requestOtp(String phone) => _guard(() async {
+    clearNotice();
+    await _requireDeviceAllowed();
     _pendingPhone = phone;
     await supabase.auth.signInWithOtp(phone: phone);
   });
@@ -251,6 +390,8 @@ class AuthController extends ChangeNotifier {
     if (res.session != null) {
       try {
         await _requireNormalUser(res.session!.user);
+        final banned = await _enforceBan(res.session!.user.id, notice: false);
+        if (banned != null) throw Exception(banned);
       } catch (_) {
         _awaitingOtpFinish = false; // signed back out; nothing to finish
         rethrow;
@@ -278,6 +419,7 @@ class AuthController extends ChangeNotifier {
     required String username,
     required String password,
   }) => _guard(() async {
+    await _requireDeviceAllowed();
     final res = await supabase.auth.signUp(
       email: email.trim(),
       password: password,
@@ -360,6 +502,9 @@ class AuthController extends ChangeNotifier {
     await PushNotificationsService.instance.onSignOut();
     await _signOutOfGoogle();
     await supabase.auth.signOut();
+    _stopWatchingBans();
+    _access.reset();
+    _restrictions = Restrictions.none;
     _user = null;
     _status = AuthStatus.unauthenticated;
     _awaitingOtpFinish = false;
@@ -377,6 +522,9 @@ class AuthController extends ChangeNotifier {
     await PushNotificationsService.instance.onSignOut();
     await _signOutOfGoogle();
     await supabase.auth.signOut();
+    _stopWatchingBans();
+    _access.reset();
+    _restrictions = Restrictions.none;
     _user = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
@@ -401,6 +549,7 @@ class AuthController extends ChangeNotifier {
   @override
   void dispose() {
     _authSub?.cancel();
+    _stopWatchingBans();
     super.dispose();
   }
 }

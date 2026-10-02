@@ -62,13 +62,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final busy = context.watch<AuthController>().busy;
+    final auth = context.watch<AuthController>();
+    final busy = auth.busy;
+    // Why the user was just signed out, e.g. a ban placed from the admin panel.
+    final notice = auth.notice;
     return AuthScaffold(
       title: 'Welcome Back!',
       subtitle: 'Login to continue your journey',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (notice != null) ...[
+            _NoticeBanner(message: notice, onDismiss: auth.clearNotice),
+            const SizedBox(height: 16),
+          ],
           SegmentedTabs(
             tabs: const ['Email / Phone', 'Username'],
             index: _tab,
@@ -154,6 +161,42 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.w600)),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoticeBanner extends StatelessWidget {
+  const _NoticeBanner({required this.message, required this.onDismiss});
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('login-notice'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.block_rounded, color: AppColors.danger, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+            ),
+          ),
+          IconButton(
+            onPressed: onDismiss,
+            icon: const Icon(Icons.close_rounded, size: 18),
+            tooltip: 'Dismiss',
           ),
         ],
       ),

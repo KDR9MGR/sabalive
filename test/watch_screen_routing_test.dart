@@ -11,6 +11,7 @@ import 'package:sabalive/features/live/watch_live_screen.dart';
 import 'package:sabalive/features/live/watch_pk_battle_screen.dart';
 import 'package:sabalive/router/app_nav.dart';
 import 'package:sabalive/state/active_live_session_controller.dart';
+import 'package:sabalive/state/auth_controller.dart';
 import 'package:sabalive/state/session_controller.dart';
 import 'package:sabalive/theme/app_theme.dart';
 
@@ -53,6 +54,8 @@ void main() {
     await tester.pumpWidget(
       MultiProvider(
         providers: [
+          // AppNav.watchLive consults the user's ban state (AuthController.restrictions)
+          ChangeNotifierProvider(create: (_) => AuthController()),
           ChangeNotifierProvider(create: (_) => SessionController()),
           ChangeNotifierProvider(create: (_) => ActiveLiveSessionController()),
         ],

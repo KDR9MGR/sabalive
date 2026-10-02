@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'config/supabase_config.dart';
 import 'services/deep_link_service.dart';
+import 'services/device_identity_service.dart';
 import 'services/push_notifications_service.dart';
 
 void main() async {
@@ -17,9 +18,13 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
+  // Every request carries this device's id, so the server can enforce device
+  // bans (see the bans migration) without the app passing it call by call.
+  final device = await DeviceIdentityService.instance.load();
   await Supabase.initialize(
     url: SupabaseConfig.url,
     publishableKey: SupabaseConfig.publishableKey,
+    headers: {'x-device-id': device.id},
   );
   await PushNotificationsService.instance.initializeApp();
   runApp(const SabaLiveApp());
