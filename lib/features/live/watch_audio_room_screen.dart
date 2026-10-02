@@ -28,6 +28,7 @@ import '../messages/messages_screen.dart';
 import '../../services/agora_service.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
+import '../../state/blocks_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
@@ -434,7 +435,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     if (!mounted) return;
     setState(() {
       _chat.addAll([
-        for (final row in rows.reversed) _chatLineFromRow(row, profiles),
+        for (final row in rows.reversed)
+          if (!BlocksController.instance.isBlocked(row['sender_id'] as String?))
+            _chatLineFromRow(row, profiles),
       ]);
     });
     // If our own join row landed before this screen began listening, our own
@@ -486,6 +489,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 loadItems: StoreRepository().itemsByIds,
               ),
             );
+            // someone the user blocked: no chat line
+            if (BlocksController.instance.isBlocked(senderId)) return;
             setState(
               () => _chat.add(
                 _chatLineFromRow(payload.newRecord, {sender.id: sender}),

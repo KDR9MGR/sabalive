@@ -16,6 +16,7 @@ import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/equipped_cosmetics.dart';
+import '../../state/blocks_controller.dart';
 
 /// Another user's profile — real `profiles` data, follow/unfollow, and a
 /// shortcut into their live room if they're broadcasting.
@@ -287,6 +288,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final navigator = Navigator.of(context);
     try {
       await _repo.block(_user.id);
+      BlocksController.instance.markBlocked(_user.id);
       messenger.showSnackBar(SnackBar(content: Text('Blocked ${_user.name}')));
       navigator.pop();
     } catch (e) {

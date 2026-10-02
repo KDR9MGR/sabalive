@@ -10,6 +10,7 @@ import '../../data/messages_repository.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
+import '../../state/blocks_controller.dart';
 
 class MessagesScreen extends StatefulWidget {
   /// [refreshOn] + [isActive] let the host tell this screen when its tab becomes
@@ -83,9 +84,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
         _repo.inbox(requests: true),
       ]);
       if (!mounted) return;
+      final blocks = BlocksController.instance;
       setState(() {
-        _all = results[0];
-        _requests = results[1];
+        _all = blocks.withoutBlocked(results[0], (c) => c.other.id);
+        _requests = blocks.withoutBlocked(results[1], (c) => c.other.id);
         _loading = false;
         _error = null;
       });

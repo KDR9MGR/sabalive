@@ -12,14 +12,17 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
 import '../../core/utils/share_sheet.dart';
 import '../../core/utils/viewer_list_sheet.dart';
+import '../../core/utils/viewer_picker_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
+import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_service.dart';
 import '../../data/store_repository.dart';
 import '../../state/active_live_session_controller.dart';
+import '../../state/blocks_controller.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
@@ -544,6 +547,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         loadItems: StoreRepository().itemsByIds,
       ),
     );
+    // someone the user blocked: no chat line
+    if (BlocksController.instance.isBlocked(senderId)) return;
     setState(() {
       _chat.add(
         LiveChatLine(
@@ -926,9 +931,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       ),
       ToolSpec(
         Icons.block_rounded,
-        'Block',
+        'Block viewer',
         AppColors.danger,
-        () => _soon('Viewer moderation'),
+        _blockViewer,
       ),
     ];
 
@@ -1005,6 +1010,46 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           count: sent,
         ),
       );
+    }
+  }
+
+  /// Removes a viewer from this live and stops them rejoining it.
+  Future<void> _blockViewer() async {
+    final viewer = await pickViewer(
+      context,
+      streamId: widget.stream.id,
+      hostId: widget.stream.host.id,
+    );
+    if (viewer == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        title: Text('Remove ${viewer.name}?'),
+        content: const Text(
+          "They'll be taken out of this live and won't be able to rejoin it.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await SocialRepository().blockViewer(widget.stream.id, viewer.id);
+      _snack('${viewer.name} was removed');
+    } catch (e) {
+      _snack(friendlyError(e));
     }
   }
 

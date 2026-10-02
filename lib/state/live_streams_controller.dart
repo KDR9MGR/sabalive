@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_client.dart';
 import '../data/models.dart';
+import 'blocks_controller.dart';
 
 /// Real live streams — a thin layer over the `live_streams` table. This is
 /// deliberately additive to (not a replacement for) the app's demo/mock
@@ -19,13 +20,18 @@ class LiveStreamsController extends ChangeNotifier {
           callback: (_) => _load(),
         )
         .subscribe();
+    // blocking or unblocking someone changes whose lives are shown
+    BlocksController.instance.addListener(notifyListeners);
   }
 
   List<LiveStream> _streams = const [];
   bool _loading = true;
   RealtimeChannel? _channel;
 
-  List<LiveStream> get streams => List.unmodifiable(_streams);
+  /// Live now, minus lives hosted by someone the user has blocked.
+  List<LiveStream> get streams => List.unmodifiable(
+    BlocksController.instance.withoutBlocked(_streams, (s) => s.host.id),
+  );
   bool get loading => _loading;
 
   Future<void> refresh() => _load();
@@ -86,6 +92,7 @@ class LiveStreamsController extends ChangeNotifier {
   @override
   void dispose() {
     _channel?.unsubscribe();
+    BlocksController.instance.removeListener(notifyListeners);
     super.dispose();
   }
 }

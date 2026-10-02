@@ -220,6 +220,15 @@ class SocialRepository {
     await supabase.from('blocks').upsert({'blocker_id': me, 'blocked_id': userId});
   }
 
+  /// Host removes [userId] from their live: they leave at once and can't rejoin
+  /// this one (`block_viewer`).
+  Future<void> blockViewer(String streamId, String userId) async {
+    await supabase.rpc(
+      'block_viewer',
+      params: {'p_stream_id': streamId, 'p_user_id': userId},
+    );
+  }
+
   Future<void> unblock(String userId) async {
     final me = _me;
     if (me == null) return;

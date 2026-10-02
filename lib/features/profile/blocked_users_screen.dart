@@ -5,6 +5,7 @@ import '../../core/widgets/app_avatar.dart';
 import '../../data/models.dart';
 import '../../data/social_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../state/blocks_controller.dart';
 
 class BlockedUsersScreen extends StatefulWidget {
   const BlockedUsersScreen({super.key});
@@ -52,6 +53,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     setState(() => _users = _users.where((x) => x.id != u.id).toList());
     try {
       await _repo.unblock(u.id);
+      BlocksController.instance.markUnblocked(u.id);
     } catch (_) {
       _load();
     }
