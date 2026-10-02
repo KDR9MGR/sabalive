@@ -9,6 +9,7 @@ import '../config/supabase_client.dart';
 import '../config/supabase_config.dart';
 import '../data/models.dart';
 import '../services/push_notifications_service.dart';
+import 'staff_account_gate.dart';
 
 enum AuthStatus { unknown, onboarding, unauthenticated, authenticated }
 
@@ -31,6 +32,12 @@ class AuthController extends ChangeNotifier {
   bool _awaitingOtpFinish = false;
   StreamSubscription<AuthState>? _authSub;
 
+  /// Keeps admin-panel accounts out of the app — see [StaffAccountGate].
+  final StaffAccountGate _gate = StaffAccountGate(
+    lookup: _lookupIsStaff,
+    cache: DeviceVerifiedUserCache(),
+  );
+
   AuthStatus get status => _status;
   AppUser? get user => _user;
   bool get busy => _busy;
@@ -52,10 +59,17 @@ class AuthController extends ChangeNotifier {
     // is the single chokepoint every session-creating path funnels through
     // (password, Google, OAuth redirect return, a restored cold-start
     // session, and OTP), so it's the one place this needs to live.
-    if (await _isStaffAccount(session.user.id)) {
+    final verdict = await _gate.check(
+      session.user.id,
+      appMetadata: session.user.appMetadata,
+    );
+    if (verdict == StaffGateVerdict.staff) {
       await supabase.auth.signOut();
       return;
     }
+    // Couldn't check and never verified: don't let it in (the session itself
+    // is left alone — a transient network error shouldn't sign anyone out).
+    if (verdict == StaffGateVerdict.unverified) return;
     // Session exists (sign-in, token refresh, restored on cold start, or —
     // importantly — the OAuth deep-link returning after Google/Apple).
     await _refreshProfile(session.user.id);
@@ -74,13 +88,23 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  Future<bool> _isStaffAccount(String userId) async {
+  static Future<bool> _lookupIsStaff(String userId) async {
     final row = await supabase
         .from('staff_roles')
         .select('user_id')
         .eq('user_id', userId)
         .maybeSingle();
     return row != null;
+  }
+
+  /// For an explicit sign-in (password, Google, OTP): a panel account — or one
+  /// that can't be checked — is signed straight back out with a clear message.
+  Future<void> _requireNormalUser(User user) async {
+    final verdict = await _gate.check(user.id, appMetadata: user.appMetadata);
+    final message = StaffAccountGate.messageFor(verdict);
+    if (message == null) return;
+    await supabase.auth.signOut();
+    throw Exception(message);
   }
 
   Future<void> _refreshProfile(String userId) async {
@@ -106,16 +130,34 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  void completeSplash() {
+  Future<void> completeSplash() async {
     if (_status != AuthStatus.unknown) return;
     final session = supabase.auth.currentSession;
-    if (session != null) {
-      _status = AuthStatus.authenticated;
-      notifyListeners();
-      unawaited(_refreshProfile(session.user.id));
-    } else {
+    if (session == null) {
       _status = AuthStatus.onboarding;
       notifyListeners();
+      return;
+    }
+    // A restored session only enters the app once it has passed the staff
+    // gate. (It used to be marked authenticated first and checked afterwards,
+    // so a panel account was briefly inside the app.)
+    final verdict = await _gate.check(
+      session.user.id,
+      appMetadata: session.user.appMetadata,
+    );
+    if (_status != AuthStatus.unknown) return; // the event handler got there first
+    switch (verdict) {
+      case StaffGateVerdict.allowed:
+        _status = AuthStatus.authenticated;
+        notifyListeners();
+        unawaited(_refreshProfile(session.user.id));
+      case StaffGateVerdict.staff:
+        await supabase.auth.signOut();
+        _status = AuthStatus.unauthenticated;
+        notifyListeners();
+      case StaffGateVerdict.unverified:
+        _status = AuthStatus.unauthenticated;
+        notifyListeners();
     }
   }
 
@@ -138,14 +180,9 @@ class AuthController extends ChangeNotifier {
             password: password,
           );
         }
-        final uid = supabase.auth.currentUser!.id;
-        if (await _isStaffAccount(uid)) {
-          await supabase.auth.signOut();
-          throw Exception(
-            'This is an admin-panel account. Sign in through the admin panel instead.',
-          );
-        }
-        await _refreshProfile(uid);
+        final user = supabase.auth.currentUser!;
+        await _requireNormalUser(user);
+        await _refreshProfile(user.id);
         _status = AuthStatus.authenticated;
         notifyListeners();
       });
@@ -174,14 +211,9 @@ class AuthController extends ChangeNotifier {
         idToken: idToken,
         accessToken: googleAuth.accessToken,
       );
-      final uid = supabase.auth.currentUser!.id;
-      if (await _isStaffAccount(uid)) {
-        await supabase.auth.signOut();
-        throw Exception(
-          'This is an admin-panel account. Sign in through the admin panel instead.',
-        );
-      }
-      await _refreshProfile(uid);
+      final user = supabase.auth.currentUser!;
+      await _requireNormalUser(user);
+      await _refreshProfile(user.id);
       _status = AuthStatus.authenticated;
       notifyListeners();
       return;
@@ -217,6 +249,12 @@ class AuthController extends ChangeNotifier {
       type: OtpType.sms,
     );
     if (res.session != null) {
+      try {
+        await _requireNormalUser(res.session!.user);
+      } catch (_) {
+        _awaitingOtpFinish = false; // signed back out; nothing to finish
+        rethrow;
+      }
       await _refreshProfile(res.session!.user.id);
       return true;
     }
@@ -226,7 +264,8 @@ class AuthController extends ChangeNotifier {
 
   void finishAuth() {
     _awaitingOtpFinish = false;
-    if (_user == null) return;
+    // never enter the app without a live session (e.g. one the gate just ended)
+    if (_user == null || supabase.auth.currentSession == null) return;
     _status = AuthStatus.authenticated;
     notifyListeners();
   }
