@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/feature_flags.dart';
 import '../../core/utils/errors.dart';
+import '../../core/utils/personal_info_filter.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../data/calls_repository.dart';
 import '../../data/messages_repository.dart';
@@ -101,10 +102,14 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
     final messenger = ScaffoldMessenger.of(context);
+    // The server hides phone numbers / e-mails / links before storing a message
+    // (and tells the admin panel). Show the same masked text in our own bubble,
+    // so it matches the row that comes back over Realtime and isn't duplicated.
+    final shown = PersonalInfoFilter.maskText(text);
     setState(() {
       _sending = true;
-      _messages.add(Bubble(text, true, time: _now()));
-      _pendingOutgoing.add(text);
+      _messages.add(Bubble(shown, true, time: _now()));
+      _pendingOutgoing.add(shown);
       _controller.clear();
     });
     _jumpToBottom();
@@ -114,7 +119,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _messages.removeLast();
-        _pendingOutgoing.remove(text);
+        _pendingOutgoing.remove(shown);
         _controller.text = text;
       });
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
