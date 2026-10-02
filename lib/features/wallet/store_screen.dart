@@ -9,8 +9,9 @@ import '../../data/store_repository.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'bag_screen.dart';
+import 'widgets/store_art.dart';
 
-/// Real cosmetics store — frames, VIP tiers, entry effects, vehicles.
+/// Real cosmetics store — frames, VIP tiers, entry effects, vehicles, room skins.
 /// A "purchase" grants N days of access (extended if you already own an
 /// unexpired copy), not real recurring billing — see the migration's own
 /// note. Prices/items are my own placeholder catalog, retunable via SQL
@@ -33,6 +34,7 @@ class _StoreScreenState extends State<StoreScreen> {
     (StoreCategory.vip, 'Lucky ID'),
     (StoreCategory.entryEffect, 'Entry'),
     (StoreCategory.vehicle, 'Garage'),
+    (StoreCategory.roomSkin, 'Room Skin'),
   ];
 
   @override
@@ -129,32 +131,35 @@ class _StoreScreenState extends State<StoreScreen> {
 
   Widget _card(StoreItem item) {
     final busy = _busyIds.contains(item.id);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.stroke),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(item.emoji, style: const TextStyle(fontSize: 40)),
-          const SizedBox(height: 10),
-          Text(item.name,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 13)),
-          Text('${item.durationDays} days',
-              style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
-          const SizedBox(height: 10),
-          GradientButton(
-            label: '${withThousands(item.priceCoins)} coins',
-            height: 36,
-            loading: busy,
-            onPressed: () => _buy(item),
-          ),
-        ],
+    return GestureDetector(
+      onTap: () => showStorePreview(context, item),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.stroke),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            StoreArt(item, size: 56),
+            const SizedBox(height: 10),
+            Text(item.name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 13)),
+            Text('${item.durationDays} days',
+                style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+            const SizedBox(height: 10),
+            GradientButton(
+              label: '${withThousands(item.priceCoins)} coins',
+              height: 36,
+              loading: busy,
+              onPressed: () => _buy(item),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/utils/errors.dart';
 import '../../data/store_repository.dart';
 import '../../theme/app_colors.dart';
+import 'widgets/store_art.dart';
 import 'store_screen.dart';
 
 /// What you currently own (non-expired) and what's equipped — real data
@@ -104,7 +105,7 @@ class _BagScreenState extends State<BagScreen> {
       ),
       child: Row(
         children: [
-          Text(owned.item.emoji, style: const TextStyle(fontSize: 32)),
+          StoreArt(owned.item, size: 44),
           const SizedBox(width: 14),
           Expanded(
             child: Column(

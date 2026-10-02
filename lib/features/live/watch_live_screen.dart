@@ -18,7 +18,9 @@ import '../../core/widgets/app_thumb.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
+import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
+import '../../data/store_repository.dart';
 import '../../data/stream_end_watcher.dart';
 import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
@@ -28,7 +30,9 @@ import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import 'widgets/room_effect.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/live_emoji_sheet.dart';
 import 'widgets/live_chat_bubble.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
@@ -51,7 +55,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   final _msgController = TextEditingController();
   final _rand = math.Random();
   final List<_Heart> _hearts = [];
-  Gift? _giftBurst;
+  final _effects = RoomEffectController();
   int _likes = 0;
 
   RtcEngine? _engine;
@@ -88,22 +92,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   // mirrors the host's own broadcast screen, which already tracks it live.
   late int _viewerCount = widget.stream.viewers;
 
-  late final AnimationController _burstCtl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1600),
-  );
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _likes = widget.stream.likes;
     _hostAgoraUid = widget.stream.hostAgoraUid;
-    _burstCtl.addStatusListener((s) {
-      if (s == AnimationStatus.completed && mounted) {
-        setState(() => _giftBurst = null);
-      }
-    });
     if (_isReal) {
       // Keeps the screen from sleeping mid-stream — a screen timeout was
       // dropping the Agora connection and the viewer's own heartbeat/seat
@@ -555,6 +549,21 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         for (final row in rows.reversed) _chatLineFromRow(row, profiles),
       ]);
     });
+    // If our own join row landed before this screen began listening, our own
+    // entry effect would otherwise be missed.
+    final meId = context.read<AuthController>().user?.id;
+    for (final row in rows.reversed) {
+      unawaited(
+        _effects.handleRow(
+          row,
+          meId: meId,
+          senderName: 'You',
+          giftById: (_) => null,
+          loadItems: StoreRepository().itemsByIds,
+          history: true,
+        ),
+      );
+    }
 
     _chatChannel = supabase
         .channel('live-chat-${widget.stream.id}')
@@ -578,6 +587,18 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 ? AppUser.fromRow(profileRow)
                 : AppUser(id: senderId, name: 'Someone', username: '@user');
             if (!mounted) return;
+            // A gift or an entry from someone: play it on screen, not just as
+            // a line.
+            final wallet = context.read<WalletController>();
+            unawaited(
+              _effects.handleRow(
+                payload.newRecord,
+                meId: context.read<AuthController>().user?.id,
+                senderName: sender.name,
+                giftById: wallet.giftById,
+                loadItems: StoreRepository().itemsByIds,
+              ),
+            );
             setState(
               () => _chat.add(
                 _chatLineFromRow(payload.newRecord, {sender.id: sender}),
@@ -605,6 +626,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       gift: row['kind'] == 'gift',
       system: row['kind'] == 'system',
       pinned: row['pinned'] as bool? ?? false,
+      stickerUrl: row['kind'] == 'sticker' ? row['sticker_url'] as String? : null,
     );
   }
 
@@ -659,7 +681,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     _waitTimer?.cancel();
     _heartbeat?.cancel();
     _msgController.dispose();
-    _burstCtl.dispose();
+    _effects.dispose();
     _chatChannel?.unsubscribe();
     _seatsChannel?.unsubscribe();
     _seatStreamChannel?.unsubscribe();
@@ -768,18 +790,20 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         : giftChoice.quantity > 1
         ? 'sent ${giftChoice.quantity}x ${gift.name}'
         : 'sent ${gift.name}';
+    // The sender plays their own gift straight away; everyone else gets it from
+    // the chat row send_gift writes (see RoomEffectController.onChatRow).
+    _effects.enqueue(
+      RoomEffect.gift(
+        gift: gift,
+        senderName: 'You',
+        senderId: me.id,
+        count: giftChoice.sendToAll ? recipients.length : giftChoice.quantity,
+      ),
+    );
+    // Demo streams have no Realtime chat feed, so echo the line locally.
     if (!_isReal) {
-      // Demo streams have no Realtime chat feed, so echo it locally; a real
-      // stream's own chat insert (send_gift doesn't write chat) isn't done
-      // here — worth adding a system message server-side later.
-      setState(() {
-        _giftBurst = gift;
-        _chat.add(LiveChatLine(me, label, gift: true));
-      });
-    } else {
-      setState(() => _giftBurst = gift);
+      setState(() => _chat.add(LiveChatLine(me, label, gift: true)));
     }
-    _burstCtl.forward(from: 0);
   }
 
   // Same 4-column icon-tile grid as the host's own Tools sheet
@@ -977,26 +1001,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             height: 320,
             child: Stack(children: _hearts),
           ),
-          // gift burst
-          if (_giftBurst != null)
-            Center(
-              child: AnimatedBuilder(
-                animation: _burstCtl,
-                builder: (context, _) {
-                  final v = Curves.easeOut.transform(_burstCtl.value);
-                  return Opacity(
-                    opacity: (1 - v).clamp(0.0, 1.0),
-                    child: Transform.scale(
-                      scale: 0.6 + v * 1.8,
-                      child: Text(
-                        _giftBurst!.emoji,
-                        style: const TextStyle(fontSize: 90),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+          // gift animation, for everyone in the room
+          Positioned.fill(child: RoomEffectLayer(controller: _effects)),
         ],
       ),
     );
@@ -1331,49 +1337,24 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     );
   }
 
+  /// Emoji / GIF picker — its contents are managed from the admin panel. A
+  /// plain emoji goes out as a normal chat message; a GIF as its own message.
   Future<void> _openQuickEmoji() async {
-    const emojis = [
-      '❤️',
-      '🔥',
-      '👏',
-      '😂',
-      '😍',
-      '😮',
-      '👍',
-      '🎉',
-      '💯',
-      '😢',
-      '😡',
-      '🙌',
-      '✨',
-      '🥳',
-      '😎',
-      '🤝',
-    ];
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.bgElevated,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: GridView.count(
-            crossAxisCount: 6,
-            shrinkWrap: true,
-            children: [
-              for (final e in emojis)
-                GestureDetector(
-                  onTap: () => Navigator.pop(context, e),
-                  child: Center(
-                    child: Text(e, style: const TextStyle(fontSize: 26)),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final picked = await showLiveEmojiSheet(context);
     if (picked == null || !mounted) return;
-    _msgController.text = picked;
+    if (picked.isGif) {
+      if (!_isReal) return; // demo streams have no chat to send into
+      try {
+        await LiveEmojisRepository().sendGif(widget.stream.id, picked.id);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+      return;
+    }
+    _msgController.text = picked.emoji ?? '';
     await _send();
   }
 }

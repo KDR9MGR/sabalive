@@ -7,6 +7,7 @@ import '../../../data/models.dart';
 import '../../../router/app_nav.dart';
 import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
+import 'gift_icon.dart';
 
 /// What the sheet resolves to: which gift, how many copies, and who it goes
 /// to. [recipient] is the picked person (null when [sendToAll] is true, or
@@ -218,7 +219,7 @@ class _GiftSheetState extends State<_GiftSheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(g.emoji, style: const TextStyle(fontSize: 28)),
+                        GiftIcon(g, size: 28),
                         const SizedBox(height: 4),
                         Text(
                           g.name,

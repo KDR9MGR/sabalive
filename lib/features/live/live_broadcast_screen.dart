@@ -14,15 +14,19 @@ import '../../core/utils/share_sheet.dart';
 import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_service.dart';
+import '../../data/store_repository.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
+import 'widgets/room_effect.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/live_emoji_sheet.dart';
 import 'widgets/live_chat_bubble.dart';
 import 'widgets/lucky_box_badge.dart';
 import 'widgets/live_minimized_bubble.dart';
@@ -237,16 +241,27 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   Future<void> _loadSeatLockState() async {
     final row = await supabase
         .from('live_streams')
-        .select('locked_seats, seat_count')
+        .select('locked_seats, seat_count, room_skin_item_id')
         .eq('id', widget.stream.id)
         .maybeSingle();
     if (row == null || !mounted) return;
+    unawaited(_applySkin(row['room_skin_item_id'] as String?));
     final locked = row['locked_seats'] as List?;
     final seatCount = row['seat_count'] as int?;
     setState(() {
       if (locked != null) _lockedSeats = locked.cast<int>().toSet();
       if (seatCount != null) _seatCount = seatCount;
     });
+  }
+
+  Future<void> _applySkin(String? itemId) async {
+    String? url;
+    try {
+      url = await StoreRepository().assetUrlFor(itemId);
+    } catch (_) {
+      return; // keep whatever is showing
+    }
+    if (mounted && url != _skinUrl) setState(() => _skinUrl = url);
   }
 
   /// Viewer count comes from the DB, not Agora's onUserJoined/onUserOffline
@@ -272,6 +287,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
             final locked = payload.newRecord['locked_seats'] as List?;
             final seatCount = payload.newRecord['seat_count'] as int?;
             if (!mounted) return;
+            // the host equipped / removed a room skin
+            if (payload.newRecord.containsKey('room_skin_item_id')) {
+              unawaited(
+                _applySkin(payload.newRecord['room_skin_item_id'] as String?),
+              );
+            }
             setState(() {
               if (count != null) _viewers = count;
               if (locked != null) {
@@ -499,6 +520,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     }
   }
 
+  final _effects = RoomEffectController();
+  String? _skinUrl;
+
   Future<void> _appendChatRow(Map<String, dynamic> row) async {
     final senderId = row['sender_id'] as String;
     final profileRow = await supabase
@@ -510,6 +534,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         ? AppUser.fromRow(profileRow)
         : AppUser(id: senderId, name: 'Someone', username: '@user');
     if (!mounted) return;
+    // A gift or an entry from a viewer: play it on screen, not just as a line.
+    unawaited(
+      _effects.handleRow(
+        row,
+        meId: supabase.auth.currentUser?.id,
+        senderName: sender.name,
+        giftById: context.read<WalletController>().giftById,
+        loadItems: StoreRepository().itemsByIds,
+      ),
+    );
     setState(() {
       _chat.add(
         LiveChatLine(
@@ -518,54 +552,31 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           gift: row['kind'] == 'gift',
           system: row['kind'] == 'system',
           pinned: row['pinned'] as bool? ?? false,
+          stickerUrl: row['kind'] == 'sticker'
+              ? row['sticker_url'] as String?
+              : null,
         ),
       );
     });
   }
 
+  /// Emoji / GIF picker — its contents are managed from the admin panel. A
+  /// plain emoji goes out as a normal chat message; a GIF as its own message.
   Future<void> _openQuickEmoji() async {
-    const emojis = [
-      '❤️',
-      '🔥',
-      '👏',
-      '😂',
-      '😍',
-      '😮',
-      '👍',
-      '🎉',
-      '💯',
-      '😢',
-      '😡',
-      '🙌',
-      '✨',
-      '🥳',
-      '😎',
-      '🤝',
-    ];
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.bgElevated,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: GridView.count(
-            crossAxisCount: 6,
-            shrinkWrap: true,
-            children: [
-              for (final e in emojis)
-                GestureDetector(
-                  onTap: () => Navigator.pop(context, e),
-                  child: Center(
-                    child: Text(e, style: const TextStyle(fontSize: 26)),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final picked = await showLiveEmojiSheet(context);
     if (picked == null || !mounted) return;
-    _input.text = picked;
+    if (picked.isGif) {
+      try {
+        await LiveEmojisRepository().sendGif(widget.stream.id, picked.id);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+      return;
+    }
+    _input.text = picked.emoji ?? '';
     await _sendChat();
   }
 
@@ -599,6 +610,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _ticker?.cancel();
     _heartbeat?.cancel();
     _input.dispose();
+    _effects.dispose();
     _chatChannel?.unsubscribe();
     _viewerChannel?.unsubscribe();
     _seatsChannel?.unsubscribe();
@@ -966,6 +978,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   // arrives back through this screen's own Realtime chat subscription like
   // any other message, visible to the host AND every viewer, not just
   // whoever tapped Send. Adding a local echo on top would double it up.
+  // The gift ANIMATION is different: rows from this user are skipped by the
+  // effect controller, so the sender plays their own here.
   Future<void> _sendGift(
     Gift gift,
     AppUser recipient, {
@@ -973,12 +987,24 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   }) async {
     final wallet = context.read<WalletController>();
     final messenger = ScaffoldMessenger.of(context);
+    var sent = 0;
     try {
       for (var i = 0; i < quantity; i++) {
         await wallet.sendGift(gift, recipient, liveStreamId: widget.stream.id);
+        sent++;
       }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
+    if (sent > 0 && mounted) {
+      _effects.enqueue(
+        RoomEffect.gift(
+          gift: gift,
+          senderName: 'You',
+          senderId: supabase.auth.currentUser?.id,
+          count: sent,
+        ),
+      );
     }
   }
 
@@ -1441,6 +1467,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           if (widget.audioOnly)
             SeatRoom(
               hostId: widget.stream.host.id,
+              skinUrl: _skinUrl,
               error: _error,
               seatCount: _seatCount,
               lockedSeats: _lockedSeats,
@@ -1478,6 +1505,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
           // subtle top + bottom scrims for legibility
           const _Scrim(),
+
+          // gift animation, for everyone in the room
+          Positioned.fill(child: RoomEffectLayer(controller: _effects)),
 
           SafeArea(
             bottom: false,

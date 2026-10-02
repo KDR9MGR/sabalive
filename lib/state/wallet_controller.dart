@@ -57,6 +57,16 @@ class WalletController extends ChangeNotifier {
   List<Gift> get gifts => List.unmodifiable(_gifts);
   List<CoinPack> get coinPacks => List.unmodifiable(_coinPacks);
 
+  /// The gift with this id from the loaded catalog, or null when it isn't
+  /// there (retired since the catalog loaded). Lets a room screen turn the
+  /// gift_id on a chat row into the gift to play.
+  Gift? giftById(String id) {
+    for (final g in _gifts) {
+      if (g.id == id) return g;
+    }
+    return null;
+  }
+
   bool canAfford(int price) => _coins >= price;
 
   Future<void> _loadCatalog() async {

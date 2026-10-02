@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/widgets/app_avatar.dart';
+import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
 
@@ -135,8 +136,12 @@ class SeatRoom extends StatelessWidget {
     this.onRemoveSeat,
     this.occupants = const {},
     this.mutedSeats = const {},
+    this.skinUrl,
   });
   final String hostId;
+  /// The host's equipped room skin (admin-uploaded SVGA / MP4 / image), drawn
+  /// behind the seats. Null shows the default purple gradient.
+  final String? skinUrl;
   final String? error;
   final int seatCount;
   final Set<int> lockedSeats;
@@ -151,58 +156,74 @@ class SeatRoom extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF1B1140), Color(0xFF0B0716)],
-        ),
+    const gradient = BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF1B1140), Color(0xFF0B0716)],
       ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 90, 20, 0),
-          child: Column(
-            children: [
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70)),
-                )
-              else ...[
-                GridView.count(
-                  crossAxisCount: 5,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 4,
-                  childAspectRatio: 0.72,
-                  children: [
-                    for (var i = 1; i <= seatCount; i++)
-                      SeatCircle(
-                        seat: i,
-                        occupant: occupants[i],
-                        locked: lockedSeats.contains(i),
-                        muted: mutedSeats.contains(i),
-                        isHost: occupants[i]?.id == hostId,
-                        onTap: () => onSeatTap(i),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _seatBtn(Icons.remove_rounded, 'Remove 5', onRemoveSeat),
-                    const SizedBox(width: 12),
-                    _seatBtn(Icons.add_rounded, 'Add 5', onAddSeat),
-                  ],
-                ),
-              ],
+    );
+    final skin = skinUrl;
+    return DecoratedBox(
+      decoration: gradient,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (skin != null) ...[
+            RemoteMedia(skin, key: ValueKey(skin), fit: BoxFit.cover),
+            // keeps seat names and badges readable over any artwork
+            const ColoredBox(color: Color(0x59000000)),
+          ],
+          _content(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 90, 20, 0),
+        child: Column(
+          children: [
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white70)),
+              )
+            else ...[
+              GridView.count(
+                crossAxisCount: 5,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 4,
+                childAspectRatio: 0.72,
+                children: [
+                  for (var i = 1; i <= seatCount; i++)
+                    SeatCircle(
+                      seat: i,
+                      occupant: occupants[i],
+                      locked: lockedSeats.contains(i),
+                      muted: mutedSeats.contains(i),
+                      isHost: occupants[i]?.id == hostId,
+                      onTap: () => onSeatTap(i),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _seatBtn(Icons.remove_rounded, 'Remove 5', onRemoveSeat),
+                  const SizedBox(width: 12),
+                  _seatBtn(Icons.add_rounded, 'Add 5', onAddSeat),
+                ],
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );

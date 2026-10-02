@@ -5,6 +5,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/models.dart';
 import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
+import 'gift_icon.dart';
 
 /// Horizontal strip of gifts (emoji + diamond price) shown along the bottom of
 /// a live room, matching the reference layout. Tapping one calls [onSelect].
@@ -38,7 +39,7 @@ class GiftTray extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Text(g.emoji, style: const TextStyle(fontSize: 24)),
+                  child: GiftIcon(g, size: 24),
                 ),
                 const SizedBox(height: 3),
                 Row(

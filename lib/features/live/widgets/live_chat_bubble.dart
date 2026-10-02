@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/widgets/level_star.dart';
+import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
 
@@ -29,6 +30,9 @@ class LiveChatLineBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (line.isJoin) return _JoinNotice(line: line);
+    if (line.isSticker) {
+      return _StickerBubble(line: line, backgroundAlpha: backgroundAlpha);
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -70,6 +74,55 @@ class LiveChatLineBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A GIF / animated sticker from the emoji catalog: the sender's name, then the
+/// picture playing on its own.
+class _StickerBubble extends StatelessWidget {
+  const _StickerBubble({required this.line, required this.backgroundAlpha});
+  final LiveChatLine line;
+  final double backgroundAlpha;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: backgroundAlpha),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            line.user.name,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryBright,
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox.square(
+            dimension: 72,
+            child: RemoteMedia(
+              line.stickerUrl!,
+              fit: BoxFit.contain,
+              fallback: Center(
+                child: Text(
+                  line.text,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,11 +1,12 @@
 import '../config/supabase_client.dart';
 
-enum StoreCategory { frame, vip, entryEffect, vehicle }
+enum StoreCategory { frame, vip, entryEffect, vehicle, roomSkin }
 
 StoreCategory _categoryFromRow(String v) => switch (v) {
       'frame' => StoreCategory.frame,
       'vip' => StoreCategory.vip,
       'entry_effect' => StoreCategory.entryEffect,
+      'room_skin' => StoreCategory.roomSkin,
       _ => StoreCategory.vehicle,
     };
 
@@ -17,6 +18,7 @@ class StoreItem {
     required this.emoji,
     required this.priceCoins,
     required this.durationDays,
+    this.assetUrl,
   });
 
   factory StoreItem.fromRow(Map<String, dynamic> row) => StoreItem(
@@ -26,7 +28,13 @@ class StoreItem {
         emoji: row['emoji'] as String,
         priceCoins: row['price_coins'] as int,
         durationDays: row['duration_days'] as int,
+        assetUrl: _nonEmpty(row['asset_url']),
       );
+
+  static String? _nonEmpty(Object? v) {
+    final s = (v as String?)?.trim();
+    return s == null || s.isEmpty ? null : s;
+  }
 
   final String id;
   final StoreCategory category;
@@ -34,6 +42,10 @@ class StoreItem {
   final String emoji;
   final int priceCoins;
   final int durationDays;
+
+  /// Artwork uploaded in the admin panel (SVGA / MP4 / WebP / GIF / PNG); the
+  /// emoji stays the stand-in for items that have none.
+  final String? assetUrl;
 }
 
 class OwnedItem {
@@ -59,6 +71,37 @@ class StoreRepository {
         .order('category', ascending: true)
         .order('sort_order', ascending: true);
     return rows.map(StoreItem.fromRow).toList();
+  }
+
+  static final Map<String, StoreItem> _byId = {};
+
+  /// Store items by id, for rendering something another user has equipped (an
+  /// entry effect, a room skin). Remembered for the session, since the same
+  /// handful of items come up again and again.
+  Future<List<StoreItem>> itemsByIds(List<String> ids) async {
+    final missing = [
+      for (final id in ids.toSet())
+        if (!_byId.containsKey(id)) id,
+    ];
+    if (missing.isNotEmpty) {
+      final rows = await supabase.from('store_items').select().inFilter('id', missing);
+      for (final r in rows) {
+        final item = StoreItem.fromRow(r);
+        _byId[item.id] = item;
+      }
+    }
+    return [
+      for (final id in ids)
+        if (_byId[id] case final item?) item,
+    ];
+  }
+
+  /// The artwork url of store item [itemId] (a room skin, say), or null when
+  /// there is no item or it has no artwork.
+  Future<String?> assetUrlFor(String? itemId) async {
+    if (itemId == null) return null;
+    final items = await itemsByIds([itemId]);
+    return items.isEmpty ? null : items.first.assetUrl;
   }
 
   Future<List<OwnedItem>> myItems() async {

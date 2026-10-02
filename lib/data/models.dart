@@ -139,7 +139,14 @@ class LiveStream {
 }
 
 class Gift {
-  const Gift(this.id, this.name, this.emoji, this.price, {this.effect = false});
+  const Gift(
+    this.id,
+    this.name,
+    this.emoji,
+    this.price, {
+    this.effect = false,
+    this.iconUrl,
+  });
 
   factory Gift.fromRow(Map<String, dynamic> row) => Gift(
     row['id'] as String,
@@ -147,6 +154,7 @@ class Gift {
     row['emoji'] as String,
     row['price_coins'] as int,
     effect: row['has_effect'] as bool? ?? false,
+    iconUrl: _nonEmpty(row['icon_url']),
   );
 
   final String id;
@@ -154,6 +162,15 @@ class Gift {
   final String emoji;
   final int price;
   final bool effect;
+
+  /// The panel-uploaded artwork (SVGA / MP4 / WebP / PNG). The emoji stays the
+  /// fallback for gifts that have none, and while the file loads.
+  final String? iconUrl;
+
+  static String? _nonEmpty(Object? v) {
+    final s = (v as String?)?.trim();
+    return s == null || s.isEmpty ? null : s;
+  }
 }
 
 class ChatMessagePreview {
@@ -244,10 +261,16 @@ class LiveChatLine {
     this.gift = false,
     this.pinned = false,
     this.system = false,
+    this.stickerUrl,
   });
   final AppUser user;
   final String text;
   final bool gift;
+
+  /// A GIF / animated sticker sent from the panel-managed catalog
+  /// (`live_chat_messages.kind = 'sticker'`); [text] is its label.
+  final String? stickerUrl;
+  bool get isSticker => stickerUrl != null;
   final bool pinned;
 
   /// Server-generated notices (`live_chat_messages.kind = 'system'`): the
