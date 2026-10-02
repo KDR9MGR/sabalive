@@ -4,9 +4,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/pills.dart';
+import '../../core/widgets/remote_media.dart';
 import '../../core/widgets/saba_logo.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/banners_repository.dart';
+import 'widgets/banner_carousel.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../state/live_streams_controller.dart';
@@ -205,24 +207,20 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(18),
             child: AspectRatio(
               aspectRatio: 1600 / 580,
-              child: PageView.builder(
-                itemCount: banners.length,
-                itemBuilder: (context, i) {
-                  final banner = banners[i];
-                  return GestureDetector(
-                    onTap: banner.linkUrl == null
-                        ? null
-                        : () => launchUrl(
-                              Uri.parse(banner.linkUrl!),
-                              mode: LaunchMode.externalApplication,
-                            ),
-                    child: Image.network(
-                      banner.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                    ),
-                  );
-                },
+              child: BannerCarousel(
+                banners: banners,
+                loadInterval: BannersRepository().slideInterval,
+                itemBuilder: (context, banner) => GestureDetector(
+                  onTap: banner.linkUrl == null
+                      ? null
+                      : () => launchUrl(
+                            Uri.parse(banner.linkUrl!),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                  // The panel accepts SVGA / MP4 / WebP / GIF as well as
+                  // still images, so this can't be a plain Image.network.
+                  child: RemoteMedia(banner.imageUrl, fit: BoxFit.cover),
+                ),
               ),
             ),
           ),
