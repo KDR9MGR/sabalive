@@ -8,7 +8,10 @@
 // callers outright. The App Certificate never leaves this server; it is
 // read from the AGORA_APP_CERTIFICATE secret and is never sent to the client.
 //
-// Request body: { "channelName": string, "role"?: "publisher" | "subscriber" }
+// Request body: { "channelName": string, "role"?: "publisher" | "subscriber", "ghost"?: boolean }
+//   ghost: true is the admin panel's invisible "watch" — only a Super Admin / Master
+//   (or an active ghost account) may ask for it; it always yields a subscriber token
+//   and skips the per-room bans, since the watcher is never in the room's lists.
 // Response body: { "token": string, "appId": string, "channelName": string, "uid": 0, "expiresIn": number }
 //
 // uid is always 0 — the client's Agora SDK is left to assign the real
@@ -70,7 +73,7 @@ Deno.serve(async (req) => {
     return json({ error: "You must be signed in to request a streaming token" }, 401);
   }
 
-  let body: { channelName?: string; role?: string };
+  let body: { channelName?: string; role?: string; ghost?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -82,12 +85,23 @@ Deno.serve(async (req) => {
     return json({ error: "channelName is required" }, 400);
   }
 
+  // Ghost viewing (see ghost_watch_mode): an active ghost account in the app, or a
+  // Super Admin / Master asking for ghost:true from the panel. Always view-only.
+  const { data: ghostMode } = await userClient.rpc("ghost_watch_mode");
+  if (body.ghost === true && !ghostMode) {
+    return json({ error: "You are not allowed to watch lives invisibly" }, 403);
+  }
+  const isGhostViewer = !!ghostMode && (ghostMode === "ghost" || body.ghost === true);
+  if (isGhostViewer && body.role !== "subscriber") {
+    return json({ error: "Ghost viewers can only watch" }, 403);
+  }
+
   const role = body.role === "subscriber" ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
 
   // 1:1 call channels ("call-<uuid>") aren't lives; everything else is. A
   // channel that is a live_streams id also gets the per-room checks (removed by
   // the host, blocked by the host).
-  if (!channelName.startsWith("call-")) {
+  if (!channelName.startsWith("call-") && !isGhostViewer) {
     const { data: denied, error: deniedError } = await userClient.rpc(
       "live_access_denied_reason",
       { p_user: user.id, p_stream: UUID_RE.test(channelName) ? channelName : null },

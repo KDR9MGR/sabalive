@@ -37,6 +37,7 @@ import 'widgets/room_effect.dart';
 import 'live_access_exit.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/live_emoji_sheet.dart';
+import 'widgets/ghost_watch_bar.dart';
 import 'widgets/live_chat_bubble.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
@@ -360,8 +361,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     }
   }
 
+  bool get _ghost => isGhostViewer(context);
+
   Future<void> _seatTap(int seat) async {
-    if (!_isReal || _seatBusy) return;
+    if (_ghost || !_isReal || _seatBusy) return;
     final myId = supabase.auth.currentUser?.id;
     if (myId == null) return;
     final occupant = _seatOccupants[seat];
@@ -735,6 +738,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   }
 
   void _like() {
+    if (_ghost) return;
     setState(() {
       _likes++;
       _hearts.add(
@@ -939,7 +943,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               onPressed: () => Navigator.pop(context, 'minimize'),
               child: const Text('Minimize'),
             ),
-          if (!following)
+          if (!following && !_ghost)
             TextButton(
               onPressed: () => Navigator.pop(context, 'follow'),
               child: const Text('Follow & Leave'),
@@ -1153,6 +1157,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                       ),
                     ),
                     const SizedBox(width: 8),
+                    if (!_ghost)
                     GestureDetector(
                       onTap: () => session.toggleFollow(widget.stream.host.id),
                       child: Container(
@@ -1237,6 +1242,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   }
 
   Widget _sideRail() {
+    if (_ghost) return const SizedBox.shrink();
     Widget item(
       IconData icon,
       String label,
@@ -1297,6 +1303,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   // was previously More/Gift/Emoji with the send icon inline in the pill,
   // which drifted from the host screen after that one got its own updates.
   Widget _inputBar() {
+    if (_ghost) return const GhostWatchBar();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(

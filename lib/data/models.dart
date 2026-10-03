@@ -27,6 +27,7 @@ class AppUser {
     this.avatarUrl,
     this.frameUrl,
     this.pkWallpaper,
+    this.isGhost = false,
     String? displayId,
   }) : displayId = displayId ?? shortDisplayId(id);
 
@@ -52,10 +53,16 @@ class AppUser {
     avatarUrl: row['avatar_url'] as String?,
     frameUrl: _nonBlank(row['frame_url']),
     pkWallpaper: row['pk_wallpaper'] as int?,
+    isGhost: row['is_ghost'] as bool? ?? false,
     displayId: row['display_id'] != null ? '${row['display_id']}' : null,
   );
 
   final String id;
+
+  /// A monitoring (ghost) account: signs in like anyone, watches lives without
+  /// being seen, and can't act in them. The server enforces all of that — this
+  /// only lets the UI hide the controls that would be refused anyway.
+  final bool isGhost;
   String name;
   String username;
   String bio;

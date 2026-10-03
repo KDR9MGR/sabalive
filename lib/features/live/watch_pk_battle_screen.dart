@@ -26,6 +26,7 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
 import 'live_access_exit.dart';
+import 'widgets/ghost_watch_bar.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/pk_arena.dart';
 import 'widgets/pk_score_bar.dart';
@@ -598,7 +599,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                 if (_battle?.isLive == true) _scoreBar(),
                 const SizedBox(height: 6),
                 Expanded(child: _chatFeed()),
-                GiftTrayButton(onTap: _openGifts),
+                if (!_ghost) GiftTrayButton(onTap: _openGifts),
                 _inputBar(),
               ],
             ),
@@ -772,7 +773,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
         .subscribe();
   }
 
+  bool get _ghost => isGhostViewer(context);
+
   Future<void> _onSeatTapA(int seat) async {
+    if (_ghost) return;
     final occupant = _mySeatOccupants[seat];
     final myId = supabase.auth.currentUser?.id;
     if (occupant?.id == myId) {
@@ -960,6 +964,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
   }
 
   Widget _inputBar() {
+    if (_ghost) return const GhostWatchBar();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
       child: Row(
