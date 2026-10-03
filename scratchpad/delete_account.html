@@ -1,0 +1,417 @@
+<title>Delete Your Account</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FAF8FF;
+    --surface: #FFFFFF;
+    --surface-alt: #F1ECFC;
+    --stroke: #E4DAF7;
+    --text: #1C1330;
+    --text-secondary: #5B4B7A;
+    --text-muted: #8577A0;
+    --accent: #7C3AED;
+    --accent-bright: #9B3DF5;
+    --accent-deep: #6D28D9;
+    --danger: #D92D2F;
+    --danger-bg: #FDEAEA;
+    --success: #1A9D63;
+    --success-bg: #E8F8F0;
+    --shadow: 0 1px 2px rgba(28,19,48,0.04), 0 8px 24px rgba(28,19,48,0.06);
+    --font-display: 'Poppins', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0B0716;
+      --surface: #1A1230;
+      --surface-alt: #221743;
+      --stroke: #2E2352;
+      --text: #F6F3FF;
+      --text-secondary: #B6A8DB;
+      --text-muted: #7E719F;
+      --accent: #B25CFF;
+      --accent-bright: #C084FC;
+      --accent-deep: #9B6BF0;
+      --danger: #FF6B6D;
+      --danger-bg: #2E1420;
+      --success: #4ADE97;
+      --success-bg: #123024;
+      --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 12px 32px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0B0716;
+    --surface: #1A1230;
+    --surface-alt: #221743;
+    --stroke: #2E2352;
+    --text: #F6F3FF;
+    --text-secondary: #B6A8DB;
+    --text-muted: #7E719F;
+    --accent: #B25CFF;
+    --accent-bright: #C084FC;
+    --accent-deep: #9B6BF0;
+    --danger: #FF6B6D;
+    --danger-bg: #2E1420;
+    --success: #4ADE97;
+    --success-bg: #123024;
+    --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 12px 32px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-display);
+    padding: 48px 20px 64px;
+    display: flex;
+    justify-content: center;
+  }
+  main {
+    width: 100%;
+    max-width: 600px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 40px;
+  }
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #7C3AED, #C026D3, #F5279B);
+    flex-shrink: 0;
+  }
+  .brand-name {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(26px, 5vw, 32px);
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    margin: 0 0 36px;
+    max-width: 52ch;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 16px;
+    color: var(--text);
+  }
+
+  .checklist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .checklist li {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+  }
+  .checklist svg { flex-shrink: 0; margin-top: 2px; color: var(--danger); }
+  .checklist b { color: var(--text); font-weight: 600; }
+  .checklist .note { color: var(--text-muted); font-size: 12.5px; }
+
+  .retention {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--stroke);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .retention-label {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .retention-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--surface-alt);
+    border-radius: 7px;
+    padding: 4px 10px;
+  }
+
+  form { display: flex; flex-direction: column; gap: 16px; }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 7px;
+  }
+  input, textarea {
+    width: 100%;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface-alt);
+    border: 1px solid var(--stroke);
+    border-radius: 12px;
+    padding: 12px 14px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  input::placeholder, textarea::placeholder { color: var(--text-muted); }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 72px; font-family: var(--font-display); }
+
+  button {
+    font: inherit;
+    font-weight: 600;
+    font-size: 14.5px;
+    color: #fff;
+    background: linear-gradient(90deg, var(--accent-bright), var(--accent-deep));
+    border: none;
+    border-radius: 12px;
+    padding: 13px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+  }
+  button:hover { opacity: 0.92; }
+  button:active { transform: scale(0.99); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .spinner {
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 1.4s; }
+  }
+
+  .error-line {
+    font-size: 12.5px;
+    color: var(--danger);
+    background: var(--danger-bg);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: none;
+  }
+  .error-line.show { display: block; }
+
+  .confirm-icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--success-bg);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .confirm h2 {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0 0 8px;
+  }
+  .confirm p {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  footer {
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-muted);
+    text-align: center;
+    padding-top: 8px;
+  }
+  footer a { color: var(--text-secondary); }
+
+  [hidden] { display: none !important; }
+</style>
+
+<main>
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true"></div>
+    <div class="brand-name">SABALIVE</div>
+  </div>
+
+  <p class="eyebrow">Account &amp; Data Deletion</p>
+  <h1>Request deletion of your SABALIVE account</h1>
+  <p class="lede">
+    Submit the email your account is registered with and we'll queue your account
+    and its data for permanent removal. You don't need the app installed or to
+    sign in to make this request.
+  </p>
+
+  <section class="panel">
+    <h2>What gets deleted</h2>
+    <ul class="checklist">
+      <li>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span><b>Profile &amp; account</b> — name, username, photo, bio, login credentials</span>
+      </li>
+      <li>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span><b>Streams &amp; PK battles</b> — your broadcast history and recordings</span>
+      </li>
+      <li>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span><b>Chats &amp; direct messages</b> — sent and received</span>
+      </li>
+      <li>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span><b>Wallet, coins &amp; gift history</b> — balance and transaction records
+          <div class="note">Purchase records may be retained where required for tax or fraud-prevention law.</div>
+        </span>
+      </li>
+    </ul>
+    <div class="retention">
+      <span class="retention-label">Processing time</span>
+      <span class="retention-value">≤ 7 days</span>
+    </div>
+  </section>
+
+  <section class="panel" id="form-panel">
+    <h2>Your details</h2>
+    <form id="delete-form" novalidate>
+      <div>
+        <label for="email">Account email</label>
+        <input id="email" name="email" type="email" placeholder="you@example.com" required autocomplete="email">
+      </div>
+      <div>
+        <label for="reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <textarea id="reason" name="reason" placeholder="Tell us why you're leaving — helps us improve"></textarea>
+      </div>
+      <div class="error-line" id="error-line" role="alert"></div>
+      <button type="submit" id="submit-btn">
+        <span id="btn-label">Request account deletion</span>
+      </button>
+    </form>
+  </section>
+
+  <section class="panel confirm" id="confirm-panel" hidden>
+    <div class="confirm-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+    </div>
+    <h2>Request received</h2>
+    <p>
+      If this email matches a SABALIVE account, we've queued it for deletion and
+      will complete the process within 7 days. You can close this page now.
+    </p>
+  </section>
+
+  <footer>
+    Prefer email? Write to <a href="mailto:support@sabalive.app">support@sabalive.app</a>
+    from your registered address with the same request.<br>
+    For details on what we collect, see the Privacy Policy inside the SABALIVE app.
+  </footer>
+</main>
+
+<script>
+  const FUNCTION_URL = "https://sfehzhtqtpuobnrvzvzp.supabase.co/functions/v1/request-account-deletion";
+  const ANON_KEY = "sb_publishable_vdDsGi-wEgeJm_BpQE7MlA_Z5ZusWOi";
+
+  const form = document.getElementById('delete-form');
+  const emailInput = document.getElementById('email');
+  const reasonInput = document.getElementById('reason');
+  const errorLine = document.getElementById('error-line');
+  const submitBtn = document.getElementById('submit-btn');
+  const btnLabel = document.getElementById('btn-label');
+  const formPanel = document.getElementById('form-panel');
+  const confirmPanel = document.getElementById('confirm-panel');
+
+  function showError(msg) {
+    errorLine.textContent = msg;
+    errorLine.classList.add('show');
+  }
+  function clearError() {
+    errorLine.classList.remove('show');
+    errorLine.textContent = '';
+  }
+  function setBusy(busy) {
+    submitBtn.disabled = busy;
+    btnLabel.textContent = busy ? 'Submitting…' : 'Request account deletion';
+    submitBtn.innerHTML = busy
+      ? '<span class="spinner" aria-hidden="true"></span><span>Submitting…</span>'
+      : '<span id="btn-label">Request account deletion</span>';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearError();
+    const email = emailInput.value.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError('Enter a valid email address.');
+      emailInput.focus();
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': ANON_KEY,
+          'Authorization': 'Bearer ' + ANON_KEY,
+        },
+        body: JSON.stringify({ email, reason: reasonInput.value.trim() || undefined }),
+      });
+      if (!res.ok) throw new Error('bad status ' + res.status);
+      formPanel.hidden = true;
+      confirmPanel.hidden = false;
+      confirmPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      showError("Couldn't submit your request — check your connection and try again, or email support@sabalive.app.");
+      setBusy(false);
+    }
+  });
+</script>
