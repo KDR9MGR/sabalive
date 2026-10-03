@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
 import '../../data/store_repository.dart';
+import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/store_art.dart';
+import 'frames_screen.dart';
 import 'store_screen.dart';
 
 /// What you currently own (non-expired) and what's equipped — real data
@@ -38,6 +41,10 @@ class _BagScreenState extends State<BagScreen> {
     try {
       await _repo.setEquipped(owned.item.id, !owned.equipped);
       await _load();
+      // a frame you just put on (or took off) should show on your own profile now
+      if (mounted && owned.item.category == StoreCategory.frame) {
+        await context.read<AuthController>().reloadProfile();
+      }
     } catch (e) {
       if (mounted) messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
@@ -52,6 +59,12 @@ class _BagScreenState extends State<BagScreen> {
       appBar: AppBar(
         title: const Text('My Bag'),
         actions: [
+          IconButton(
+            tooltip: 'Profile frames',
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const FramesScreen())),
+          ),
           IconButton(
             icon: const Icon(Icons.storefront_outlined),
             onPressed: () => Navigator.push(

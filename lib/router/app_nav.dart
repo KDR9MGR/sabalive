@@ -32,6 +32,7 @@ import '../features/profile/settings_screen.dart';
 import '../features/profile/user_profile_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/wallet/bag_screen.dart';
+import '../features/wallet/frames_screen.dart';
 import '../features/wallet/buy_coins_screen.dart';
 import '../features/wallet/coin_sellers_screen.dart';
 import '../features/wallet/sell_coins_screen.dart';
@@ -259,6 +260,9 @@ class AppNav {
 
   static Future<void> store(BuildContext context) =>
       _push(context, const StoreScreen());
+
+  static Future<void> frames(BuildContext context) =>
+      _push(context, const FramesScreen());
 
   static Future<void> bag(BuildContext context) =>
       _push(context, const BagScreen());

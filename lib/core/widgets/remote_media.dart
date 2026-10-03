@@ -1,14 +1,16 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svga/flutter_svga.dart';
 import 'package:video_player/video_player.dart';
 
-enum MediaKind { svga, video, image }
+enum MediaKind { svga, video, animatedImage, image }
 
 /// What a panel-uploaded file is, from its extension (ignoring any query string,
-/// e.g. a signed URL). The panel accepts SVGA, MP4, WebP, GIF and PNG/JPG;
-/// anything unrecognised is treated as an image.
+/// e.g. a signed URL). The panel accepts SVGA, MP4, WebP, GIF and PNG/JPG; GIF
+/// and WebP may be animated, anything unrecognised is treated as a still image.
 MediaKind mediaKindFor(String url) {
   final path = Uri.tryParse(url)?.path ?? url;
   final dot = path.lastIndexOf('.');
@@ -16,11 +18,20 @@ MediaKind mediaKindFor(String url) {
   return switch (ext) {
     'svga' => MediaKind.svga,
     'mp4' || 'webm' || 'mov' || 'm4v' => MediaKind.video,
+    'gif' || 'webp' => MediaKind.animatedImage,
     _ => MediaKind.image,
   };
 }
 
 typedef SvgaLoader = Future<MovieEntity> Function(String url);
+typedef ImageBytesLoader = Future<Uint8List> Function(String url);
+
+/// How long a GIF / WebP frame is held. A frame that asks for under 20 ms
+/// (converters often write 0 or 10 ms) is shown for 100 ms, as browsers do —
+/// Flutter's own `Image.network` honours the raw value and plays those files
+/// far too fast.
+Duration normalizedFrameDelay(Duration d) =>
+    d < const Duration(milliseconds: 20) ? const Duration(milliseconds: 100) : d;
 
 /// Plays whatever file the admin panel uploaded — SVGA animations, MP4 video,
 /// and animated WebP / GIF / static images — in motion. The app used to show
@@ -44,6 +55,7 @@ class RemoteMedia extends StatelessWidget {
     this.onError,
     this.fallback,
     this.svgaLoader,
+    this.imageLoader,
   });
 
   final String url;
@@ -51,8 +63,9 @@ class RemoteMedia extends StatelessWidget {
   final bool loop;
 
   /// False for small thumbnails (a grid of gifts): an SVGA shows its first
-  /// frame without playing, and an MP4 isn't loaded at all (the [fallback]
-  /// shows) — a screen of players decoding at once would stutter.
+  /// frame without playing, an MP4 shows its first frame paused (a few at a
+  /// time — video decoders are limited; the rest show the [fallback]), and a
+  /// GIF / WebP shows its first frame.
   final bool animate;
   final bool muted;
   final VoidCallback? onFinished;
@@ -64,12 +77,12 @@ class RemoteMedia extends StatelessWidget {
 
   /// Injectable for tests; defaults to downloading (and caching) the file.
   final SvgaLoader? svgaLoader;
+  final ImageBytesLoader? imageLoader;
 
   @override
   Widget build(BuildContext context) {
     final blank = fallback ?? const SizedBox.shrink();
     final kind = mediaKindFor(url);
-    if (kind == MediaKind.video && !animate) return blank;
     return switch (kind) {
       MediaKind.svga => _SvgaMedia(
           url: url,
@@ -87,9 +100,21 @@ class RemoteMedia extends StatelessWidget {
           fit: fit,
           loop: loop,
           muted: muted,
+          still: !animate,
           onFinished: onFinished,
           onError: onError,
           fallback: blank,
+        ),
+      MediaKind.animatedImage => _AnimatedImageMedia(
+          key: ValueKey(url),
+          url: url,
+          fit: fit,
+          loop: loop,
+          animate: animate,
+          onFinished: onFinished,
+          onError: onError,
+          fallback: blank,
+          loader: imageLoader ?? _downloadImageBytes,
         ),
       MediaKind.image => Image.network(
           url,
@@ -213,6 +238,7 @@ class _VideoMedia extends StatefulWidget {
     required this.fit,
     required this.loop,
     required this.muted,
+    required this.still,
     required this.onFinished,
     required this.onError,
     required this.fallback,
@@ -221,6 +247,9 @@ class _VideoMedia extends StatefulWidget {
   final BoxFit fit;
   final bool loop;
   final bool muted;
+
+  /// A thumbnail: show the first frame, paused.
+  final bool still;
   final VoidCallback? onFinished;
   final VoidCallback? onError;
   final Widget fallback;
@@ -230,10 +259,16 @@ class _VideoMedia extends StatefulWidget {
 }
 
 class _VideoMediaState extends State<_VideoMedia> {
+  /// Video decoders are scarce (a phone has only a handful), so only this many
+  /// still thumbnails are held at once; the rest show their fallback.
+  static const _maxStills = 6;
+  static int _activeStills = 0;
+
   VideoPlayerController? _c;
   bool _ready = false;
   bool _failed = false;
   bool _finished = false;
+  bool _holdsStill = false;
 
   @override
   void initState() {
@@ -242,6 +277,14 @@ class _VideoMediaState extends State<_VideoMedia> {
   }
 
   Future<void> _start() async {
+    if (widget.still) {
+      if (_activeStills >= _maxStills) {
+        setState(() => _failed = true); // fallback shows; not an error
+        return;
+      }
+      _activeStills++;
+      _holdsStill = true;
+    }
     final c = VideoPlayerController.networkUrl(
       Uri.parse(widget.url),
       videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
@@ -250,6 +293,12 @@ class _VideoMediaState extends State<_VideoMedia> {
     try {
       await c.initialize();
       if (!mounted) return;
+      if (widget.still) {
+        await c.setVolume(0);
+        await c.seekTo(Duration.zero);
+        if (mounted) setState(() => _ready = true);
+        return;
+      }
       await c.setLooping(widget.loop);
       await c.setVolume(widget.muted ? 0 : 1);
       c.addListener(_watchEnd);
@@ -279,6 +328,7 @@ class _VideoMediaState extends State<_VideoMedia> {
 
   @override
   void dispose() {
+    if (_holdsStill) _activeStills--;
     _c?.removeListener(_watchEnd);
     _c?.dispose();
     super.dispose();
@@ -299,5 +349,125 @@ class _VideoMediaState extends State<_VideoMedia> {
         ),
       ),
     );
+  }
+}
+
+
+final Map<String, Uint8List> _imageBytesCache = {};
+
+Future<Uint8List> _downloadImageBytes(String url) async {
+  final cached = _imageBytesCache[url];
+  if (cached != null) return cached;
+  final data = await NetworkAssetBundle(Uri.parse(url)).load('');
+  final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  if (_imageBytesCache.length >= 24) {
+    _imageBytesCache.remove(_imageBytesCache.keys.first);
+  }
+  return _imageBytesCache[url] = bytes;
+}
+
+/// Plays an animated GIF / WebP at the right speed (see [normalizedFrameDelay]).
+class _AnimatedImageMedia extends StatefulWidget {
+  const _AnimatedImageMedia({
+    super.key,
+    required this.url,
+    required this.fit,
+    required this.loop,
+    required this.animate,
+    required this.onFinished,
+    required this.onError,
+    required this.fallback,
+    required this.loader,
+  });
+  final String url;
+  final BoxFit fit;
+  final bool loop;
+  final bool animate;
+  final VoidCallback? onFinished;
+  final VoidCallback? onError;
+  final Widget fallback;
+  final ImageBytesLoader loader;
+
+  @override
+  State<_AnimatedImageMedia> createState() => _AnimatedImageMediaState();
+}
+
+class _AnimatedImageMediaState extends State<_AnimatedImageMedia> {
+  ui.Codec? _codec;
+  ui.Image? _image;
+  Timer? _timer;
+  bool _failed = false;
+  bool _finished = false;
+  int _shown = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final bytes = await widget.loader(widget.url);
+      final codec = await ui.instantiateImageCodec(bytes);
+      if (!mounted) {
+        codec.dispose();
+        return;
+      }
+      _codec = codec;
+      await _nextFrame();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _failed = true);
+      widget.onError?.call();
+      _done();
+    }
+  }
+
+  Future<void> _nextFrame() async {
+    final codec = _codec;
+    if (codec == null || !mounted) return;
+    final frame = await codec.getNextFrame();
+    if (!mounted) {
+      frame.image.dispose();
+      return;
+    }
+    final old = _image;
+    setState(() => _image = frame.image);
+    old?.dispose();
+    _shown++;
+
+    final single = codec.frameCount <= 1;
+    final passDone = _shown >= codec.frameCount;
+    if (!widget.animate || single) {
+      if (!widget.loop || single) _done();
+      return;
+    }
+    if (passDone && !widget.loop) {
+      _done();
+      return;
+    }
+    _timer = Timer(normalizedFrameDelay(frame.duration), _nextFrame);
+  }
+
+  void _done() {
+    if (_finished || !mounted) return;
+    _finished = true;
+    widget.onFinished?.call();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _image?.dispose();
+    _codec?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final image = _image;
+    if (_failed || image == null) return widget.fallback;
+    return RawImage(image: image, fit: widget.fit);
   }
 }

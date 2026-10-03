@@ -22,6 +22,7 @@ class RoomEffect {
     this.mediaUrl,
     this.senderId,
     this.count = 1,
+    this.fillScreen = false,
   });
 
   factory RoomEffect.gift({
@@ -38,6 +39,7 @@ class RoomEffect {
     senderName: senderName,
     senderId: senderId,
     count: count,
+    fillScreen: gift.effect,
   );
 
   factory RoomEffect.entry({
@@ -62,6 +64,11 @@ class RoomEffect {
   final String senderName;
   final String? senderId;
   int count;
+
+  /// The gift is a full-screen effect (the panel's "Full-screen animation"
+  /// switch): its artwork covers the whole screen. Other artwork is shown whole,
+  /// as large as fits the screen.
+  final bool fillScreen;
 
   String get caption => switch (kind) {
     RoomEffectKind.gift when count > 1 => '$senderName sent $name x$count',
@@ -291,15 +298,18 @@ class _RoomEffectViewState extends State<_RoomEffectView> {
   Widget build(BuildContext context) {
     final e = widget.effect;
     final url = e.mediaUrl;
-    final size = MediaQuery.sizeOf(context).shortestSide;
     final art = url == null || _artFailed
-        ? _EmojiBurst(emoji: e.emoji, onFinished: widget.onFinished)
-        : SizedBox.square(
-            dimension: size * 0.85,
+        ? Center(
+            child: _EmojiBurst(emoji: e.emoji, onFinished: widget.onFinished),
+          )
+        // The whole screen, not a box in the middle: gifts and entries are
+        // meant to be seen. MP4 effects keep their sound.
+        : SizedBox.expand(
             child: RemoteMedia(
               url,
               loop: false,
-              fit: BoxFit.contain,
+              muted: false,
+              fit: e.fillScreen ? BoxFit.cover : BoxFit.contain,
               onError: () {
                 if (mounted) setState(() => _artFailed = true);
               },
@@ -310,13 +320,13 @@ class _RoomEffectViewState extends State<_RoomEffectView> {
           );
     final label = e.caption;
     return Stack(
-      alignment: Alignment.center,
+      fit: StackFit.expand,
       children: [
-        Center(child: art),
+        art,
         Positioned(
           left: 24,
           right: 24,
-          bottom: size * 0.45,
+          bottom: 150,
           child: Center(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

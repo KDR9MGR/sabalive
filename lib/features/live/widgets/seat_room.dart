@@ -57,7 +57,7 @@ class SeatCircle extends StatelessWidget {
                     shape: BoxShape.circle,
                     gradient: AppColors.primaryGradient,
                   ),
-                  child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, size: size - 4),
+                  child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, frameUrl: occupant.frameUrl, size: size - 4),
                 )
               else
                 Container(

@@ -68,7 +68,7 @@ class _ViewerListSheetState extends State<_ViewerListSheet> {
                           Navigator.pop(context);
                           AppNav.userProfile(context, u);
                         },
-                        leading: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 42),
+                        leading: AppAvatar(name: u.name, imageUrl: u.avatarUrl, frameUrl: u.frameUrl, size: 42),
                         title: Text(u.name,
                             style: const TextStyle(
                                 fontFamily: 'Poppins',

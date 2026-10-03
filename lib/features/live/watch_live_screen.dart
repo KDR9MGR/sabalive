@@ -1112,6 +1112,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                           AppAvatar(
                             name: widget.stream.host.name,
                             imageUrl: widget.stream.host.avatarUrl,
+                            frameUrl: widget.stream.host.frameUrl,
                             size: 32,
                           ),
                           const SizedBox(width: 8),

@@ -30,6 +30,7 @@ class LiveChatLineBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (line.isJoin) return _JoinNotice(line: line);
+    if (line.isLeave) return _JoinNotice(line: line, verb: 'left');
     if (line.isSticker) {
       return _StickerBubble(line: line, backgroundAlpha: backgroundAlpha);
     }
@@ -128,9 +129,14 @@ class _StickerBubble extends StatelessWidget {
   }
 }
 
+/// "Riya joined" / "Riya left": the same bold, level-badged notice for both. A
+/// leave is a little quieter (no glow), so it reads as the arrival's counterpart.
 class _JoinNotice extends StatelessWidget {
-  const _JoinNotice({required this.line});
+  const _JoinNotice({required this.line, this.verb = 'joined'});
   final LiveChatLine line;
+  final String verb;
+
+  bool get _leaving => verb == 'left';
 
   @override
   Widget build(BuildContext context) {
@@ -140,14 +146,18 @@ class _JoinNotice extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: AppColors.primaryBright.withValues(alpha: 0.7),
+          color: _leaving
+              ? Colors.white.withValues(alpha: 0.35)
+              : AppColors.primaryBright.withValues(alpha: 0.7),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.35),
-            blurRadius: 10,
-          ),
-        ],
+        boxShadow: _leaving
+            ? null
+            : [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                  blurRadius: 10,
+                ),
+              ],
       ),
       child: Text.rich(
         TextSpan(
@@ -171,9 +181,11 @@ class _JoinNotice extends StatelessWidget {
                 charmShimmer: StarShimmer.once,
               ),
             ),
-            const TextSpan(
-              text: '  joined',
-              style: TextStyle(color: Colors.white),
+            TextSpan(
+              text: '  $verb',
+              style: TextStyle(
+                color: _leaving ? Colors.white70 : Colors.white,
+              ),
             ),
           ],
         ),

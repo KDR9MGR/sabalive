@@ -1714,6 +1714,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           AppAvatar(
             name: widget.stream.host.name,
             imageUrl: widget.stream.host.avatarUrl,
+            frameUrl: widget.stream.host.frameUrl,
             size: 24,
           ),
           const SizedBox(width: 6),

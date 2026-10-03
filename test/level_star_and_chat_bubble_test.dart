@@ -99,12 +99,15 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
-    testWidgets('a "left" notice is NOT given the join styling', (t) async {
+    testWidgets('a "left" notice gets the same styled, level-starred look as a join', (t) async {
       await t.pumpWidget(wrap(LiveChatLineBubble(
         line: LiveChatLine(user(wealth: 12, charm: 7), 'left the live stream',
             system: true),
       )));
-      expect(find.byType(LevelStar), findsNothing);
+      await t.pump(const Duration(seconds: 2));
+      expect(find.byType(LevelStar), findsNWidgets(2),
+          reason: 'wealth + charm stars, exactly as on a join');
+      expect(find.textContaining('left', findRichText: true), findsOneWidget);
     });
 
     test('isJoin is true only for system "joined" lines', () {

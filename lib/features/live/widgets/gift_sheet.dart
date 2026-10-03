@@ -59,16 +59,29 @@ class _GiftSheetState extends State<_GiftSheet> {
 
   static const _quantities = [1, 10, 99];
 
-  List<Gift> _list(List<Gift> catalog) => switch (_tab) {
-    1 => catalog.reversed.toList(),
-    2 => catalog.where((g) => g.effect).toList(),
+  /// The tabs on offer. Effects and Event only appear once the panel has at
+  /// least one gift in them, so a tab never opens onto nothing.
+  List<String> _tabsFor(List<Gift> catalog) => [
+    'Popular',
+    'New',
+    if (catalog.any((g) => g.effect)) 'Effects',
+    if (catalog.any((g) => g.category == 'event')) 'Event',
+  ];
+
+  List<Gift> _list(List<Gift> catalog, String tab) => switch (tab) {
+    'New' => catalog.reversed.toList(),
+    'Effects' => catalog.where((g) => g.effect).toList(),
+    'Event' => catalog.where((g) => g.category == 'event').toList(),
     _ => catalog,
   };
 
   @override
   Widget build(BuildContext context) {
     final wallet = context.watch<WalletController>();
-    final gifts = _list(wallet.gifts);
+    final tabs = _tabsFor(wallet.gifts);
+    // a tab the panel has since emptied falls back to the first
+    final tab = _tab < tabs.length ? _tab : 0;
+    final gifts = _list(wallet.gifts, tabs[tab]);
 
     if (gifts.isEmpty) {
       return const SizedBox(
@@ -162,7 +175,7 @@ class _GiftSheetState extends State<_GiftSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                for (final (i, label) in ['Popular', 'New', 'Effects'].indexed)
+                for (final (i, label) in tabs.indexed)
                   Padding(
                     padding: const EdgeInsets.only(right: 20),
                     child: GestureDetector(
@@ -176,7 +189,7 @@ class _GiftSheetState extends State<_GiftSheet> {
                           fontFamily: 'Poppins',
                           fontWeight: FontWeight.w600,
                           fontSize: 13.5,
-                          color: _tab == i
+                          color: tab == i
                               ? AppColors.textPrimary
                               : AppColors.textMuted,
                         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
 import '../utils/formatters.dart';
+import 'remote_media.dart';
 
 /// Shows the user's real uploaded photo when [imageUrl] is set; otherwise
 /// falls back to a deterministic gradient with initials, keeping every user
@@ -15,6 +16,7 @@ class AppAvatar extends StatelessWidget {
     this.ringColor,
     this.live = false,
     this.imageUrl,
+    this.frameUrl,
   });
 
   final String name;
@@ -24,11 +26,18 @@ class AppAvatar extends StatelessWidget {
   final bool live;
   final String? imageUrl;
 
+  /// The user's equipped avatar frame (see AppUser.frameUrl): animated artwork
+  /// drawn around the picture, a little larger than it.
+  final String? frameUrl;
+
+  /// How much bigger than the picture the frame artwork is drawn.
+  static const frameScale = 1.4;
+
   @override
   Widget build(BuildContext context) {
     final tint = AppColors.tints[name.hashCode.abs() % AppColors.tints.length];
     final hasPhoto = imageUrl != null && imageUrl!.isNotEmpty;
-    final avatar = Container(
+    final photo = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
@@ -66,6 +75,36 @@ class AppAvatar extends StatelessWidget {
               ),
             ),
     );
+
+    final frame = frameUrl;
+    final avatar = frame == null || frame.isEmpty
+        ? photo
+        : SizedBox(
+            width: size,
+            height: size,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                photo,
+                // drawn over the picture and outside its edge; never takes taps
+                IgnorePointer(
+                  child: OverflowBox(
+                    maxWidth: size * frameScale,
+                    maxHeight: size * frameScale,
+                    child: SizedBox.square(
+                      dimension: size * frameScale,
+                      child: RemoteMedia(
+                        frame,
+                        key: ValueKey(frame),
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
 
     if (!live) return avatar;
 

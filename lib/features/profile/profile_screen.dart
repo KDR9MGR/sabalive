@@ -177,7 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          AppAvatar(name: user.name, imageUrl: user.avatarUrl, size: 92, ring: true),
+          AppAvatar(name: user.name, imageUrl: user.avatarUrl, frameUrl: user.frameUrl, size: 92, ring: true),
           if (_uploadingPhoto)
             Positioned.fill(
               child: Container(
@@ -384,6 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       (Icons.storefront_rounded, 'Store', () => AppNav.store(context)),
       (Icons.military_tech_rounded, 'My Level', () => AppNav.myLevel(context)),
       (Icons.shopping_bag_outlined, 'My Bag', () => AppNav.bag(context)),
+      (Icons.account_circle_outlined, 'Frames', () => AppNav.frames(context)),
       (Icons.apartment_rounded, 'Apply for Agency', () => AppNav.applyAgency(context)),
       (Icons.workspace_premium_rounded, 'Badges', () => AppNav.badges(context, user.id)),
       (Icons.person_add_alt_1_rounded, 'Invite a Friend', () => AppNav.referrals(context)),

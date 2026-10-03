@@ -106,6 +106,7 @@ class LiveCard extends StatelessWidget {
                           AppAvatar(
                             name: stream.host.name,
                             imageUrl: stream.host.avatarUrl,
+                            frameUrl: stream.host.frameUrl,
                             size: 26,
                           ),
                           const SizedBox(width: 6),

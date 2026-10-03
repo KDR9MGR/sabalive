@@ -9,9 +9,11 @@ import '../config/supabase_client.dart';
 import '../config/supabase_config.dart';
 import '../data/models.dart';
 import '../data/restrictions_repository.dart';
+import '../data/session_repository.dart';
 import '../services/device_identity_service.dart';
 import '../services/push_notifications_service.dart';
 import 'access_guard.dart';
+import 'session_guard.dart';
 import 'staff_account_gate.dart';
 
 enum AuthStatus { unknown, onboarding, unauthenticated, authenticated }
@@ -56,6 +58,12 @@ class AuthController extends ChangeNotifier {
   String? _bansChannelUser;
   bool _endingForBan = false;
 
+  /// One signed-in device per account — see [SessionRepository].
+  final SessionRepository _sessionRepo = SessionRepository();
+  RealtimeChannel? _sessionChannel;
+  String? _sessionChannelUser;
+  String? _claimedSessionId;
+
   AuthStatus get status => _status;
   AppUser? get user => _user;
 
@@ -78,6 +86,8 @@ class AuthController extends ChangeNotifier {
     final session = state.session;
     if (session == null) {
       _stopWatchingBans();
+      _stopWatchingSession();
+      _claimedSessionId = null;
       _access.reset();
       _restrictions = Restrictions.none;
       if (_status == AuthStatus.authenticated) {
@@ -110,6 +120,15 @@ class AuthController extends ChangeNotifier {
     if (await _enforceBan(session.user.id, notice: true, endSession: !_busy) !=
         null) {
       return;
+    }
+    // A fresh sign-in (not a restore or a refresh) takes over the account's one
+    // session; every restored or fresh session listens for another device doing so.
+    // (An explicit sign-in does this itself, after its own checks.)
+    if (!_busy) {
+      if (state.event == AuthChangeEvent.signedIn) {
+        await _claimSession(loginMethodFor(session.user));
+      }
+      _watchSession(session.user.id);
     }
     // Session exists (sign-in, token refresh, restored on cold start, or —
     // importantly — the OAuth deep-link returning after Google/Apple).
@@ -162,7 +181,7 @@ class AuthController extends ChangeNotifier {
     _setRestrictions(check.restrictions);
     final message = check.blockedMessage;
     if (message != null) {
-      if (endSession) await _endSessionForBan(message, notice: notice);
+      if (endSession) await _endSessionWithReason(message, notice: notice);
       return message;
     }
     _watchBans(userId);
@@ -175,18 +194,20 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _endSessionForBan(String message, {required bool notice}) async {
+  Future<void> _endSessionWithReason(String message, {required bool notice}) async {
     if (_endingForBan) return;
     _endingForBan = true;
     try {
       if (notice) _notice = message;
       _stopWatchingBans();
+      _stopWatchingSession();
       try {
         await PushNotificationsService.instance.onSignOut();
       } catch (_) {}
       await _signOutOfGoogle();
       await supabase.auth.signOut();
       _access.reset();
+      _claimedSessionId = null;
       _restrictions = Restrictions.none;
       _user = null;
       // at the splash screen completeSplash() decides where to go next
@@ -215,6 +236,50 @@ class AuthController extends ChangeNotifier {
     _bansChannelUser = null;
   }
 
+  /// This sign-in becomes the account's one active session; any other device is
+  /// signed out. Best effort: if it fails the earlier device simply stays
+  /// signed in until the next sign-in.
+  Future<void> _claimSession(String method) async {
+    final sid = sessionIdOf(supabase.auth.currentSession?.accessToken);
+    if (sid != null && sid == _claimedSessionId) return;
+    try {
+      final device = await DeviceIdentityService.instance.load();
+      await _sessionRepo
+          .claim(method: method, device: device)
+          .timeout(const Duration(seconds: 4));
+      _claimedSessionId = sid;
+    } catch (_) {}
+  }
+
+  /// Signs this device out when another device takes the account's session.
+  void _watchSession(String userId) {
+    if (_sessionChannelUser == userId) return;
+    _stopWatchingSession();
+    _sessionChannelUser = userId;
+    _sessionChannel = _sessionRepo.watch(userId, (row) {
+      final replaced = sessionWasReplaced(
+        row,
+        mySessionId: sessionIdOf(supabase.auth.currentSession?.accessToken),
+        myDeviceId: DeviceIdentityService.instance.current?.id,
+      );
+      if (replaced) {
+        unawaited(_endSessionWithReason(sessionReplacedMessage, notice: true));
+      }
+    });
+  }
+
+  void _stopWatchingSession() {
+    _sessionChannel?.unsubscribe();
+    _sessionChannel = null;
+    _sessionChannelUser = null;
+  }
+
+  /// After an explicit sign-in has passed every gate.
+  Future<void> _afterSignIn(User user, String method) async {
+    await _claimSession(method);
+    _watchSession(user.id);
+  }
+
   /// Before any sign-in or sign-up: a banned phone can't even start one.
   /// Fails open if the server can't be reached.
   Future<void> _requireDeviceAllowed() async {
@@ -227,6 +292,13 @@ class AuthController extends ChangeNotifier {
       }
     } catch (_) {}
     if (message != null) throw Exception(message);
+  }
+
+  /// Re-reads the signed-in user's profile (after equipping a frame, say) so
+  /// every screen showing it picks the change up.
+  Future<void> reloadProfile() async {
+    final uid = supabase.auth.currentUser?.id;
+    if (uid != null) await _refreshProfile(uid);
   }
 
   Future<void> _refreshProfile(String userId) async {
@@ -315,6 +387,7 @@ class AuthController extends ChangeNotifier {
         await _requireNormalUser(user);
         final banned = await _enforceBan(user.id, notice: false);
         if (banned != null) throw Exception(banned);
+        await _afterSignIn(user, trimmed.contains('@') ? 'email' : 'phone');
         await _refreshProfile(user.id);
         _status = AuthStatus.authenticated;
         notifyListeners();
@@ -350,6 +423,7 @@ class AuthController extends ChangeNotifier {
       await _requireNormalUser(user);
       final banned = await _enforceBan(user.id, notice: false);
       if (banned != null) throw Exception(banned);
+      await _afterSignIn(user, 'google');
       await _refreshProfile(user.id);
       _status = AuthStatus.authenticated;
       notifyListeners();
@@ -392,6 +466,7 @@ class AuthController extends ChangeNotifier {
         await _requireNormalUser(res.session!.user);
         final banned = await _enforceBan(res.session!.user.id, notice: false);
         if (banned != null) throw Exception(banned);
+        await _afterSignIn(res.session!.user, 'phone_otp');
       } catch (_) {
         _awaitingOtpFinish = false; // signed back out; nothing to finish
         rethrow;
@@ -427,6 +502,7 @@ class AuthController extends ChangeNotifier {
     );
     final uid = supabase.auth.currentUser?.id;
     if (res.session != null && uid != null) {
+      await _afterSignIn(res.session!.user, 'signup');
       await _refreshProfile(uid);
       _status = AuthStatus.authenticated;
       notifyListeners();
@@ -503,6 +579,8 @@ class AuthController extends ChangeNotifier {
     await _signOutOfGoogle();
     await supabase.auth.signOut();
     _stopWatchingBans();
+    _stopWatchingSession();
+    _claimedSessionId = null;
     _access.reset();
     _restrictions = Restrictions.none;
     _user = null;
@@ -523,6 +601,8 @@ class AuthController extends ChangeNotifier {
     await _signOutOfGoogle();
     await supabase.auth.signOut();
     _stopWatchingBans();
+    _stopWatchingSession();
+    _claimedSessionId = null;
     _access.reset();
     _restrictions = Restrictions.none;
     _user = null;
@@ -550,6 +630,7 @@ class AuthController extends ChangeNotifier {
   void dispose() {
     _authSub?.cancel();
     _stopWatchingBans();
+    _stopWatchingSession();
     super.dispose();
   }
 }

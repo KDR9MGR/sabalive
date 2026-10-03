@@ -90,7 +90,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              Center(child: AppAvatar(name: _user.name, imageUrl: _user.avatarUrl, size: 96, ring: true)),
+              Center(child: AppAvatar(name: _user.name, imageUrl: _user.avatarUrl, frameUrl: _user.frameUrl, size: 96, ring: true)),
               const SizedBox(height: 12),
               Center(
                 child: Row(

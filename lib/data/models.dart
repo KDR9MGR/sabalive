@@ -25,6 +25,7 @@ class AppUser {
     this.gender,
     this.dateOfBirth,
     this.avatarUrl,
+    this.frameUrl,
     this.pkWallpaper,
     String? displayId,
   }) : displayId = displayId ?? shortDisplayId(id);
@@ -49,6 +50,7 @@ class AppUser {
         ? DateTime.tryParse(row['date_of_birth'] as String)
         : null,
     avatarUrl: row['avatar_url'] as String?,
+    frameUrl: _nonBlank(row['frame_url']),
     pkWallpaper: row['pk_wallpaper'] as int?,
     displayId: row['display_id'] != null ? '${row['display_id']}' : null,
   );
@@ -73,6 +75,15 @@ class AppUser {
   String? gender;
   DateTime? dateOfBirth;
   String? avatarUrl;
+
+  /// Artwork of the avatar frame this user has equipped (SVGA / MP4 / WebP /
+  /// GIF / PNG), drawn around their picture everywhere it shows. Null: none.
+  String? frameUrl;
+
+  static String? _nonBlank(Object? v) {
+    final s = (v as String?)?.trim();
+    return s == null || s.isEmpty ? null : s;
+  }
 
   /// Index into AppColors.tints for this user's PK Battle arena background;
   /// null means use the existing default look.
@@ -146,6 +157,7 @@ class Gift {
     this.price, {
     this.effect = false,
     this.iconUrl,
+    this.category = 'basic',
   });
 
   factory Gift.fromRow(Map<String, dynamic> row) => Gift(
@@ -155,6 +167,7 @@ class Gift {
     row['price_coins'] as int,
     effect: row['has_effect'] as bool? ?? false,
     iconUrl: _nonEmpty(row['icon_url']),
+    category: row['category'] as String? ?? 'basic',
   );
 
   final String id;
@@ -162,6 +175,9 @@ class Gift {
   final String emoji;
   final int price;
   final bool effect;
+
+  /// basic / luxury / vehicle / special / event (the gift sheet's Event tab).
+  final String category;
 
   /// The panel-uploaded artwork (SVGA / MP4 / WebP / PNG). The emoji stays the
   /// fallback for gifts that have none, and while the file loads.
@@ -279,6 +295,9 @@ class LiveChatLine {
 
   /// An entry notice — the one that gets the bold, shiny, level-badged look.
   bool get isJoin => system && text.startsWith('joined');
+
+  /// The matching notice when someone leaves the live.
+  bool get isLeave => system && text.startsWith('left');
 }
 
 class RankingEntry {
