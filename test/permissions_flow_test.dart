@@ -36,13 +36,11 @@ void main() {
       expect(g.prompted, isTrue);
       expect(
         g.asked,
-        containsAll([
+        [
           Permission.camera,
           Permission.microphone,
           Permission.notification,
-          Permission.photos,
-          Permission.audio,
-        ]),
+        ],
       );
     });
 
@@ -78,12 +76,15 @@ void main() {
       expect(g.requests, 1);
     });
 
-    test('iOS does not ask for the Android-only storage / audio permissions',
-        () {
-      final wanted = PermissionsFlow(_FakeGateway(), isAndroid: false).wanted;
-      expect(wanted, contains(Permission.photos));
-      expect(wanted, isNot(contains(Permission.storage)));
-      expect(wanted, isNot(contains(Permission.audio)));
+    test('never asks for photo / storage access (system picker is used)', () {
+      for (final isAndroid in [true, false]) {
+        final wanted =
+            PermissionsFlow(_FakeGateway(), isAndroid: isAndroid).wanted;
+        expect(wanted, isNot(contains(Permission.photos)));
+        expect(wanted, isNot(contains(Permission.videos)));
+        expect(wanted, isNot(contains(Permission.storage)));
+        expect(wanted, isNot(contains(Permission.audio)));
+      }
     });
   });
 
@@ -105,7 +106,7 @@ void main() {
       expect(find.text('Camera'), findsOneWidget);
       expect(find.text('Microphone'), findsOneWidget);
       expect(find.text('Notifications'), findsOneWidget);
-      expect(find.text('Photos & files'), findsOneWidget);
+      expect(find.text('Photos & files'), findsNothing);
       expect(g.requests, 0); // nothing asked until they agree
 
       await t.tap(find.text('Continue'));

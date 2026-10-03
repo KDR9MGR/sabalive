@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/auth_controller.dart';
@@ -38,6 +40,11 @@ Future<void> pickAndUploadAvatar(
     ),
   );
   if (source == null || !context.mounted) return;
+  // Use the Android system Photo Picker (image_picker otherwise falls back to
+  // a generic file chooser). It needs no storage permission, which is what
+  // Play's Photo and Video Permissions policy requires.
+  final platform = ImagePickerPlatform.instance;
+  if (platform is ImagePickerAndroid) platform.useAndroidPhotoPicker = true;
   final picked = await ImagePicker().pickImage(
     source: source,
     maxWidth: 1024,

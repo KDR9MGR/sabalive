@@ -46,21 +46,16 @@ class PermissionsFlow {
   final PermissionGateway gateway;
   final bool isAndroid;
 
-  /// What the app uses: camera + microphone (going live, audio rooms),
-  /// notifications, and photos / audio files (profile pictures, and the
-  /// host's own music in an audio room).
+  /// What the app uses: camera + microphone (going live, audio rooms) and
+  /// notifications.
   ///
-  /// permission_handler splits storage access by Android version: `storage`
-  /// is the Android 12-and-below permission (it resolves to "denied" without
-  /// prompting on 13+), `photos` and `audio` are the Android 13+ ones. Asking
-  /// for all three covers every version.
-  List<Permission> get wanted => [
+  /// No photo/storage permission: the profile picture comes from
+  /// image_picker, which opens the system photo picker and needs none — and
+  /// Play rejects READ_MEDIA_IMAGES when a system picker would do.
+  List<Permission> get wanted => const [
         Permission.camera,
         Permission.microphone,
         Permission.notification,
-        if (isAndroid) Permission.storage,
-        Permission.photos,
-        if (isAndroid) Permission.audio,
       ];
 
   /// [confirm] shows the explainer and returns whether the person agreed.

@@ -64,11 +64,6 @@ class _Explainer extends StatelessWidget {
       'Notifications',
       'Know when someone messages you or goes live'
     ),
-    (
-      Icons.folder_rounded,
-      'Photos & files',
-      'Set your profile picture, and play your own music in an audio room'
-    ),
   ];
 
   @override
