@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,6 +7,8 @@ import 'config/feature_flags.dart';
 import 'core/widgets/permissions_prompt_host.dart';
 import 'features/auth/auth_flow.dart';
 import 'features/live/live_access_exit.dart';
+import 'features/maintenance/maintenance_banner.dart';
+import 'features/maintenance/maintenance_screen.dart';
 import 'features/calls/incoming_call_banner.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/main_shell.dart';
@@ -13,6 +17,7 @@ import 'state/active_live_session_controller.dart';
 import 'state/auth_controller.dart';
 import 'state/calls_controller.dart';
 import 'state/live_streams_controller.dart';
+import 'state/maintenance_controller.dart';
 import 'state/session_controller.dart';
 import 'state/theme_config_controller.dart';
 import 'state/wallet_controller.dart';
@@ -29,6 +34,7 @@ class SabaLiveApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: MaintenanceController.instance),
         ChangeNotifierProvider(create: (_) => AuthController()),
         ChangeNotifierProvider(create: (_) => WalletController()),
         ChangeNotifierProvider(create: (_) => SessionController()),
@@ -57,10 +63,93 @@ class SabaLiveApp extends StatelessWidget {
           // mounted and interactive-underneath no matter where the user
           // navigates elsewhere in the app.
           builder: (context, child) => _LiveBanWatcher(
-            child: Stack(children: [?child, const _ActiveLiveSessionOverlay()]),
+            child: _MaintenanceOverlay(
+              child: Stack(
+                children: [?child, const _ActiveLiveSessionOverlay()],
+              ),
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Puts the maintenance screen over the whole app while it is locked, and a thin
+/// notice while maintenance is coming. Being above the Navigator, the live
+/// overlay and every route, nothing can be navigated to underneath it.
+///
+/// When the lock lands the user's live (if any) is ended; when it lifts, the
+/// feed and profile are refreshed and the app carries on. It also hands the
+/// server's "log everyone out" version to the auth controller.
+class _MaintenanceOverlay extends StatefulWidget {
+  const _MaintenanceOverlay({required this.child});
+  final Widget child;
+
+  @override
+  State<_MaintenanceOverlay> createState() => _MaintenanceOverlayState();
+}
+
+class _MaintenanceOverlayState extends State<_MaintenanceOverlay> {
+  final _controller = MaintenanceController.instance;
+  bool _wasLocked = false;
+  int? _lastVersion;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onChange);
+    _wasLocked = _controller.locked;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onChange());
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (!mounted) return;
+    final locked = _controller.locked;
+    if (locked && !_wasLocked) {
+      // maintenance began while someone was live: take them out of the room
+      context.read<ActiveLiveSessionController>().end();
+    } else if (!locked && _wasLocked) {
+      // it is over: bring the data on screen up to date
+      unawaited(context.read<LiveStreamsController>().refresh());
+      unawaited(context.read<AuthController>().reloadProfile());
+    }
+    _wasLocked = locked;
+
+    // "Logout all users" moves this number; a real status (not the empty default)
+    // that is newer than the one this device signed in under ends the session.
+    final status = _controller.status;
+    if (status.serverTime.year > 2000 && status.appSessionVersion != _lastVersion) {
+      _lastVersion = status.appSessionVersion;
+      unawaited(
+        context.read<AuthController>().handleSessionVersion(status.appSessionVersion),
+      );
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _controller.status;
+    return Stack(
+      children: [
+        widget.child,
+        if (status.showsNotice)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: MaintenanceBanner(controller: _controller),
+          ),
+        if (_controller.locked)
+          Positioned.fill(child: MaintenanceScreen(controller: _controller)),
+      ],
     );
   }
 }

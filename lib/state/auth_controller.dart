@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/google_config.dart';
@@ -10,9 +11,11 @@ import '../config/supabase_config.dart';
 import '../data/models.dart';
 import '../data/restrictions_repository.dart';
 import '../data/session_repository.dart';
+import '../data/system_status_repository.dart';
 import '../services/device_identity_service.dart';
 import '../services/push_notifications_service.dart';
 import 'access_guard.dart';
+import 'maintenance_controller.dart';
 import 'session_guard.dart';
 import 'staff_account_gate.dart';
 
@@ -276,8 +279,54 @@ class AuthController extends ChangeNotifier {
 
   /// After an explicit sign-in has passed every gate.
   Future<void> _afterSignIn(User user, String method) async {
+    await _rememberSessionVersion();
     await _claimSession(method);
     _watchSession(user.id);
+  }
+
+  static const _sessionVersionKey = 'app_session_version_v1';
+
+  /// The Super Admin's "log everyone out" moves a version number. A device
+  /// remembers the number it signed in under; if the server's is newer this
+  /// session is over — it signs out and says why. The first time a device sees a
+  /// number it just notes it.
+  Future<void> handleSessionVersion(int serverVersion) async {
+    if (supabase.auth.currentSession == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getInt(_sessionVersionKey);
+    if (stored == null) {
+      await prefs.setInt(_sessionVersionKey, serverVersion);
+      return;
+    }
+    if (serverVersion > stored) {
+      await prefs.setInt(_sessionVersionKey, serverVersion);
+      await _endSessionWithReason(
+        'Your session has expired. Please sign in again.',
+        notice: true,
+      );
+    }
+  }
+
+  /// A fresh sign-in is made under the current number, so it isn't signed out by
+  /// an earlier "log everyone out".
+  Future<void> _rememberSessionVersion() async {
+    try {
+      final version = (await SystemStatusRepository().fetch()).appSessionVersion;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_sessionVersionKey, version);
+    } catch (_) {}
+  }
+
+  /// Sign-in and sign-up are closed while the app is in maintenance (or the
+  /// Super Admin has blocked logins). Fails open if the status can't be read.
+  Future<void> _requireLoginsOpen() async {
+    final maintenance = MaintenanceController.instance;
+    await maintenance.refresh();
+    if (maintenance.loginsBlocked) {
+      throw Exception(
+        "We're under maintenance right now, so signing in is unavailable. Please try again soon.",
+      );
+    }
   }
 
   /// Before any sign-in or sign-up: a banned phone can't even start one.
@@ -370,6 +419,7 @@ class AuthController extends ChangeNotifier {
   Future<void> loginWithPassword(String id, String password) =>
       _guard(() async {
         clearNotice();
+        await _requireLoginsOpen();
         await _requireDeviceAllowed();
         final trimmed = id.trim();
         if (trimmed.contains('@')) {
@@ -403,6 +453,7 @@ class AuthController extends ChangeNotifier {
   /// starts using the native picker the moment isConfigured flips true.
   Future<void> loginWithSocial(String provider) => _guard(() async {
     clearNotice();
+    await _requireLoginsOpen();
     await _requireDeviceAllowed();
     if (provider == 'Google' && GoogleConfig.isConfigured) {
       final googleUser = await GoogleSignIn(
@@ -445,6 +496,7 @@ class AuthController extends ChangeNotifier {
   /// throws otherwise.
   Future<void> requestOtp(String phone) => _guard(() async {
     clearNotice();
+    await _requireLoginsOpen();
     await _requireDeviceAllowed();
     _pendingPhone = phone;
     await supabase.auth.signInWithOtp(phone: phone);
@@ -494,6 +546,7 @@ class AuthController extends ChangeNotifier {
     required String username,
     required String password,
   }) => _guard(() async {
+    await _requireLoginsOpen();
     await _requireDeviceAllowed();
     final res = await supabase.auth.signUp(
       email: email.trim(),

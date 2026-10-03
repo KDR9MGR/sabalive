@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/utils/share_links.dart';
 import '../data/social_repository.dart';
 import '../router/app_nav.dart';
+import '../state/maintenance_controller.dart';
 
 /// Handles live links from the Share sheet: `https://sabalive.in/live/<id>`
 /// (what is shared now — a real link that messengers make tappable, opened
@@ -26,6 +27,8 @@ class DeepLinkService {
   Future<void> _handle(Uri uri) async {
     final id = liveIdFromUri(uri);
     if (id == null) return;
+    // locked for maintenance: the maintenance screen stays; the link is dropped
+    if (MaintenanceController.instance.locked) return;
     final stream = await SocialRepository().streamById(id);
     // Freshly read after the await, not held across it — this isn't a
     // widget's own State.context (no `mounted` to check), it's the
