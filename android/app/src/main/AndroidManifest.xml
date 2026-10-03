@@ -62,6 +62,19 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.sabalive.in" />
             </intent-filter>
+            <!-- Shared live links: https://sabalive.in/live/<id>. autoVerify makes
+                 Android open them straight in the app (no chooser) once
+                 https://sabalive.in/.well-known/assetlinks.json lists this
+                 app's signing certificate. Anything else on the domain stays in
+                 the browser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="sabalive.in" />
+                <data android:pathPrefix="/live/" />
+            </intent-filter>
             <!-- Content share links (e.g. sabalive://live/<id> from the Share
                  sheet) — a separate scheme from the auth callback above so the
                  two can never be confused with each other. -->

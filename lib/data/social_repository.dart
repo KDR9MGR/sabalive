@@ -87,7 +87,7 @@ class SocialRepository {
   }
 
   /// Used by the share-link deep-link handler to resolve a stream id (from
-  /// a `sabalive://live/<id>` link) back into a real, currently-live stream.
+  /// a shared live link) back into a real, currently-live stream.
   Future<LiveStream?> streamById(String id) async {
     if (!isRealId(id)) return null;
     final row = await supabase

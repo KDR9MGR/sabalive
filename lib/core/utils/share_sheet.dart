@@ -5,9 +5,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_colors.dart';
 
 /// WhatsApp / Instagram / Copy Link sheet for sharing a piece of content
-/// (currently just a live stream). [url] should be a `sabalive://…` link —
-/// on a device with the app installed, opening it jumps straight back into
-/// this same content (see `DeepLinkService`).
+/// (currently just a live stream). [url] must be a real `https://` link (see
+/// `liveShareUrl`): messengers only make those tappable, and opening one on a
+/// device with the app jumps straight back into this same content (see
+/// `DeepLinkService`).
 Future<void> showShareSheet(
   BuildContext context, {
   required String title,

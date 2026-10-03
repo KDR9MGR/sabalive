@@ -10,6 +10,7 @@ import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
+import '../../core/utils/share_links.dart';
 import '../../core/utils/share_sheet.dart';
 import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
@@ -1301,7 +1302,7 @@ class _PkBattleScreenState extends State<PkBattleScreen>
           () => showShareSheet(
             context,
             title: '${widget.stream.host.name} is live on SABALIVE — join now!',
-            url: 'sabalive://live/${widget.stream.id}',
+            url: liveShareUrl(widget.stream.id),
           ),
         ),
       ],
