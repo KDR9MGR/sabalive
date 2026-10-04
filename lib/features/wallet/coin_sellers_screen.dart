@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/widgets/app_avatar.dart';
 import '../../data/models.dart';
 import '../../data/offline_sellers_repository.dart';
 import '../../theme/app_colors.dart';
@@ -115,17 +116,25 @@ class _CoinSellersScreenState extends State<CoinSellersScreen> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              gradient: AppColors.goldGradient,
-              shape: BoxShape.circle,
+          if (s.profile case final p?)
+            AppAvatar(
+              name: p.name,
+              imageUrl: p.avatarUrl,
+              frameUrl: p.frameUrl,
+              size: 46,
+            )
+          else
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                gradient: AppColors.goldGradient,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.storefront_rounded,
+                  color: Color(0xFF3A1A5E), size: 20),
             ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.storefront_rounded,
-                color: Color(0xFF3A1A5E), size: 20),
-          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -136,6 +145,12 @@ class _CoinSellersScreenState extends State<CoinSellersScreen> {
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,
                         fontSize: 14)),
+                if (s.profile case final p?) ...[
+                  const SizedBox(height: 2),
+                  Text('ID ${p.displayId} · Lv. ${p.level}',
+                      style: const TextStyle(
+                          fontSize: 11.5, color: AppColors.textSecondary)),
+                ],
                 if (s.note != null && s.note!.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(s.note!,

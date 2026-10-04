@@ -125,6 +125,7 @@ class LiveStream {
     this.mode = LiveMode.video,
     this.seatCount = 5,
     this.hostAgoraUid,
+    this.startedAt,
   });
 
   factory LiveStream.fromRow(Map<String, dynamic> row, AppUser host) =>
@@ -139,6 +140,7 @@ class LiveStream {
         mode: LiveMode.values.byName(row['mode'] as String? ?? 'video'),
         seatCount: row['seat_count'] as int? ?? 5,
         hostAgoraUid: row['host_agora_uid'] as int?,
+        startedAt: DateTime.tryParse(row['started_at'] as String? ?? '')?.toLocal(),
       );
 
   final String id;
@@ -152,6 +154,9 @@ class LiveStream {
   final LiveMode mode;
   int seatCount;
   int? hostAgoraUid;
+
+  /// When the host went live (the server's started_at).
+  final DateTime? startedAt;
 
   bool get pk => mode == LiveMode.pk;
 }
@@ -501,17 +506,25 @@ class OfflineSeller {
     required this.name,
     required this.whatsappNumber,
     this.note,
+    this.profile,
   });
 
-  factory OfflineSeller.fromRow(Map<String, dynamic> row) => OfflineSeller(
-    id: row['id'] as String,
-    name: row['name'] as String,
-    whatsappNumber: row['whatsapp_number'] as String,
-    note: row['note'] as String?,
-  );
+  factory OfflineSeller.fromRow(Map<String, dynamic> row) {
+    final p = row['profile'];
+    return OfflineSeller(
+      id: row['id'] as String,
+      name: row['name'] as String,
+      whatsappNumber: row['whatsapp_number'] as String,
+      note: row['note'] as String?,
+      profile: p is Map<String, dynamic> ? AppUser.fromRow(p) : null,
+    );
+  }
 
   final String id;
   final String name;
   final String whatsappNumber;
   final String? note;
+
+  /// The app user this seller is linked to in the panel (photo, app ID, level), if any.
+  final AppUser? profile;
 }

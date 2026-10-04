@@ -39,8 +39,10 @@ import 'widgets/gift_sheet.dart';
 import 'widgets/live_emoji_sheet.dart';
 import 'widgets/ghost_watch_bar.dart';
 import 'widgets/live_chat_bubble.dart';
+import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/seat_speaking.dart';
 import 'widgets/tool_grid.dart';
 
 class WatchLiveScreen extends StatefulWidget {
@@ -60,6 +62,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   void Function()? _stopKickWatch;
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
+  final _room = RoomChatState();
   final _rand = math.Random();
   final List<_Heart> _hearts = [];
   final _effects = RoomEffectController();
@@ -85,6 +88,9 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   final Map<int, AppUser> _seatOccupants = {};
   Set<int> _lockedSeats = {};
   final Set<int> _mutedSeats = {};
+  // who is talking right now (Agora volume reports mapped back to seats)
+  final _speaking = SeatSpeaking();
+  Set<int> _speakingSeats = {};
   late int _seatCount = widget.stream.seatCount;
   RealtimeChannel? _seatsChannel;
   RealtimeChannel? _seatStreamChannel;
@@ -92,6 +98,17 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   int? _mySeat;
   bool _myMuted = false;
   Timer? _heartbeat;
+  int? _myAgoraUid;
+
+  /// Tells the room which Agora uid is mine once I hold a seat, so my seat lights
+  /// up on every screen while I talk.
+  void _syncMySeatUid() {
+    final uid = _myAgoraUid;
+    if (uid == null || _mySeat == null) return;
+    supabase
+        .rpc('set_seat_agora_uid', params: {'p_stream_id': widget.stream.id, 'p_uid': uid})
+        .catchError((e) => debugPrint('set_seat_agora_uid failed: $e'));
+  }
 
   // widget.stream.viewers is a one-time snapshot from whenever this stream
   // object was fetched (e.g. the live feed) — it never changes on its own,
@@ -99,10 +116,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   // mirrors the host's own broadcast screen, which already tracks it live.
   late int _viewerCount = widget.stream.viewers;
 
+  late final ActiveLiveSessionController _session;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _session = context.read<ActiveLiveSessionController>()..backHandler = _showCloseDialog;
     _likes = widget.stream.likes;
     _hostAgoraUid = widget.stream.hostAgoraUid;
     if (_isReal) {
@@ -151,12 +171,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     final rows = await supabase
         .from('live_stream_seats')
         .select(
-          'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)',
+          'seat_number, is_muted, agora_uid, profiles!live_stream_seats_occupant_id_fkey(*)',
         )
         .eq('live_stream_id', widget.stream.id);
     final streamRow = await supabase
         .from('live_streams')
-        .select('locked_seats, seat_count, host_agora_uid')
+        .select('locked_seats, seat_count, host_agora_uid, pinned_notice, chat_cleared_at')
         .eq('id', widget.stream.id)
         .maybeSingle();
     if (mounted) {
@@ -166,6 +186,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
             final seat = r['seat_number'] as int;
+            _speaking.bindSeat(seat, r['agora_uid'] as int?);
             _seatOccupants[seat] = AppUser.fromRow(profileRow);
             if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
             // Without this, reopening the screen while already seated (a
@@ -181,6 +202,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         final count = streamRow?['seat_count'] as int?;
         if (count != null) _seatCount = count;
         _hostAgoraUid = streamRow?['host_agora_uid'] as int? ?? _hostAgoraUid;
+        if (streamRow != null) _room.apply(streamRow, initial: true);
         _recomputeRemoteUid();
       });
     }
@@ -198,6 +220,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           callback: (payload) async {
             final seat = payload.newRecord['seat_number'] as int;
             final occupantId = payload.newRecord['occupant_id'] as String;
+            _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
             final profileRow = await supabase
                 .from('profiles')
                 .select()
@@ -217,6 +240,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 occupantId == supabase.auth.currentUser?.id &&
                 _mySeat != seat) {
               setState(() => _mySeat = seat);
+              _syncMySeatUid();
               final engine = _engine;
               if (engine != null) {
                 await AgoraService.instance.switchRole(
@@ -251,6 +275,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           callback: (payload) {
             final seat = payload.newRecord['seat_number'] as int?;
             final muted = payload.newRecord['is_muted'] as bool?;
+            final seatUid = payload.newRecord['agora_uid'] as int?;
+            if (seat != null && seatUid != null) _speaking.bindSeat(seat, seatUid);
             // heartbeat_seat touches this same row every ~30s (it's a plain
             // UPDATE on last_heartbeat_at) and Postgres always broadcasts
             // the full row, so this callback fires constantly for every
@@ -283,13 +309,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           event: PostgresChangeEvent.delete,
           schema: 'public',
           table: 'live_stream_seats',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'live_stream_id',
-            value: widget.stream.id,
-          ),
+          // Realtime can't filter DELETE events (a filtered listener silently never fires),
+          // so this listens to every seat delete and keeps only this room's.
           callback: (payload) {
+            if (payload.oldRecord['live_stream_id'] != widget.stream.id) return;
             final seat = payload.oldRecord['seat_number'] as int?;
+            if (seat != null) _speaking.unbindSeat(seat);
             if (mounted && seat != null) {
               final wasMe = _mySeat == seat;
               setState(() {
@@ -336,7 +361,9 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             final hostUid = payload.newRecord['host_agora_uid'] as int?;
             final viewers = payload.newRecord['viewer_count'] as int?;
             if (!mounted) return;
+            final cleared = _room.apply(payload.newRecord);
             setState(() {
+              if (cleared) _chat.clear();
               if (locked != null) _lockedSeats = locked.cast<int>().toSet();
               if (count != null) _seatCount = count;
               if (hostUid != null) _hostAgoraUid = hostUid;
@@ -354,6 +381,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   /// waiting on a Realtime round-trip that may not have landed yet.
   void _recomputeRemoteUid() {
     final hostUid = _hostAgoraUid;
+    _speaking.hostUid = hostUid;
     if (hostUid != null) {
       _remoteUid = _joinedUids.contains(hostUid) ? hostUid : null;
     } else {
@@ -488,6 +516,22 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       );
       engine.registerEventHandler(
         RtcEngineEventHandler(
+          onJoinChannelSuccess: (connection, elapsed) {
+            _myAgoraUid = connection.localUid;
+            _syncMySeatUid();
+          },
+          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) {
+            final next = _speaking.seatsFor(
+              speakers,
+              occupants: _seatOccupants,
+              hostId: widget.stream.host.id,
+              mySeat: _mySeat,
+              meMuted: _myMuted,
+            );
+            if (mounted && !SeatSpeaking.same(next, _speakingSeats)) {
+              setState(() => _speakingSeats = next);
+            }
+          },
           onUserJoined: (connection, remoteUid, elapsed) {
             _waitTimer?.cancel();
             _joinedUids.add(remoteUid);
@@ -519,6 +563,11 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         engine,
         channelName: widget.stream.id,
         asBroadcaster: false,
+      );
+      await engine.enableAudioVolumeIndication(
+        interval: 300,
+        smooth: 3,
+        reportVad: true,
       );
       await engine.joinChannel(
         token: token.token,
@@ -557,31 +606,20 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   }
 
   Future<void> _loadRealChat() async {
+    // A new arrival sees only what is said from now on — no earlier chat. The last
+    // few seconds are still read, but only to catch this user's own join row (its
+    // entry effect can land before this screen starts listening); no lines are shown.
     final rows = await supabase
         .from('live_chat_messages')
         .select()
         .eq('live_stream_id', widget.stream.id)
+        .gte(
+          'created_at',
+          DateTime.now().toUtc().subtract(const Duration(seconds: 20)).toIso8601String(),
+        )
         .order('created_at', ascending: false)
         .limit(30);
-    final senderIds = {for (final r in rows) r['sender_id'] as String};
-    final profiles = senderIds.isEmpty
-        ? <String, AppUser>{}
-        : {
-            for (final row
-                in await supabase
-                    .from('profiles')
-                    .select()
-                    .inFilter('id', senderIds.toList()))
-              row['id'] as String: AppUser.fromRow(row),
-          };
     if (!mounted) return;
-    setState(() {
-      _chat.addAll([
-        for (final row in rows.reversed)
-          if (!BlocksController.instance.isBlocked(row['sender_id'] as String?))
-            _chatLineFromRow(row, profiles),
-      ]);
-    });
     // If our own join row landed before this screen began listening, our own
     // entry effect would otherwise be missed.
     final meId = context.read<AuthController>().user?.id;
@@ -681,20 +719,6 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     }
   }
 
-  /// This screen is mounted by the app-root overlay in app.dart, not
-  /// pushed as a Navigator route — see live_broadcast_screen.dart's own
-  /// didPopRoute() for why WidgetsBindingObserver (already mixed in here
-  /// for the app-lifecycle handling above), not PopScope/BackButtonListener,
-  /// is what intercepts the system back button/gesture.
-  @override
-  Future<bool> didPopRoute() async {
-    if (!mounted) return false;
-    if (context.read<ActiveLiveSessionController>().isMinimized) {
-      return false;
-    }
-    await _showCloseDialog();
-    return true;
-  }
 
   /// The host ended the live (or it was ended as stale): take this viewer out
   /// of the room instead of leaving them on a dead stream.
@@ -712,6 +736,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_session.backHandler == _showCloseDialog) _session.backHandler = null;
     _stopEndWatch?.call();
     _stopKickWatch?.call();
     _waitTimer?.cancel();
@@ -876,10 +901,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           () => AppNav.notifications(context),
         ),
         ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF34D399), () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const MessagesScreen()),
-          );
+          AppNav.open(context, const MessagesScreen());
         }),
         ToolSpec(
           Icons.ios_share_rounded,
@@ -1021,6 +1043,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                     occupants: _seatOccupants,
                     lockedSeats: _lockedSeats,
                     mutedSeats: _mutedSeats,
+                    speakingSeats: _speakingSeats,
                     onSeatTap: _seatTap,
                   ),
                 ],
@@ -1220,23 +1243,31 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       // un-shrinkwrapped Scrollable claims its whole box for hit-testing
       // regardless of content, which can swallow taps meant for whatever
       // sits underneath it.
-      child: ListView.builder(
-        reverse: true,
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: _chat.length,
-        itemBuilder: (context, i) {
-          final line = _chat[_chat.length - 1 - i];
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: GestureDetector(
-              onTap: isRealId(line.user.id)
-                  ? () => AppNav.userProfile(context, line.user)
-                  : null,
-              child: LiveChatLineBubble(key: ObjectKey(line), line: line),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_room.notice != null) PinnedNoticeBanner(_room.notice!),
+          Flexible(
+            child: ListView.builder(
+            reverse: true,
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: _chat.length,
+            itemBuilder: (context, i) {
+              final line = _chat[_chat.length - 1 - i];
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: GestureDetector(
+                  onTap: isRealId(line.user.id)
+                      ? () => AppNav.userProfile(context, line.user)
+                      : null,
+                  child: LiveChatLineBubble(key: ObjectKey(line), line: line),
+                ),
+              );
+            },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

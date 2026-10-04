@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
+import '../../router/app_nav.dart';
 import '../../data/store_repository.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
@@ -62,13 +63,11 @@ class _BagScreenState extends State<BagScreen> {
           IconButton(
             tooltip: 'Profile frames',
             icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () => Navigator.push(
-                context, MaterialPageRoute(builder: (_) => const FramesScreen())),
+            onPressed: () => AppNav.open(context, const FramesScreen()),
           ),
           IconButton(
             icon: const Icon(Icons.storefront_outlined),
-            onPressed: () => Navigator.push(
-                context, MaterialPageRoute(builder: (_) => const StoreScreen())),
+            onPressed: () => AppNav.open(context, const StoreScreen()),
           ),
         ],
       ),
@@ -88,8 +87,7 @@ class _BagScreenState extends State<BagScreen> {
                             style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
                         const SizedBox(height: 16),
                         TextButton(
-                          onPressed: () => Navigator.push(context,
-                              MaterialPageRoute(builder: (_) => const StoreScreen())),
+                          onPressed: () => AppNav.open(context, const StoreScreen()),
                           child: const Text('Go to Store'),
                         ),
                       ],

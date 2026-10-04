@@ -16,6 +16,14 @@ class ActiveLiveSessionController extends ChangeNotifier {
   String? _roomId;
   bool _minimized = false;
   WidgetBuilder? _builder;
+
+  /// The Navigator the live screen (and anything opened over it: dialogs,
+  /// sheets, option pages) lives in — see _ActiveLiveSessionOverlay in app.dart.
+  final navKey = GlobalKey<NavigatorState>();
+
+  /// The full-screen live screen's "leave / end?" prompt, registered while it is
+  /// mounted. The system back button reaches it through [handleBack].
+  Future<void> Function()? backHandler;
   String _hostName = '';
   String? _hostAvatarUrl;
 
@@ -71,4 +79,18 @@ class ActiveLiveSessionController extends ChangeNotifier {
   }
 
   Widget buildActive(BuildContext context) => _builder!(context);
+
+  /// The system back button while a live is on screen. Whatever is open over the
+  /// live (a dialog, a sheet, an option page) closes first; only with nothing
+  /// open does back ask "leave / end?". False when there is no full-screen live,
+  /// so the rest of the app handles back as usual.
+  Future<bool> handleBack() async {
+    if (!isActive || _minimized) return false;
+    final nav = navKey.currentState;
+    if (nav != null && await nav.maybePop()) return true;
+    final handler = backHandler;
+    if (handler == null) return false;
+    await handler();
+    return true;
+  }
 }

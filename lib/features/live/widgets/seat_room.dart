@@ -4,6 +4,7 @@ import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
+import 'seat_speaking.dart';
 
 /// One seat circle — empty/locked/occupied/muted — shared by the full
 /// [SeatRoom] backdrop (audio rooms) and the slim [CompactSeatStrip]
@@ -16,6 +17,7 @@ class SeatCircle extends StatelessWidget {
     this.locked = false,
     this.muted = false,
     this.isHost = false,
+    this.speaking = false,
     this.size = 58,
     this.onTap,
     this.showLabel = true,
@@ -30,6 +32,9 @@ class SeatCircle extends StatelessWidget {
   /// sits in one of the numbered seats like anyone else, marked with a
   /// small badge so viewers can still tell who they are.
   final bool isHost;
+
+  /// Their voice is coming through right now — the seat lights up.
+  final bool speaking;
   final double size;
   final VoidCallback? onTap;
   final bool showLabel;
@@ -51,13 +56,31 @@ class SeatCircle extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               if (occupant case final occupant?)
-                Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: AppColors.primaryGradient,
+                AnimatedScale(
+                  scale: speaking ? 1.07 : 1,
+                  duration: const Duration(milliseconds: 160),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: EdgeInsets.all(speaking ? 3 : 2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: speaking
+                          ? const LinearGradient(
+                              colors: [Color(0xFF22C55E), Color(0xFF86EFAC)],
+                            )
+                          : AppColors.primaryGradient,
+                      boxShadow: speaking
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF22C55E).withValues(alpha: 0.75),
+                                blurRadius: 14,
+                                spreadRadius: 2,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, frameUrl: occupant.frameUrl, size: size - 4),
                   ),
-                  child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, frameUrl: occupant.frameUrl, size: size - 4),
                 )
               else
                 Container(
@@ -72,8 +95,8 @@ class SeatCircle extends StatelessWidget {
                             : Colors.white.withValues(alpha: 0.18)),
                   ),
                   child: Icon(
-                      locked ? Icons.lock_rounded : Icons.mic_none_rounded,
-                      color: locked ? AppColors.gold : Colors.white38,
+                      locked ? Icons.lock_rounded : Icons.event_seat_rounded,
+                      color: locked ? AppColors.gold : Colors.white54,
                       size: size * 0.38),
                 ),
               if (occupant != null && muted)
@@ -104,13 +127,15 @@ class SeatCircle extends StatelessWidget {
           ),
           if (showLabel) ...[
             const SizedBox(height: 4),
-            SizedBox(
+            MarqueeText(
+              occupant?.name ?? (locked ? 'Locked' : 'Seat $seat'),
               width: size,
-              child: Text(occupant?.name ?? (locked ? 'Locked' : 'Seat $seat'),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 9.5, color: Colors.white38)),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: occupant != null ? FontWeight.w600 : FontWeight.w500,
+                color: occupant != null ? Colors.white : Colors.white70,
+                shadows: const [Shadow(color: Colors.black87, blurRadius: 3)],
+              ),
             ),
           ],
         ],
@@ -136,6 +161,7 @@ class SeatRoom extends StatelessWidget {
     this.onRemoveSeat,
     this.occupants = const {},
     this.mutedSeats = const {},
+    this.speakingSeats = const {},
     this.skinUrl,
   });
   final String hostId;
@@ -153,6 +179,9 @@ class SeatRoom extends StatelessWidget {
   final Map<int, AppUser> occupants;
   /// Seat numbers whose occupant has muted themselves.
   final Set<int> mutedSeats;
+
+  /// Seat numbers whose occupant is talking right now.
+  final Set<int> speakingSeats;
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +237,7 @@ class SeatRoom extends StatelessWidget {
                       occupant: occupants[i],
                       locked: lockedSeats.contains(i),
                       muted: mutedSeats.contains(i),
+                      speaking: speakingSeats.contains(i),
                       isHost: occupants[i]?.id == hostId,
                       onTap: () => onSeatTap(i),
                     ),
@@ -265,6 +295,7 @@ class CompactSeatStrip extends StatelessWidget {
     required this.occupants,
     this.lockedSeats = const {},
     this.mutedSeats = const {},
+    this.speakingSeats = const {},
     this.onSeatTap,
   });
 
@@ -272,6 +303,7 @@ class CompactSeatStrip extends StatelessWidget {
   final Map<int, AppUser> occupants;
   final Set<int> lockedSeats;
   final Set<int> mutedSeats;
+  final Set<int> speakingSeats;
   final void Function(int seat)? onSeatTap;
 
   @override
@@ -290,6 +322,7 @@ class CompactSeatStrip extends StatelessWidget {
             occupant: occupants[seat],
             locked: lockedSeats.contains(seat),
             muted: mutedSeats.contains(seat),
+            speaking: speakingSeats.contains(seat),
             size: 46,
             showLabel: false,
             onTap: onSeatTap == null ? null : () => onSeatTap!(seat),

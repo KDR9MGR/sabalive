@@ -755,12 +755,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           event: PostgresChangeEvent.delete,
           schema: 'public',
           table: 'live_stream_seats',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'live_stream_id',
-            value: widget.stream.id,
-          ),
+          // Realtime can't filter DELETE events (a filtered listener silently never fires),
+          // so this listens to every seat delete and keeps only this room's.
           callback: (payload) {
+            if (payload.oldRecord['live_stream_id'] != widget.stream.id) return;
             final seat = payload.oldRecord['seat_number'] as int?;
             if (mounted && seat != null) {
               setState(() {
@@ -944,10 +942,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           () => AppNav.notifications(context),
         ),
         ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF34D399), () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const MessagesScreen()),
-          );
+          AppNav.open(context, const MessagesScreen());
         }),
         ToolSpec(
           Icons.ios_share_rounded,

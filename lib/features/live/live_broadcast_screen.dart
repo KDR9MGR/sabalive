@@ -32,9 +32,11 @@ import 'widgets/room_effect.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/live_emoji_sheet.dart';
 import 'widgets/live_chat_bubble.dart';
+import 'widgets/room_chat_state.dart';
 import 'widgets/lucky_box_badge.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/seat_speaking.dart';
 import 'widgets/tool_grid.dart';
 
 /// Host's own broadcast view — real Agora publish + real Realtime chat tied
@@ -68,6 +70,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   final _input = TextEditingController();
   Timer? _ticker;
   Duration _elapsed = Duration.zero;
+  // The stream's own start time, so the timer is always "now minus start" — it
+  // can't restart, drift, or fall behind while the app is in the background.
+  late final DateTime _startedAt = widget.stream.startedAt ?? DateTime.now();
   bool _micMuted = false;
   bool _speakerOn = true;
 
@@ -89,6 +94,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   Set<int> _lockedSeats = {};
   final Map<int, AppUser> _seatOccupants = {};
   final Set<int> _mutedSeats = {};
+  // who is talking right now (Agora volume reports mapped back to seats)
+  final _speaking = SeatSpeaking();
+  Set<int> _speakingSeats = {};
   RealtimeChannel? _seatsChannel;
 
   // Video-only: empty seats are host-approval-gated (same request_pk_seat/
@@ -98,6 +106,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   RealtimeChannel? _seatRequestsChannel;
 
   Timer? _heartbeat;
+
+  late final ActiveLiveSessionController _session;
 
   @override
   void initState() {
@@ -109,6 +119,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     // system back button/gesture at the binding level instead, independent
     // of Route nesting.
     WidgetsBinding.instance.addObserver(this);
+    _session = context.read<ActiveLiveSessionController>()..backHandler = _end;
     // Keeps the screen (and the Agora publish + heartbeat timers) from
     // being suspended by a display timeout mid-broadcast — that was
     // dropping the whole stream for every viewer, not just this device.
@@ -130,7 +141,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       _autoClaimHostSeat();
     }
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
+      if (mounted) {
+        final d = DateTime.now().difference(_startedAt);
+        setState(() => _elapsed = d.isNegative ? Duration.zero : d);
+      }
     });
     // Keeps the stream row from being auto-ended as stale while this
     // screen is genuinely up and broadcasting.
@@ -157,6 +171,18 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       final engine = await AgoraService.instance.ensureEngine();
       engine.registerEventHandler(
         RtcEngineEventHandler(
+          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) {
+            final next = _speaking.seatsFor(
+              speakers,
+              occupants: _seatOccupants,
+              hostId: widget.stream.host.id,
+              mySeat: [for (final e in _seatOccupants.entries) if (e.value.id == widget.stream.host.id) e.key].firstOrNull,
+              meMuted: _micMuted,
+            );
+            if (mounted && !SeatSpeaking.same(next, _speakingSeats)) {
+              setState(() => _speakingSeats = next);
+            }
+          },
           onError: (err, msg) {
             if (mounted) setState(() => _error = msg);
           },
@@ -197,6 +223,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       } else {
         await engine.startPreview();
       }
+      await engine.enableAudioVolumeIndication(
+        interval: 300,
+        smooth: 3,
+        reportVad: true,
+      );
       await engine.joinChannel(
         token: widget.token.token,
         channelId: widget.token.channelName,
@@ -245,13 +276,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   Future<void> _loadSeatLockState() async {
     final row = await supabase
         .from('live_streams')
-        .select('locked_seats, seat_count, room_skin_item_id')
+        .select('locked_seats, seat_count, room_skin_item_id, pinned_notice, chat_cleared_at')
         .eq('id', widget.stream.id)
         .maybeSingle();
     if (row == null || !mounted) return;
     unawaited(_applySkin(row['room_skin_item_id'] as String?));
     final locked = row['locked_seats'] as List?;
     final seatCount = row['seat_count'] as int?;
+    _room.apply(row, initial: true);
     setState(() {
       if (locked != null) _lockedSeats = locked.cast<int>().toSet();
       if (seatCount != null) _seatCount = seatCount;
@@ -297,7 +329,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                 _applySkin(payload.newRecord['room_skin_item_id'] as String?),
               );
             }
+            final cleared = _room.apply(payload.newRecord);
             setState(() {
+              if (cleared) _chat.clear();
               if (count != null) _viewers = count;
               if (locked != null) {
                 _lockedSeats = locked.cast<int>().toSet();
@@ -315,7 +349,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     final rows = await supabase
         .from('live_stream_seats')
         .select(
-          'seat_number, is_muted, profiles!live_stream_seats_occupant_id_fkey(*)',
+          'seat_number, is_muted, agora_uid, profiles!live_stream_seats_occupant_id_fkey(*)',
         )
         .eq('live_stream_id', widget.stream.id);
     if (mounted) {
@@ -324,6 +358,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
             final seat = r['seat_number'] as int;
+            _speaking.bindSeat(seat, r['agora_uid'] as int?);
             _seatOccupants[seat] = AppUser.fromRow(profileRow);
             if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
           }
@@ -344,6 +379,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           callback: (payload) async {
             final seat = payload.newRecord['seat_number'] as int;
             final occupantId = payload.newRecord['occupant_id'] as String;
+            _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
             final profileRow = await supabase
                 .from('profiles')
                 .select()
@@ -369,6 +405,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           callback: (payload) {
             final seat = payload.newRecord['seat_number'] as int?;
             final muted = payload.newRecord['is_muted'] as bool?;
+            final seatUid = payload.newRecord['agora_uid'] as int?;
+            if (seat != null && seatUid != null) _speaking.bindSeat(seat, seatUid);
             // heartbeat_seat touches this same row every ~30s (it's a plain
             // UPDATE on last_heartbeat_at) and Postgres always broadcasts
             // the full row, so this callback fires constantly for every
@@ -392,13 +430,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           event: PostgresChangeEvent.delete,
           schema: 'public',
           table: 'live_stream_seats',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'live_stream_id',
-            value: widget.stream.id,
-          ),
+          // Realtime can't filter DELETE events (a filtered listener silently never fires),
+          // so this listens to every seat delete and keeps only this room's.
           callback: (payload) {
+            if (payload.oldRecord['live_stream_id'] != widget.stream.id) return;
             final seat = payload.oldRecord['seat_number'] as int?;
+            if (seat != null) _speaking.unbindSeat(seat);
             if (mounted && seat != null) {
               setState(() {
                 _seatOccupants.remove(seat);
@@ -525,6 +562,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   }
 
   final _effects = RoomEffectController();
+  final _room = RoomChatState();
   String? _skinUrl;
 
   Future<void> _appendChatRow(Map<String, dynamic> row) async {
@@ -612,6 +650,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_session.backHandler == _end) _session.backHandler = null;
     WakelockPlus.disable().catchError((_) {});
     _ticker?.cancel();
     _heartbeat?.cancel();
@@ -625,19 +664,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     super.dispose();
   }
 
-  /// Intercepts the system back button/gesture — see the note on
-  /// addObserver in initState for why this (not PopScope/BackButtonListener)
-  /// is what's used here. Returning true tells the platform "handled,
-  /// don't pop/exit"; false lets it propagate normally.
-  @override
-  Future<bool> didPopRoute() async {
-    if (!mounted) return false;
-    if (context.read<ActiveLiveSessionController>().isMinimized) {
-      return false;
-    }
-    await _end();
-    return true;
-  }
 
   /// "Minimize" is hidden while already minimized (tapping the bubble's own
   /// X) — offering to minimize what's already minimized was confusing.
@@ -897,10 +923,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         _shareStream,
       ),
       ToolSpec(Icons.inbox_rounded, 'Inbox', const Color(0xFF818CF8), () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const MessagesScreen()),
-        );
+        AppNav.open(context, const MessagesScreen());
       }),
       ToolSpec(
         Icons.settings_voice_rounded,
@@ -925,10 +948,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         Icons.speaker_notes_off_rounded,
         'Clear chat',
         const Color(0xFFFB923C),
-        () {
-          setState(() => _chat.removeWhere((l) => !l.pinned));
-          _snack('Chat cleared');
-        },
+        _clearChat,
       ),
       ToolSpec(
         Icons.block_rounded,
@@ -1060,29 +1080,25 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     url: liveShareUrl(widget.stream.id),
   );
 
-  /// Was a 100% local `_chat.add(...)` before — the host's own pin never
-  /// reached the actual live_chat_messages table, so no viewer (and not
-  /// even the host reopening the screen) ever actually saw it. Now a real
-  /// insert with pinned: true, same pattern as _sendChat — the existing
-  /// chat RLS insert policy already allows any signed-in sender to set
-  /// pinned on their own row, so no migration was needed here, only this
-  /// client fix. Arrives back via the same Realtime chat subscription
-  /// every screen already has, visible to the host and every viewer.
+  /// Clears the chat for everyone in the room: the server stamps the stream, and
+  /// every screen (this one included) drops the lines it holds when that arrives.
+  Future<void> _clearChat() async {
+    try {
+      await supabase.rpc('clear_live_chat', params: {'p_stream_id': widget.stream.id});
+      if (!mounted) return;
+      setState(_chat.clear);
+      _snack('Chat cleared for everyone');
+    } catch (e) {
+      if (mounted) _snack(friendlyError(e));
+    }
+  }
+
+  /// The room notice: pinned above the chat for every viewer (including anyone who
+  /// joins later) until the host unpins it. Lives on the stream row, so pinning,
+  /// editing and unpinning reach everyone straight away.
   Future<void> _editNotice() async {
-    // At most one active pinned notice at a time — fetch it (if any) so the
-    // dialog can offer Unpin and prefill the text for editing.
-    final existing = await supabase
-        .from('live_chat_messages')
-        .select('id, body')
-        .eq('live_stream_id', widget.stream.id)
-        .eq('pinned', true)
-        .order('created_at', ascending: false)
-        .limit(1)
-        .maybeSingle();
-    if (!mounted) return;
-    final controller = TextEditingController(
-      text: existing?['body'] as String? ?? '',
-    );
+    final existing = _room.notice;
+    final controller = TextEditingController(text: existing ?? '');
     const unpinResult = '__unpin__';
     final result = await showDialog<String>(
       context: context,
@@ -1118,35 +1134,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       ),
     );
     if (result == null || !mounted) return;
+    if (result != unpinResult && result.isEmpty) return;
     try {
-      if (result == unpinResult) {
-        await supabase.rpc(
-          'set_chat_pin',
-          params: {'p_message_id': existing!['id'], 'p_pinned': false},
-        );
-        if (mounted) _snack('Notice unpinned');
-        return;
-      }
-      if (result.isEmpty) return;
-      // Only one pinned notice at a time — clear the old one (if the text
-      // actually changed) before pinning the new one, rather than leaving
-      // two simultaneously pinned rows.
-      if (existing != null && existing['body'] != result) {
-        await supabase.rpc(
-          'set_chat_pin',
-          params: {'p_message_id': existing['id'], 'p_pinned': false},
-        );
-      } else if (existing != null) {
-        return; // unchanged — nothing to do
-      }
-      await supabase.from('live_chat_messages').insert({
-        'live_stream_id': widget.stream.id,
-        'sender_id': supabase.auth.currentUser?.id,
-        'body': result,
-        'kind': 'text',
-        'pinned': true,
-      });
-      if (mounted) _snack('Notice pinned');
+      final notice = result == unpinResult ? null : result;
+      await supabase.rpc(
+        'set_live_notice',
+        params: {'p_stream_id': widget.stream.id, 'p_notice': notice},
+      );
+      if (!mounted) return;
+      setState(() => _room.notice = notice);
+      _snack(notice == null ? 'Notice unpinned' : 'Notice pinned');
     } catch (e) {
       if (mounted) _snack(friendlyError(e));
     }
@@ -1305,6 +1302,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           'kick_seat_occupant',
           params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
         );
+        if (mounted) {
+          setState(() {
+            _seatOccupants.remove(seat);
+            _mutedSeats.remove(seat);
+            _speaking.unbindSeat(seat);
+          });
+        }
         if (mounted)
           _snack('${occupant?.name ?? 'User'} removed from the seat');
       } catch (e) {
@@ -1337,6 +1341,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           'ban_seat_occupant',
           params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
         );
+        if (mounted) {
+          setState(() {
+            _seatOccupants.remove(seat);
+            _mutedSeats.remove(seat);
+            _speaking.unbindSeat(seat);
+          });
+        }
         if (mounted) _snack('${occupant?.name ?? 'User'} banned from seats');
       } catch (e) {
         if (mounted) _snack(friendlyError(e));
@@ -1519,6 +1530,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               lockedSeats: _lockedSeats,
               occupants: _seatOccupants,
               mutedSeats: _mutedSeats,
+              speakingSeats: _speakingSeats,
               onSeatTap: _seatMenu,
               onAddSeat: _seatCount >= 25 ? null : () => _changeSeatCount(5),
               onRemoveSeat: _seatCount <= 5 ? null : () => _changeSeatCount(-5),
@@ -1680,6 +1692,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                           occupants: _seatOccupants,
                           lockedSeats: _lockedSeats,
                           mutedSeats: _mutedSeats,
+                          speakingSeats: _speakingSeats,
                           onSeatTap: _seatMenu,
                         ),
                         const SizedBox(height: 6),
@@ -1824,26 +1837,34 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     return Container(
       constraints: const BoxConstraints(maxHeight: 190),
       padding: const EdgeInsets.only(left: 14, right: 8),
-      child: ListView.builder(
-        reverse: true,
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: _chat.length,
-        itemBuilder: (context, i) {
-          final line = _chat[_chat.length - 1 - i];
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: GestureDetector(
-                onTap: isRealId(line.user.id)
-                    ? () => AppNav.userProfile(context, line.user)
-                    : null,
-                child: LiveChatLineBubble(key: ObjectKey(line), line: line, backgroundAlpha: 0.36, pinnedAlpha: 0.5),
-              ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_room.notice != null) PinnedNoticeBanner(_room.notice!),
+          Flexible(
+            child: ListView.builder(
+              reverse: true,
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: _chat.length,
+              itemBuilder: (context, i) {
+                final line = _chat[_chat.length - 1 - i];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: GestureDetector(
+                      onTap: isRealId(line.user.id)
+                          ? () => AppNav.userProfile(context, line.user)
+                          : null,
+                      child: LiveChatLineBubble(key: ObjectKey(line), line: line, backgroundAlpha: 0.36, pinnedAlpha: 0.5),
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

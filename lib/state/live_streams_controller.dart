@@ -28,10 +28,21 @@ class LiveStreamsController extends ChangeNotifier {
   bool _loading = true;
   RealtimeChannel? _channel;
 
-  /// Live now, minus lives hosted by someone the user has blocked.
-  List<LiveStream> get streams => List.unmodifiable(
-    BlocksController.instance.withoutBlocked(_streams, (s) => s.host.id),
-  );
+  /// Live now, minus lives hosted by someone the user has blocked — the most
+  /// watched first (ties: the one that went live most recently).
+  List<LiveStream> get streams {
+    final list = BlocksController.instance
+        .withoutBlocked(_streams, (s) => s.host.id)
+        .toList();
+    list.sort((a, b) {
+      final byViews = b.viewers.compareTo(a.viewers);
+      if (byViews != 0) return byViews;
+      final aStart = a.startedAt, bStart = b.startedAt;
+      if (aStart == null || bStart == null) return 0;
+      return bStart.compareTo(aStart);
+    });
+    return List.unmodifiable(list);
+  }
   bool get loading => _loading;
 
   Future<void> refresh() => _load();
@@ -41,6 +52,7 @@ class LiveStreamsController extends ChangeNotifier {
         .from('live_streams')
         .select('*, profiles!live_streams_host_id_fkey(*)')
         .eq('status', 'live')
+        .order('viewer_count', ascending: false)
         .order('started_at', ascending: false);
     _streams = [
       for (final row in rows)

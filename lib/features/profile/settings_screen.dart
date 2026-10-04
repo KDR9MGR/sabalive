@@ -92,6 +92,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: _pickLanguage,
           ),
           _section('Support'),
+          _tile(Icons.support_agent_rounded, 'Chat with Support',
+              onTap: () => AppNav.supportChat(context)),
           _tile(Icons.feedback_outlined, 'Feedback',
               onTap: () => AppNav.feedback(context)),
           _tile(Icons.help_outline_rounded, 'Help & FAQ', onTap: _help),

@@ -23,6 +23,7 @@ class RoomEffect {
     this.senderId,
     this.count = 1,
     this.fillScreen = false,
+    this.level = false,
   });
 
   factory RoomEffect.gift({
@@ -56,6 +57,24 @@ class RoomEffect {
     senderId: senderId,
   );
 
+  /// The level image a user earned (Wealth / Charm level, set in the panel),
+  /// played full-screen when they join.
+  factory RoomEffect.level({
+    required String url,
+    required String senderName,
+    String? senderId,
+  }) => RoomEffect._(
+    kind: RoomEffectKind.entry,
+    id: 'level:$url',
+    name: 'level',
+    emoji: '⭐',
+    mediaUrl: url,
+    senderName: senderName,
+    senderId: senderId,
+    fillScreen: true,
+    level: true,
+  );
+
   final RoomEffectKind kind;
   final String id;
   final String name;
@@ -70,9 +89,13 @@ class RoomEffect {
   /// as large as fits the screen.
   final bool fillScreen;
 
+  /// A level-image arrival rather than an entry effect / vehicle.
+  final bool level;
+
   String get caption => switch (kind) {
     RoomEffectKind.gift when count > 1 => '$senderName sent $name x$count',
     RoomEffectKind.gift => '$senderName sent $name',
+    RoomEffectKind.entry when level => '$senderName joined',
     RoomEffectKind.entry => '$senderName entered with $name',
   };
 
@@ -170,7 +193,10 @@ class RoomEffectController extends ChangeNotifier {
   }) async {
     if (row['kind'] != 'system') return false;
     final ids = row['entry_item_ids'];
-    if (ids is! List || ids.isEmpty) return false;
+    final hasItems = ids is List && ids.isNotEmpty;
+    final levelImage = (row['level_image_url'] as String?)?.trim();
+    final hasLevel = levelImage != null && levelImage.isNotEmpty;
+    if (!hasItems && !hasLevel) return false;
     final senderId = row['sender_id'] as String?;
     if (history) {
       if (senderId == null || senderId != meId) return false;
@@ -184,17 +210,25 @@ class RoomEffectController extends ChangeNotifier {
     if (rowId is int && !_seenEntryRows.add(rowId)) return false;
     final List<StoreItem> items;
     try {
-      items = await loadItems([for (final id in ids) id as String]);
+      items = hasItems
+          ? await loadItems([for (final id in ids) id as String])
+          : const <StoreItem>[];
     } catch (_) {
       return false;
     }
     if (_disposed) return false;
+    // the level image first, then the vehicle / entry effect
+    if (hasLevel) {
+      enqueue(
+        RoomEffect.level(url: levelImage, senderName: senderName, senderId: senderId),
+      );
+    }
     for (final item in items) {
       enqueue(
         RoomEffect.entry(item: item, senderName: senderName, senderId: senderId),
       );
     }
-    return items.isNotEmpty;
+    return items.isNotEmpty || hasLevel;
   }
 
   /// Both kinds of row, for a screen's chat subscription: a gift row starts a

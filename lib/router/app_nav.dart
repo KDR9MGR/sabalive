@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/utils/errors.dart';
+import '../core/widgets/over_live_route.dart';
 import '../data/messages_repository.dart';
 import '../data/models.dart';
 import '../data/social_repository.dart';
@@ -29,6 +30,7 @@ import '../features/profile/notifications_screen.dart';
 import '../features/profile/profile_visitors_screen.dart';
 import '../features/profile/referrals_screen.dart';
 import '../features/profile/settings_screen.dart';
+import '../features/profile/support_chat_screen.dart';
 import '../features/profile/user_profile_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/wallet/bag_screen.dart';
@@ -44,10 +46,22 @@ class AppNav {
   AppNav._();
 
   static Future<T?> _push<T>(BuildContext context, Widget page) {
-    return Navigator.of(
-      context,
-    ).push<T>(MaterialPageRoute(builder: (_) => page));
+    return Navigator.of(context).push<T>(route<T>(context, page));
   }
+
+  /// How a page opens: a normal full-screen page, or — while a live is on
+  /// screen — a sheet over the room, so the live keeps running behind it
+  /// instead of being replaced.
+  static Route<T> route<T>(BuildContext context, Widget page) {
+    final live = context.read<ActiveLiveSessionController>();
+    if (live.isActive && !live.isMinimized) return OverLiveRoute<T>(page);
+    return MaterialPageRoute<T>(builder: (_) => page);
+  }
+
+  /// Opens [page] the app's way (see [route]) — for screens that used to push a
+  /// MaterialPageRoute directly.
+  static Future<T?> open<T>(BuildContext context, Widget page) =>
+      _push<T>(context, page);
 
   /// True when the caller should NOT proceed — either a DIFFERENT live is
   /// already active (shows "Return to Live" / "Cancel", per spec) or this
@@ -242,6 +256,9 @@ class AppNav {
 
   static Future<void> feedback(BuildContext context) =>
       _push(context, const FeedbackScreen());
+
+  static Future<void> supportChat(BuildContext context) =>
+      _push(context, const SupportChatScreen());
 
   static Future<void> applyAgency(BuildContext context) =>
       _push(context, const ApplyAgencyScreen());

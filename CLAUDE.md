@@ -32,3 +32,14 @@ supabase functions deploy <name>
   users with `AppUser.isGhost`, and the watch screens hide chat/gift/like/follow/seat
   controls for them (`isGhostViewer`). The server enforces view-only regardless.
 - Tests: `test/` is broad; add one next to any logic you change.
+
+## Live room internals (easy to break)
+- The live screen is mounted in an overlay Navigator (`ActiveLiveSessionController.navKey`); its
+  OverlayEntry must keep `maintainState: true` or anything opened over it tears the live down.
+- Open pages from inside a live with `AppNav.open/_push` -> `OverLiveRoute` (sheet); never push a
+  MaterialPageRoute directly there.
+- System back goes through `_LiveBackInterceptor` -> `ActiveLiveSessionController.handleBack`
+  (screens register `backHandler`); don't add `didPopRoute` to live screens.
+- Host chat controls live on `live_streams` (`chat_cleared_at`, `pinned_notice`) via `RoomChatState`.
+- Seat "who is talking": Agora volume -> `SeatSpeaking` using `live_stream_seats.agora_uid`.
+- Don't run `dart format` on whole directories; it reformats unrelated files.

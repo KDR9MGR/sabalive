@@ -43,7 +43,8 @@ class SabaLiveApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeConfigController()),
         ChangeNotifierProvider(create: (_) => ActiveLiveSessionController()),
       ],
-      child: Consumer<ThemeConfigController>(
+      child: _LiveBackInterceptor(
+       child: Consumer<ThemeConfigController>(
         builder: (context, themeConfig, _) => MaterialApp(
           navigatorKey: rootNavigatorKey,
           title: 'SABALIVE',
@@ -71,8 +72,42 @@ class SabaLiveApp extends StatelessWidget {
           ),
         ),
       ),
+     ),
     );
   }
+}
+
+/// Gets the system back button BEFORE the app's root Navigator does, so a live that
+/// is on screen answers it (closing whatever is open over the live, else asking
+/// "leave / end?") instead of the page underneath silently popping. It must sit
+/// above MaterialApp: observers are asked in registration order, and WidgetsApp
+/// registers the root Navigator's own handler when it is created.
+class _LiveBackInterceptor extends StatefulWidget {
+  const _LiveBackInterceptor({required this.child});
+  final Widget child;
+
+  @override
+  State<_LiveBackInterceptor> createState() => _LiveBackInterceptorState();
+}
+
+class _LiveBackInterceptorState extends State<_LiveBackInterceptor> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Future<bool> didPopRoute() => context.read<ActiveLiveSessionController>().handleBack();
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Puts the maintenance screen over the whole app while it is locked, and a thin
@@ -229,6 +264,7 @@ class _ActiveLiveSessionOverlay extends StatelessWidget {
     // is, exactly like before this overlay had a Navigator at all.
     return HeroControllerScope.none(
       child: Navigator(
+        key: session.navKey,
         onGenerateRoute: (_) =>
             _TransparentRoute(builder: (context) => session.buildActive(context)),
       ),
@@ -246,7 +282,9 @@ class _TransparentRoute extends OverlayRoute<void> {
 
   @override
   Iterable<OverlayEntry> createOverlayEntries() {
-    return [OverlayEntry(builder: builder)];
+    // maintainState: a page or sheet opened over the live must not tear the live
+    // down (its timer, chat and Agora connection) while it covers it.
+    return [OverlayEntry(builder: builder, maintainState: true)];
   }
 }
 
