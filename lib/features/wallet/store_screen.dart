@@ -70,7 +70,7 @@ class _StoreScreenState extends State<StoreScreen> {
       await _luckyRepo.purchase(l.id);
       await auth.reloadProfile(); // the new ID shows everywhere
       await _loadLucky();
-      messenger.showSnackBar(SnackBar(content: Text('${l.number} is now your ID!')));
+      messenger.showSnackBar(SnackBar(content: Text('${l.label} is now your ID!')));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
       await _loadLucky();
@@ -219,7 +219,7 @@ class _StoreScreenState extends State<StoreScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Your Lucky ID: ${mine.number}'
+                    'Your Lucky ID: ${mine.label}'
                     '${mine.expiresAt == null ? '' : ' · until ${mine.expiresAt!.day}/${mine.expiresAt!.month}/${mine.expiresAt!.year}'}',
                     style: const TextStyle(
                         color: Color(0xFF3A1A5E),
@@ -259,7 +259,7 @@ class _StoreScreenState extends State<StoreScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${l.number}',
+                      Text(l.label,
                           style: const TextStyle(
                               fontFamily: 'Poppins',
                               fontWeight: FontWeight.w700,

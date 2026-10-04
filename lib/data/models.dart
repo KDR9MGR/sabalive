@@ -54,7 +54,10 @@ class AppUser {
     frameUrl: _nonBlank(row['frame_url']),
     pkWallpaper: row['pk_wallpaper'] as int?,
     isGhost: row['is_ghost'] as bool? ?? false,
-    displayId: row['display_id'] != null ? '${row['display_id']}' : null,
+    // a Lucky ID can start with zeros (0786 is stored as 786 + a width of 4)
+    displayId: row['display_id'] != null
+        ? '${row['display_id']}'.padLeft(row['display_id_width'] as int? ?? 0, '0')
+        : null,
   );
 
   final String id;

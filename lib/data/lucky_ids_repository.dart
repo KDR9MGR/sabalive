@@ -7,6 +7,7 @@ class LuckyId {
   LuckyId({
     required this.id,
     required this.number,
+    this.digits,
     required this.priceCoins,
     required this.durationDays,
     this.ownerId,
@@ -16,6 +17,7 @@ class LuckyId {
   factory LuckyId.fromRow(Map<String, dynamic> row) => LuckyId(
         id: row['id'] as String,
         number: row['number'] as int,
+        digits: row['digits'] as int?,
         priceCoins: row['price_coins'] as int,
         durationDays: row['duration_days'] as int,
         ownerId: row['owner_id'] as String?,
@@ -24,6 +26,11 @@ class LuckyId {
 
   final String id;
   final int number;
+
+  /// Written width when the number starts with zeros (786 with 4 digits is 0786).
+  final int? digits;
+
+  String get label => '$number'.padLeft(digits ?? 0, '0');
   final int priceCoins;
   final int durationDays;
   final String? ownerId;
