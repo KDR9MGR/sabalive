@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,6 +9,7 @@ import '../../data/feedback_repository.dart';
 import '../../data/models.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Submit feedback (self-insert RLS on `feedback`) and see admin responses
 /// to what you've filed before — real data, no mock, mirrors kyc_screen.dart's
@@ -162,8 +163,8 @@ class _SubmitTabState extends State<_SubmitTab> {
         TextField(
           controller: _body,
           maxLines: 5,
-          decoration: const InputDecoration(
-            hintText: 'Please describe your feedback in detail…',
+          decoration: InputDecoration(
+            hintText: tr('Please describe your feedback in detail…'),
           ),
         ),
         const SizedBox(height: 24),

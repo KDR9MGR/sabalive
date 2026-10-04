@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -43,7 +43,9 @@ import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_speaking.dart';
+import 'widgets/stream_diamonds.dart';
 import 'widgets/tool_grid.dart';
+import '../../core/i18n/text.dart';
 
 /// Viewer of an audio room — same proven audience-join + chat/gift/like
 /// chrome as [WatchLiveScreen] (lib/features/live/watch_live_screen.dart),
@@ -90,6 +92,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   // who is talking right now (Agora volume reports mapped back to seats)
   final _speaking = SeatSpeaking();
   Set<int> _speakingSeats = {};
+  late final StreamDiamonds _diamonds =
+      StreamDiamonds(widget.stream.id, onChanged: () {
+        if (mounted) setState(() {});
+      });
   late int _seatCount = widget.stream.seatCount;
   RealtimeChannel? _seatsChannel;
   RealtimeChannel? _seatStreamChannel;
@@ -122,6 +128,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _session = context.read<ActiveLiveSessionController>()..backHandler = _showCloseDialog;
+    _diamonds.start();
     _likes = widget.stream.likes;
     if (_isReal) {
       // See the same note in watch_live_screen.dart — without this, a
@@ -519,6 +526,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 ? AppUser.fromRow(profileRow)
                 : AppUser(id: senderId, name: 'Someone', username: '@user');
             if (!mounted) return;
+            if (payload.newRecord['kind'] == 'gift') _diamonds.onGift();
             // A gift or an entry from someone: play it on screen, not just as
             // a line.
             unawaited(
@@ -601,6 +609,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _showCloseDialog) _session.backHandler = null;
+    _diamonds.dispose();
     _stopEndWatch?.call();
     _stopKickWatch?.call();
     _waitTimer?.cancel();
@@ -644,6 +653,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
 
   bool get _ghost => isGhostViewer(context);
 
+
   Future<void> _seatTap(int seat) async {
     if (_ghost || !_isReal || _seatBusy) return;
     final myId = supabase.auth.currentUser?.id;
@@ -666,7 +676,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             asBroadcaster: false,
           );
         }
-        if (mounted) {
+          if (mounted) {
           setState(() {
             _seatOccupants.remove(seat);
             _mySeat = null;
@@ -1069,6 +1079,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                   locked: _lockedSeats.contains(i),
                   muted: _mutedSeats.contains(i),
                   speaking: _speakingSeats.contains(i),
+                  diamonds: _seatOccupants[i] == null ? null : _diamonds.of(_seatOccupants[i]!.id),
                   isHost: _seatOccupants[i]?.id == widget.stream.host.id,
                   onTap: () => _seatTap(i),
                 ),
@@ -1338,10 +1349,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 maxLines: 4,
                 keyboardType: TextInputType.multiline,
                 textInputAction: TextInputAction.newline,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
-                  hintText: 'Say something nice…',
+                  hintText: tr('Say something nice…'),
                   hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
               ),

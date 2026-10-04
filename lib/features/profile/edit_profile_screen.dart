@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/avatar_picker.dart';
@@ -8,6 +8,7 @@ import '../../core/widgets/gradient_button.dart';
 import '../../data/mock_data.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});

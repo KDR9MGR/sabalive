@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
@@ -11,6 +11,7 @@ import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
 import '../../state/blocks_controller.dart';
+import '../../core/i18n/text.dart';
 
 class MessagesScreen extends StatefulWidget {
   /// [refreshOn] + [isActive] let the host tell this screen when its tab becomes
@@ -218,7 +219,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 controller: _search,
                 onChanged: (v) => setState(() => _query = v.trim()),
                 decoration: InputDecoration(
-                  hintText: 'Search messages',
+                  hintText: tr('Search messages'),
                   prefixIcon: const Icon(Icons.search_rounded),
                   contentPadding: const EdgeInsets.symmetric(vertical: 0),
                   isDense: true,
@@ -528,7 +529,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                 autofocus: true,
                 onChanged: _run,
                 decoration: InputDecoration(
-                  hintText: 'Search by name or @username',
+                  hintText: tr('Search by name or @username'),
                   prefixIcon: const Icon(Icons.search_rounded),
                   isDense: true,
                   border: OutlineInputBorder(

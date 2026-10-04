@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Placeholder for interactive games (spin wheel, dice, fishing, PK mini-games).
 /// The game engine + coin-bet economy land in a later milestone.

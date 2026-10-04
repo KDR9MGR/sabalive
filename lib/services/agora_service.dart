@@ -51,8 +51,13 @@ class AgoraService {
     // Raw SDK defaults are 960x540@15fps and a generic audio profile — too
     // soft for a live-streaming app. Portrait HD at 30fps with an
     // auto-managed bitrate is the standard profile for vertical social
-    // live streaming; the chatroom audio scenario suits seats/guests
-    // joining and leaving mid-stream.
+    // live streaming.
+    //
+    // The audio scenario is game-streaming, not chatroom: chatroom puts the
+    // phone in call-volume mode on Android, where the app's own media sound
+    // (the sound inside an MP4 gift) came out silent or very quiet; this one
+    // keeps everything on media volume and is also the music-quality scenario
+    // that playing a song into an audio room needs.
     await engine.setVideoEncoderConfiguration(
       const VideoEncoderConfiguration(
         dimensions: VideoDimensions(width: 720, height: 1280),
@@ -63,7 +68,7 @@ class AgoraService {
     );
     await engine.setAudioProfile(
       profile: AudioProfileType.audioProfileDefault,
-      scenario: AudioScenarioType.audioScenarioChatroom,
+      scenario: AudioScenarioType.audioScenarioGameStreaming,
     );
     _engine = engine;
     return engine;

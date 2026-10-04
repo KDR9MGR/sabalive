@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/agency_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Self-serve agency application. Files an `agencies` row (status defaults
 /// 'pending') via `apply_for_agency`; an admin reviews and approves it
@@ -132,7 +133,7 @@ class _ApplyAgencyScreenState extends State<ApplyAgencyScreen> {
         _label('Reference (optional)'),
         TextField(
           controller: _reference,
-          decoration: const InputDecoration(hintText: 'Who referred you, if anyone'),
+          decoration: InputDecoration(hintText: tr('Who referred you, if anyone')),
         ),
         const SizedBox(height: 24),
         GradientButton(

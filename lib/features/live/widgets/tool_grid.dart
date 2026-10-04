@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// One tile in a [showToolGridSheet] — icon, label, tint color, action.
 class ToolSpec {

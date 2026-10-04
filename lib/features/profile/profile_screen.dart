@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -15,6 +15,8 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'blocked_users_screen.dart';
 import 'widgets/equipped_cosmetics.dart';
+import '../../core/i18n/language_picker.dart';
+import '../../core/i18n/text.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -398,7 +400,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       (Icons.auto_awesome_outlined, 'Room Effects', () => _soon(context, 'Room Effects')),
       (Icons.feedback_outlined, 'Feedback', () => AppNav.feedback(context)),
       (Icons.notifications_none_rounded, 'Notifications', () => AppNav.notifications(context)),
-      (Icons.translate_rounded, 'Language', () => _soon(context, 'Language selection')),
+      (Icons.translate_rounded, 'Language', () => showLanguagePicker(context)),
       (Icons.shield_outlined, 'Privacy & Safety', () => AppNav.settings(context)),
       (Icons.help_outline_rounded, 'Help & Support', () => AppNav.settings(context)),
       (Icons.groups_rounded, 'Family', () => _soon(context, 'Family')),
@@ -406,11 +408,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: GridView.count(
-        crossAxisCount: 3,
+      // A fixed row height just taller than a tile (icon + two label lines): the
+      // cells used to be much taller than their content, which left a wide empty
+      // band under the last row, above Sign Out.
+      child: GridView(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisExtent: 94,
+          mainAxisSpacing: 6,
+        ),
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 0.86,
         children: [
           for (final (icon, label, onTap) in items) _gridTile(icon, label, onTap),
         ],

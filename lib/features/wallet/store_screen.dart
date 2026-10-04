@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
@@ -13,6 +13,7 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'bag_screen.dart';
 import 'widgets/store_art.dart';
+import '../../core/i18n/text.dart';
 
 /// Real cosmetics store — frames, VIP tiers, entry effects, vehicles, room skins.
 /// A "purchase" grants N days of access (extended if you already own an

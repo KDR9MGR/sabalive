@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
@@ -6,6 +6,7 @@ import '../../core/widgets/gradient_button.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/auth_scaffold.dart';
+import '../../core/i18n/text.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -109,7 +110,7 @@ class _SignupScreenState extends State<SignupScreen> {
             obscureText: _obscure,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              hintText: 'Password',
+              hintText: tr('Password'),
               prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
                 onPressed: () => setState(() => _obscure = !_obscure),

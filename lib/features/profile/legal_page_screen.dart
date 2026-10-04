@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Renders a row from the `legal_pages` table by slug (terms / privacy /
 /// community / refund …). Content is authored in the admin panel.

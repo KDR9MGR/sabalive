@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../data/store_repository.dart';
+import '../../../core/i18n/text.dart';
 
 enum RoomEffectKind { gift, entry }
 

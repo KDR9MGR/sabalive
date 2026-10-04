@@ -1,10 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/utils/formatters.dart';
 import '../../../data/lucky_box_repository.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// The Lucky Box on the host's live screen: a gift box with the time left
 /// until the reward under it. Counts down using the panel's settings

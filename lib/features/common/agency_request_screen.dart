@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 
 import '../../core/utils/errors.dart';
@@ -8,6 +8,7 @@ import '../../core/widgets/aurora_background.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/social_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Going live is enabled by an agency. Instead of pasting a host code, the user
 /// types the agency's public ID; that agency (and the staff above it) sees the
@@ -301,7 +302,7 @@ class _AgencyRequestScreenState extends State<AgencyRequestScreen>
           fontSize: 20,
           letterSpacing: 4,
         ),
-        decoration: const InputDecoration(hintText: 'Agency ID'),
+        decoration: InputDecoration(hintText: tr('Agency ID')),
         onSubmitted: (_) => _send(),
       ),
       if (_error != null) ...[

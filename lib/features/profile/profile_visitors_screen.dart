@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../data/profile_visits_repository.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Who's viewed your profile recently — real data from `profile_visits`,
 /// scoped to your own visitors by RLS.

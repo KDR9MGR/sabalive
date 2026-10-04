@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/formatters.dart';
@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 class WalletScreen extends StatelessWidget {
   const WalletScreen({super.key});

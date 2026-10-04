@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/app_colors.dart';
+import '../i18n/text.dart';
 
 /// WhatsApp / Instagram / Copy Link sheet for sharing a piece of content
 /// (currently just a live stream). [url] must be a real `https://` link (see

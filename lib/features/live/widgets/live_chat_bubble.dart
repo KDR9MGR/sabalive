@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/level_star.dart';
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// One line of live-room chat. Shared by the host's screen and the video /
 /// audio viewer screens so they all look the same.
@@ -129,14 +130,12 @@ class _StickerBubble extends StatelessWidget {
   }
 }
 
-/// "Riya joined" / "Riya left": the same bold, level-badged notice for both. A
-/// leave is a little quieter (no glow), so it reads as the arrival's counterpart.
+/// "Riya joined" / "Riya left": the same bold, level-badged, glowing notice for
+/// both — leaving looks exactly like arriving, only the word differs.
 class _JoinNotice extends StatelessWidget {
   const _JoinNotice({required this.line, this.verb = 'joined'});
   final LiveChatLine line;
   final String verb;
-
-  bool get _leaving => verb == 'left';
 
   @override
   Widget build(BuildContext context) {
@@ -146,18 +145,14 @@ class _JoinNotice extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: _leaving
-              ? Colors.white.withValues(alpha: 0.35)
-              : AppColors.primaryBright.withValues(alpha: 0.7),
+          color: AppColors.primaryBright.withValues(alpha: 0.7),
         ),
-        boxShadow: _leaving
-            ? null
-            : [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.35),
-                  blurRadius: 10,
-                ),
-              ],
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.35),
+            blurRadius: 10,
+          ),
+        ],
       ),
       child: Text.rich(
         TextSpan(
@@ -182,10 +177,8 @@ class _JoinNotice extends StatelessWidget {
               ),
             ),
             TextSpan(
-              text: '  $verb',
-              style: TextStyle(
-                color: _leaving ? Colors.white70 : Colors.white,
-              ),
+              text: '  ${tr(verb)}',
+              style: const TextStyle(color: Colors.white),
             ),
           ],
         ),

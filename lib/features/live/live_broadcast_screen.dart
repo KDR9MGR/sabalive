@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -21,6 +21,7 @@ import '../../data/models.dart';
 import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_service.dart';
+import '../../services/local_music_service.dart';
 import '../../data/store_repository.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/blocks_controller.dart';
@@ -34,10 +35,13 @@ import 'widgets/live_emoji_sheet.dart';
 import 'widgets/live_chat_bubble.dart';
 import 'widgets/room_chat_state.dart';
 import 'widgets/lucky_box_badge.dart';
+import 'widgets/music_sheet.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_speaking.dart';
+import 'widgets/stream_diamonds.dart';
 import 'widgets/tool_grid.dart';
+import '../../core/i18n/text.dart';
 
 /// Host's own broadcast view — real Agora publish + real Realtime chat tied
 /// to the [LiveStream] row created just before this screen was pushed.
@@ -97,6 +101,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   // who is talking right now (Agora volume reports mapped back to seats)
   final _speaking = SeatSpeaking();
   Set<int> _speakingSeats = {};
+  late final StreamDiamonds _diamonds =
+      StreamDiamonds(widget.stream.id, onChanged: () {
+        if (mounted) setState(() {});
+      });
   RealtimeChannel? _seatsChannel;
 
   // Video-only: empty seats are host-approval-gated (same request_pk_seat/
@@ -120,6 +128,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     // of Route nesting.
     WidgetsBinding.instance.addObserver(this);
     _session = context.read<ActiveLiveSessionController>()..backHandler = _end;
+    if (widget.audioOnly) _diamonds.start();
     // Keeps the screen (and the Agora publish + heartbeat timers) from
     // being suspended by a display timeout mid-broadcast — that was
     // dropping the whole stream for every viewer, not just this device.
@@ -576,6 +585,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         ? AppUser.fromRow(profileRow)
         : AppUser(id: senderId, name: 'Someone', username: '@user');
     if (!mounted) return;
+    if (row['kind'] == 'gift') _diamonds.onGift();
     // A gift or an entry from a viewer: play it on screen, not just as a line.
     unawaited(
       _effects.handleRow(
@@ -651,6 +661,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _end) _session.backHandler = null;
+    _diamonds.dispose();
+    _music?.dispose();
     WakelockPlus.disable().catchError((_) {});
     _ticker?.cancel();
     _heartbeat?.cancel();
@@ -898,12 +910,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         AppColors.gold,
         () => AppNav.wallet(context),
       ),
-      ToolSpec(
-        Icons.music_note_rounded,
-        'Play music',
-        AppColors.pink,
-        () => _soon('Music'),
-      ),
+      // Songs from the phone: the host of an audio room only.
+      if (widget.audioOnly)
+        ToolSpec(
+          Icons.music_note_rounded,
+          'Play music',
+          AppColors.pink,
+          _openMusic,
+        ),
       ToolSpec(
         Icons.campaign_rounded,
         'Funny voice',
@@ -1080,6 +1094,18 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     url: liveShareUrl(widget.stream.id),
   );
 
+  LocalMusicController? _music;
+
+  /// Songs from the phone, played into the live (see LocalMusicController).
+  void _openMusic() {
+    final engine = _engine;
+    if (engine == null) {
+      _snack('Still connecting — try again in a moment');
+      return;
+    }
+    showMusicSheet(context, _music ??= LocalMusicController(engine));
+  }
+
   /// Clears the chat for everyone in the room: the server stamps the stream, and
   /// every screen (this one included) drops the lines it holds when that arrives.
   Future<void> _clearChat() async {
@@ -1109,8 +1135,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           controller: controller,
           maxLength: 120,
           maxLines: 2,
-          decoration: const InputDecoration(
-            hintText: 'Pin a message for viewers',
+          decoration: InputDecoration(
+            hintText: tr('Pin a message for viewers'),
           ),
         ),
         actions: [
@@ -1531,6 +1557,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               occupants: _seatOccupants,
               mutedSeats: _mutedSeats,
               speakingSeats: _speakingSeats,
+              diamonds: _diamonds.all,
               onSeatTap: _seatMenu,
               onAddSeat: _seatCount >= 25 ? null : () => _changeSeatCount(5),
               onRemoveSeat: _seatCount <= 5 ? null : () => _changeSeatCount(-5),
@@ -1979,10 +2006,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                 maxLines: 4,
                 keyboardType: TextInputType.multiline,
                 textInputAction: TextInputAction.newline,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
-                  hintText: 'Say something',
+                  hintText: tr('Say something'),
                   hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
               ),

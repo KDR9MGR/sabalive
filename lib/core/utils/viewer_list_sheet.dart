@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../data/models.dart';
 import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
 import '../widgets/app_avatar.dart';
+import '../i18n/text.dart';
 
 /// Who's watching a stream right now — public to any viewer, not just the
 /// host. Tapping someone opens their profile.

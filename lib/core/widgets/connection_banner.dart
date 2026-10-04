@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../theme/app_colors.dart';
+import '../i18n/text.dart';
 
 /// Thin strip shown while the Agora connection is reconnecting after a
 /// network drop, so a host/viewer isn't left staring at a frozen stream

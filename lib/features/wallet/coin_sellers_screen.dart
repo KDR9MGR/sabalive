@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/widgets/app_avatar.dart';
 import '../../data/models.dart';
 import '../../data/offline_sellers_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// A contact directory of offline coin sellers — real people who take cash/
 /// UPI payment outside the app and get your coins credited manually. This

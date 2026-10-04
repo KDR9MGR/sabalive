@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/aurora_background.dart';
 import '../../../core/widgets/saba_logo.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 class AuthScaffold extends StatelessWidget {
   const AuthScaffold({

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../../core/utils/formatters.dart';
@@ -8,6 +8,7 @@ import '../../../router/app_nav.dart';
 import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
 import 'gift_icon.dart';
+import '../../../core/i18n/text.dart';
 
 /// What the sheet resolves to: which gift, how many copies, and who it goes
 /// to. [recipient] is the picked person (null when [sendToAll] is true, or

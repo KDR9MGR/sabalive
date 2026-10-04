@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../theme/app_colors.dart';
+import '../i18n/text.dart';
 
 /// SABALIVE brand crest. [size] is the rendered height in logical pixels;
 /// width follows the artwork's aspect ratio.

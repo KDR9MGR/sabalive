@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
@@ -9,6 +9,7 @@ import '../../data/messages_repository.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 class NewGroupScreen extends StatefulWidget {
   const NewGroupScreen({super.key});
@@ -90,7 +91,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
             child: TextField(
               controller: _name,
-              decoration: const InputDecoration(hintText: 'Group name (optional)'),
+              decoration: InputDecoration(hintText: tr('Group name (optional)')),
             ),
           ),
           Padding(
@@ -98,8 +99,8 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             child: TextField(
               controller: _search,
               onChanged: _onSearch,
-              decoration: const InputDecoration(
-                hintText: 'Add people',
+              decoration: InputDecoration(
+                hintText: tr('Add people'),
                 prefixIcon: Icon(Icons.search_rounded),
               ),
             ),

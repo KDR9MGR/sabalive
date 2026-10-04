@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/levels_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Wealth (coins spent) and Charm (value received) — two separate level
 /// tracks, both to level 100. See levels_repository.dart's own doc comment

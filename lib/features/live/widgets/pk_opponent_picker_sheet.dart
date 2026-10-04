@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../../core/utils/errors.dart';
@@ -7,6 +7,7 @@ import '../../../data/models.dart';
 import '../../../data/pk_battles_repository.dart';
 import '../../../state/live_streams_controller.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// Lists other hosts currently live in PK mode, waiting for an opponent.
 /// Tapping one sends a real invite via [PkBattlesRepository.invite] and

@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/store_repository.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// A store item's picture: the artwork uploaded in the admin panel when there is
 /// one (shown still — these sit in grids), otherwise the emoji stand-in. The emoji

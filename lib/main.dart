@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/i18n/i18n.dart';
 import 'config/supabase_config.dart';
 import 'services/deep_link_service.dart';
 import 'services/device_identity_service.dart';
@@ -13,6 +14,8 @@ import 'services/push_notifications_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // the language the user picked, so the very first frame is already in it
+  await I18n.load();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,

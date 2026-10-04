@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
@@ -9,6 +9,7 @@ import '../../theme/app_colors.dart';
 import 'widgets/store_art.dart';
 import 'frames_screen.dart';
 import 'store_screen.dart';
+import '../../core/i18n/text.dart';
 
 /// What you currently own (non-expired) and what's equipped — real data
 /// from user_items, not mock.
@@ -61,7 +62,7 @@ class _BagScreenState extends State<BagScreen> {
         title: const Text('My Bag'),
         actions: [
           IconButton(
-            tooltip: 'Profile frames',
+            tooltip: tr('Profile frames'),
             icon: const Icon(Icons.account_circle_outlined),
             onPressed: () => AppNav.open(context, const FramesScreen()),
           ),

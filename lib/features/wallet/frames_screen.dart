@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
@@ -8,6 +8,7 @@ import '../../core/widgets/remote_media.dart';
 import '../../data/frames_repository.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Profile frames: the animated ring around your picture that shows on your
 /// profile and in every live. Pick one you own, claim a free or level-unlocked

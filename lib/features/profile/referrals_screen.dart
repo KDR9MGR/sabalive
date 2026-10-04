@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -10,6 +10,7 @@ import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/referrals_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Invite a friend, real referral_code + redeem_referral_code RPCs behind
 /// it — no deep-link capture at signup yet, so redemption is a manual
@@ -158,7 +159,7 @@ class _InviteTabState extends State<_InviteTab> {
               child: TextField(
                 controller: _redeemCode,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(hintText: 'Enter code'),
+                decoration: InputDecoration(hintText: tr('Enter code')),
               ),
             ),
             const SizedBox(width: 10),

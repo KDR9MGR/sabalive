@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -44,6 +44,7 @@ import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_speaking.dart';
 import 'widgets/tool_grid.dart';
+import '../../core/i18n/text.dart';
 
 class WatchLiveScreen extends StatefulWidget {
   const WatchLiveScreen({super.key, required this.stream});
@@ -1363,10 +1364,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 maxLines: 4,
                 keyboardType: TextInputType.multiline,
                 textInputAction: TextInputAction.newline,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
-                  hintText: 'Say something nice…',
+                  hintText: tr('Say something nice…'),
                   hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
               ),

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/widgets/pills.dart';
@@ -9,6 +9,7 @@ import '../../state/live_streams_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/live_card.dart';
+import '../../core/i18n/text.dart';
 
 class LiveFeedScreen extends StatefulWidget {
   const LiveFeedScreen({super.key});

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
@@ -7,6 +7,7 @@ import '../../core/widgets/pills.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/auth_scaffold.dart';
+import '../../core/i18n/text.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});

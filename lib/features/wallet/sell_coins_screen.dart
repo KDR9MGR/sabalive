@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +8,7 @@ import '../../core/widgets/gradient_button.dart';
 import '../../data/social_repository.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Coin reseller / agent tool — send coins to another user by their real ID
 /// (the "ID: …" shown/copied on every profile). Open to any signed-in user.
@@ -123,7 +124,7 @@ class _SellCoinsScreenState extends State<SellCoinsScreen> {
             controller: _to,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(hintText: 'e.g. 100234'),
+            decoration: InputDecoration(hintText: tr('e.g. 100234')),
           ),
           const SizedBox(height: 14),
           const Text('Amount (coins)',
@@ -133,7 +134,7 @@ class _SellCoinsScreenState extends State<SellCoinsScreen> {
             controller: _amount,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(hintText: '1000'),
+            decoration: InputDecoration(hintText: tr('1000')),
           ),
           const SizedBox(height: 14),
           const Text('Note (optional)',
@@ -142,7 +143,7 @@ class _SellCoinsScreenState extends State<SellCoinsScreen> {
           TextField(
             controller: _note,
             maxLength: 80,
-            decoration: const InputDecoration(hintText: 'Order #…'),
+            decoration: InputDecoration(hintText: tr('Order #…')),
           ),
           const SizedBox(height: 8),
           GradientButton(

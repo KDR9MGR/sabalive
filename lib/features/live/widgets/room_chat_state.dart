@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// The two room-wide chat facts the host controls and everyone sees at once, both
 /// carried on the live_streams row: the pinned notice, and when the chat was last

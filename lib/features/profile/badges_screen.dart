@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../data/badges_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Full badge catalog + what you've actually earned — real data from
 /// `badges`/`user_badges`, no mock. Badges are admin-awarded (judged

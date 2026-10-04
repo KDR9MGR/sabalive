@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -31,6 +31,7 @@ import 'widgets/gift_sheet.dart';
 import 'widgets/pk_arena.dart';
 import 'widgets/pk_score_bar.dart';
 import 'widgets/tool_grid.dart';
+import '../../core/i18n/text.dart';
 
 /// Viewer of a PK battle — same proven audience-join + chat/gift chrome as
 /// [WatchAudioRoomScreen]/[WatchLiveScreen], with a PK-themed shell instead
@@ -991,10 +992,10 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                       maxLines: 4,
                       keyboardType: TextInputType.multiline,
                       textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         isDense: true,
                         border: InputBorder.none,
-                        hintText: 'Cheer them on…',
+                        hintText: tr('Cheer them on…'),
                         hintStyle: TextStyle(
                           color: Colors.white54,
                           fontSize: 13,

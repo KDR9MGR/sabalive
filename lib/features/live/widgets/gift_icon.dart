@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
+import '../../../core/i18n/text.dart';
 
 /// A gift's picture: the artwork uploaded in the admin panel when there is one
 /// (its first frame, for SVGA, MP4 and GIF alike — these sit in a grid),

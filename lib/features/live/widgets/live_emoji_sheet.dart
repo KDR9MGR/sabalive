@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/live_emojis_repository.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// The emoji / GIF picker for live chat (audio rooms, video lives, the host's
 /// own screen). Its contents come from the admin panel, so adding, editing or
@@ -56,8 +57,8 @@ class _LiveEmojiSheet extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (gifs.isNotEmpty)
-                    const TabBar(
-                      tabs: [Tab(text: 'Emoji'), Tab(text: 'GIFs')],
+                    TabBar(
+                      tabs: [Tab(text: tr('Emoji')), Tab(text: tr('GIFs'))],
                     ),
                   Flexible(
                     child: gifs.isEmpty

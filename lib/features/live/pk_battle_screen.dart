@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -30,6 +30,7 @@ import 'widgets/pk_arena.dart';
 import 'widgets/pk_opponent_picker_sheet.dart';
 import 'widgets/pk_score_bar.dart';
 import 'widgets/tool_grid.dart';
+import '../../core/i18n/text.dart';
 
 /// Host-side PK battle room. Room chat/gifts and your own audio are real, as
 /// always. The opponent and scoring are now real too: `pk_battles` is the
@@ -1330,10 +1331,10 @@ class _PkBattleScreenState extends State<PkBattleScreen>
                 maxLines: 4,
                 keyboardType: TextInputType.multiline,
                 textInputAction: TextInputAction.newline,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
-                  hintText: 'Say Hi!',
+                  hintText: tr('Say Hi!'),
                   hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
               ),

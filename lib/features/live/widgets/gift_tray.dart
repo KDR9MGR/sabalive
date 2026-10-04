@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../../core/utils/formatters.dart';
@@ -6,6 +6,7 @@ import '../../../data/models.dart';
 import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
 import 'gift_icon.dart';
+import '../../../core/i18n/text.dart';
 
 /// Horizontal strip of gifts (emoji + diamond price) shown along the bottom of
 /// a live room, matching the reference layout. Tapping one calls [onSelect].

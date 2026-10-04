@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../router/app_nav.dart';
@@ -9,6 +9,7 @@ import '../live/live_feed_screen.dart';
 import '../messages/messages_screen.dart';
 import '../rankings/rankings_screen.dart';
 import '../profile/profile_screen.dart';
+import '../../core/i18n/text.dart';
 
 class MainShell extends StatelessWidget {
   const MainShell({super.key});

@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../state/active_live_session_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Takes the user out of a live they may not be in — banned from live, banned
 /// altogether, or removed by the host — and says why. Video and audio lives are

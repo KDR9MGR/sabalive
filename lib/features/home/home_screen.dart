@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -15,6 +15,7 @@ import '../../state/live_streams_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import '../live/widgets/live_card.dart';
+import '../../core/i18n/text.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/utils/formatters.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// The tug-of-war bar + score panels + VS badge + countdown clock. Shared by
 /// the host's own PK screen (pk_battle_screen.dart, the source of truth for

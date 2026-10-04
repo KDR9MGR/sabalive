@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/feature_flags.dart';
@@ -13,6 +13,7 @@ import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
 import '../calls/call_screen.dart';
+import '../../core/i18n/text.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -375,10 +376,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       controller: _controller,
                       style: const TextStyle(fontSize: 13.5),
                       textInputAction: TextInputAction.send,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         isDense: true,
                         border: InputBorder.none,
-                        hintText: 'Type a message…',
+                        hintText: tr('Type a message…'),
                       ),
                       onSubmitted: (_) => _send(),
                     ),

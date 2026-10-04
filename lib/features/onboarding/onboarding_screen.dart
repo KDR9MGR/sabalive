@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
@@ -6,6 +6,7 @@ import '../../core/widgets/aurora_background.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../theme/app_colors.dart';
 import '../../state/auth_controller.dart';
+import '../../core/i18n/text.dart';
 
 class _Page {
   const _Page(this.icon, this.title, this.body, this.accent);

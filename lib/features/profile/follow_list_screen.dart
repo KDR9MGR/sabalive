@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 class FollowListScreen extends StatefulWidget {
   const FollowListScreen({

@@ -1,8 +1,9 @@
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../data/models.dart';
+import '../../../core/i18n/text.dart';
 
 /// Works out which seats are talking right now. Agora reports volume per Agora uid
 /// (uid 0 is this device); a seat's holder publishes their uid on the seat row and

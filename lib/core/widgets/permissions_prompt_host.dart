@@ -1,9 +1,10 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../services/permissions_flow.dart';
 import '../../theme/app_colors.dart';
+import '../i18n/text.dart';
 
 /// Wraps the signed-in app and, the first time it appears on an install, shows
 /// a short explainer and then asks for the permissions the app needs.

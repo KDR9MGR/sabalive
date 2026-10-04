@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/widgets/app_avatar.dart';
@@ -6,6 +6,7 @@ import '../../data/calls_repository.dart';
 import '../../state/calls_controller.dart';
 import '../../theme/app_colors.dart';
 import 'call_screen.dart';
+import '../../core/i18n/text.dart';
 
 /// Sits on top of the app shell; shows an accept/decline card whenever
 /// [CallsController.incoming] is set.

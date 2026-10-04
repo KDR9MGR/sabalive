@@ -10,6 +10,7 @@ import 'package:sabalive/features/maintenance/maintenance_banner.dart';
 import 'package:sabalive/features/maintenance/maintenance_screen.dart';
 import 'package:sabalive/services/maintenance_http_client.dart';
 import 'package:sabalive/state/maintenance_controller.dart';
+import 'package:sabalive/core/i18n/text.dart' as i18n;
 
 /// Stands in for the server: whatever status it is told to return.
 class _FakeRepo extends SystemStatusRepository {
@@ -323,7 +324,7 @@ void main() {
       expect(find.text('Upgrading'), findsOneWidget);
       expect(find.text('Back soon'), findsOneWidget);
       expect(find.byKey(const Key('maintenance-countdown')), findsOneWidget);
-      expect(t.widget<Text>(find.byKey(const Key('maintenance-countdown'))).data, '00:42:18');
+      expect(t.widget<i18n.Text>(find.byKey(const Key('maintenance-countdown'))).data, '00:42:18');
       expect(find.textContaining('Expected completion:'), findsOneWidget);
       c.dispose();
       await t.pumpWidget(const SizedBox());
@@ -334,10 +335,10 @@ void main() {
       final c = MaintenanceController(repo: _FakeRepo(), clock: () => now);
       c.apply(_status('maintenance', serverTime: now, endsAt: now.add(const Duration(minutes: 10))));
       await t.pumpWidget(MaterialApp(home: MaintenanceScreen(controller: c)));
-      expect(t.widget<Text>(find.byKey(const Key('maintenance-countdown'))).data, '00:10:00');
+      expect(t.widget<i18n.Text>(find.byKey(const Key('maintenance-countdown'))).data, '00:10:00');
       now = now.add(const Duration(seconds: 3));
       await t.pump(const Duration(seconds: 1));
-      expect(t.widget<Text>(find.byKey(const Key('maintenance-countdown'))).data, '00:09:57');
+      expect(t.widget<i18n.Text>(find.byKey(const Key('maintenance-countdown'))).data, '00:09:57');
       c.dispose();
       await t.pumpWidget(const SizedBox());
     });

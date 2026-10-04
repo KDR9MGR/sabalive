@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/app_avatar.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// The floating draggable "you're still live" bubble shown when a broadcast
 /// is minimized. Deliberately tiny and self-contained — everything outside

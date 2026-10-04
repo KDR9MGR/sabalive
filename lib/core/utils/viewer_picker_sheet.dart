@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../data/models.dart';
 import '../../data/social_repository.dart';
 import '../../theme/app_colors.dart';
 import '../widgets/app_avatar.dart';
+import '../i18n/text.dart';
 
 /// Lets the host pick one of the people watching right now — used by the
 /// "Block viewer" tool. Returns the chosen viewer, or null if dismissed.

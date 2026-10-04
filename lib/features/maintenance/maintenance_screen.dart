@@ -1,10 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/widgets/remote_media.dart';
 import '../../state/maintenance_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Covers the whole app while it is locked for maintenance or an emergency
 /// lockdown: the Super Admin's title and message, and — when an end time is set —

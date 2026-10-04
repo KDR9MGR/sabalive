@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Real linked-identity view — Supabase Auth's own `currentUser.identities`,
 /// no separate table needed (GoTrue already tracks this per user). Lets you

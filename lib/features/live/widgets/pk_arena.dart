@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/app_avatar.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/i18n/text.dart';
 
 /// Gift-total + status pill row shown above the arena. Shared by the host's
 /// own screen and the viewer's, so both always read the identical status

@@ -1,10 +1,14 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart' hide Text;
+
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
 import 'seat_speaking.dart';
+import '../../../core/i18n/text.dart';
 
 /// One seat circle — empty/locked/occupied/muted — shared by the full
 /// [SeatRoom] backdrop (audio rooms) and the slim [CompactSeatStrip]
@@ -18,6 +22,7 @@ class SeatCircle extends StatelessWidget {
     this.muted = false,
     this.isHost = false,
     this.speaking = false,
+    this.diamonds,
     this.size = 58,
     this.onTap,
     this.showLabel = true,
@@ -35,6 +40,10 @@ class SeatCircle extends StatelessWidget {
 
   /// Their voice is coming through right now — the seat lights up.
   final bool speaking;
+
+  /// Diamonds this seat's holder has earned in this stream today. When set, the label
+  /// under the seat swaps between their name and this count every 7 seconds.
+  final int? diamonds;
   final double size;
   final VoidCallback? onTap;
   final bool showLabel;
@@ -127,15 +136,11 @@ class SeatCircle extends StatelessWidget {
           ),
           if (showLabel) ...[
             const SizedBox(height: 4),
-            MarqueeText(
-              occupant?.name ?? (locked ? 'Locked' : 'Seat $seat'),
+            SeatLabel(
+              name: occupant?.name ?? (locked ? 'Locked' : 'Seat $seat'),
+              diamonds: occupant == null ? null : diamonds,
               width: size,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: occupant != null ? FontWeight.w600 : FontWeight.w500,
-                color: occupant != null ? Colors.white : Colors.white70,
-                shadows: const [Shadow(color: Colors.black87, blurRadius: 3)],
-              ),
+              bright: occupant != null,
             ),
           ],
         ],
@@ -162,6 +167,7 @@ class SeatRoom extends StatelessWidget {
     this.occupants = const {},
     this.mutedSeats = const {},
     this.speakingSeats = const {},
+    this.diamonds = const {},
     this.skinUrl,
   });
   final String hostId;
@@ -182,6 +188,9 @@ class SeatRoom extends StatelessWidget {
 
   /// Seat numbers whose occupant is talking right now.
   final Set<int> speakingSeats;
+
+  /// Diamonds earned in this stream today, by user id.
+  final Map<String, int> diamonds;
 
   @override
   Widget build(BuildContext context) {
@@ -238,6 +247,7 @@ class SeatRoom extends StatelessWidget {
                       locked: lockedSeats.contains(i),
                       muted: mutedSeats.contains(i),
                       speaking: speakingSeats.contains(i),
+                      diamonds: occupants[i] == null ? null : (diamonds[occupants[i]!.id] ?? 0),
                       isHost: occupants[i]?.id == hostId,
                       onTap: () => onSeatTap(i),
                     ),
@@ -329,6 +339,103 @@ class CompactSeatStrip extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// The text under a seat: the holder's name, or — when [diamonds] is given — the name
+/// and the diamonds they have earned in this stream today, swapping every 7 seconds.
+class SeatLabel extends StatefulWidget {
+  const SeatLabel({
+    super.key,
+    required this.name,
+    required this.width,
+    this.diamonds,
+    this.bright = true,
+  });
+
+  final String name;
+  final int? diamonds;
+  final double width;
+  final bool bright;
+
+  @override
+  State<SeatLabel> createState() => _SeatLabelState();
+}
+
+class _SeatLabelState extends State<SeatLabel> {
+  static const _every = Duration(seconds: 7);
+  Timer? _timer;
+  bool _showDiamonds = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(SeatLabel old) {
+    super.didUpdateWidget(old);
+    if ((old.diamonds == null) != (widget.diamonds == null)) _sync();
+  }
+
+  void _sync() {
+    _timer?.cancel();
+    _timer = null;
+    _showDiamonds = false;
+    if (widget.diamonds == null) return;
+    _timer = Timer.periodic(_every, (_) {
+      if (mounted) setState(() => _showDiamonds = !_showDiamonds);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  TextStyle get _style => TextStyle(
+        fontSize: 10,
+        fontWeight: widget.bright ? FontWeight.w600 : FontWeight.w500,
+        color: widget.bright ? Colors.white : Colors.white70,
+        shadows: const [Shadow(color: Colors.black87, blurRadius: 3)],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final diamonds = widget.diamonds;
+    final showing = diamonds != null && _showDiamonds;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      child: showing
+          ? SizedBox(
+              key: const ValueKey('diamonds'),
+              width: widget.width,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.diamond_rounded, size: 11, color: AppColors.diamond),
+                  const SizedBox(width: 2),
+                  Flexible(
+                    child: Text(
+                      compactCount(diamonds),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _style.copyWith(color: AppColors.diamond),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : MarqueeText(
+              widget.name,
+              key: ValueKey('name:${widget.name}'),
+              width: widget.width,
+              style: _style,
+            ),
     );
   }
 }

@@ -1,11 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Chat with the Sabalive support team. One running conversation per user (the
 /// support_threads / support_messages tables); the team answers from the admin
@@ -206,10 +207,10 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
                         maxLines: 5,
                         maxLength: 2000,
                         textInputAction: TextInputAction.newline,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: InputBorder.none,
                           counterText: '',
-                          hintText: 'Write to support…',
+                          hintText: tr('Write to support…'),
                         ),
                       ),
                     ),

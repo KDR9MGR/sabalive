@@ -10,6 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
@@ -36,6 +38,7 @@ dependencies:
   http: ^1.6.0
   image_picker_android: ^0.8.13+17
   image_picker_platform_interface: ^2.11.1
+  file_picker: ^13.1.0
 
 dev_dependencies:
   flutter_test:

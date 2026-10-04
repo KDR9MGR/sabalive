@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/social_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// Host identity verification. Alpha: captures document type + an optional
 /// reference/URL and files a `kyc_verifications` row (self-insert RLS); an
@@ -91,7 +92,7 @@ class _KycScreenState extends State<KycScreen> {
                 const SizedBox(height: 6),
                 TextField(
                   controller: _ref,
-                  decoration: const InputDecoration(hintText: 'e.g. last 4 digits'),
+                  decoration: InputDecoration(hintText: tr('e.g. last 4 digits')),
                 ),
                 const SizedBox(height: 24),
                 GradientButton(

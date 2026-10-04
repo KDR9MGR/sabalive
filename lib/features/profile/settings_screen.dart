@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +9,9 @@ import '../../theme/app_colors.dart';
 import 'blocked_users_screen.dart';
 import 'legal_page_screen.dart';
 import 'linked_accounts_screen.dart';
+import '../../core/i18n/language_picker.dart';
+import '../../core/i18n/i18n.dart';
+import '../../core/i18n/text.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -24,7 +27,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'read_receipts': false,
     'private_account': false,
   };
-  String _language = 'English';
   SharedPreferences? _sp;
 
   @override
@@ -41,7 +43,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       for (final k in _prefs.keys.toList()) {
         _prefs[k] = sp.getBool('settings.$k') ?? _prefs[k]!;
       }
-      _language = sp.getString('settings.language') ?? 'English';
     });
   }
 
@@ -82,7 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_language,
+                Text(I18n.current.nativeName,
                     style: const TextStyle(
                         color: AppColors.textMuted, fontSize: 12.5)),
                 const Icon(Icons.chevron_right_rounded,
@@ -130,23 +131,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickLanguage() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.bgElevated,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final l in ['English', 'Hindi', 'Tamil', 'Telugu', 'Bengali'])
-              ListTile(title: Text(l), onTap: () => Navigator.pop(context, l)),
-          ],
-        ),
-      ),
-    );
-    if (choice != null) {
-      setState(() => _language = choice);
-      _sp?.setString('settings.language', choice);
-    }
+    await showLanguagePicker(context);
+    if (mounted) setState(() {});
   }
 
   void _legal(String slug, String title) {

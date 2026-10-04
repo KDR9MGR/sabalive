@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_picker_android/image_picker_android.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'errors.dart';
+import '../i18n/text.dart';
 
 /// Shared source/gallery sheet → pick → upload flow for the profile photo,
 /// used by both the Profile screen's avatar and Edit Profile's "Change

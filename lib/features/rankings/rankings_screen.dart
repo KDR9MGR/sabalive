@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../data/rankings_repository.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 class RankingsScreen extends StatefulWidget {
   const RankingsScreen({super.key});

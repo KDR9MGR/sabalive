@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -17,6 +17,7 @@ import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/equipped_cosmetics.dart';
 import '../../state/blocks_controller.dart';
+import '../../core/i18n/text.dart';
 
 /// Another user's profile — real `profiles` data, follow/unfollow, and a
 /// shortcut into their live room if they're broadcasting.

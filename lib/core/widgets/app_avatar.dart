@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../theme/app_colors.dart';
 import '../utils/formatters.dart';
 import 'remote_media.dart';
+import '../i18n/text.dart';
 
 /// Shows the user's real uploaded photo when [imageUrl] is set; otherwise
 /// falls back to a deterministic gradient with initials, keeping every user

@@ -1,10 +1,11 @@
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../core/widgets/app_avatar.dart';
 import '../../data/calls_repository.dart';
 import '../../services/agora_service.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// A 1:1 audio/video call. [outgoing] callers wait on the "ringing" state
 /// until the callee's row flips to "accepted"; then both sides join the Agora

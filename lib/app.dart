@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'config/feature_flags.dart';
+import 'core/i18n/app_language.dart';
+import 'core/i18n/i18n.dart';
 import 'core/widgets/permissions_prompt_host.dart';
 import 'features/auth/auth_flow.dart';
 import 'features/live/live_access_exit.dart';
@@ -45,7 +48,18 @@ class SabaLiveApp extends StatelessWidget {
       ],
       child: _LiveBackInterceptor(
        child: Consumer<ThemeConfigController>(
-        builder: (context, themeConfig, _) => MaterialApp(
+        builder: (context, themeConfig, _) => ValueListenableBuilder<AppLanguage>(
+         valueListenable: I18n.notifier,
+         builder: (context, language, _) => MaterialApp(
+          // the app's chosen language: Material's own words (dialogs, pickers) and
+          // right-to-left layouts follow it too
+          locale: language.locale,
+          supportedLocales: [for (final l in kLanguages) l.locale],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           navigatorKey: rootNavigatorKey,
           title: 'SABALIVE',
           debugShowCheckedModeBanner: false,
@@ -70,6 +84,7 @@ class SabaLiveApp extends StatelessWidget {
               ),
             ),
           ),
+         ),
         ),
       ),
      ),

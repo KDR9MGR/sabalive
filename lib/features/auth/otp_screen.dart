@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
@@ -10,6 +10,7 @@ import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'auth_flow.dart';
 import 'widgets/auth_scaffold.dart';
+import '../../core/i18n/text.dart';
 
 class OtpScreen extends StatefulWidget {
   const OtpScreen({super.key, this.args});

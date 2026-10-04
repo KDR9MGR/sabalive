@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../core/utils/errors.dart';
@@ -40,6 +40,7 @@ import '../features/wallet/coin_sellers_screen.dart';
 import '../features/wallet/sell_coins_screen.dart';
 import '../features/wallet/store_screen.dart';
 import '../features/wallet/wallet_screen.dart';
+import '../core/i18n/text.dart';
 
 /// Thin wrapper so feature screens don't each import MaterialPageRoute plumbing.
 class AppNav {

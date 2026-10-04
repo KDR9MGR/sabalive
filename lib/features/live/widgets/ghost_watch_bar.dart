@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../../state/auth_controller.dart';
+import '../../../core/i18n/text.dart';
 
 /// True when the signed-in account is a ghost (monitoring) ID. Ghosts can watch
 /// any live without being seen, and can't act in one — the server refuses every

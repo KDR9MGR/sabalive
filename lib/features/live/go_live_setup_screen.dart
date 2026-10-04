@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../config/feature_flags.dart';
@@ -16,6 +16,7 @@ import '../../state/live_streams_controller.dart';
 import '../../theme/app_colors.dart';
 import 'live_broadcast_screen.dart';
 import 'pk_battle_screen.dart';
+import '../../core/i18n/text.dart';
 
 class GoLiveSetupScreen extends StatefulWidget {
   const GoLiveSetupScreen({super.key});
@@ -175,8 +176,8 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                   controller: _title,
                   maxLength: 100,
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'What\'s your stream about?',
+                  decoration: InputDecoration(
+                    hintText: tr('What\'s your stream about?'),
                   ),
                 ),
                 const Spacer(),

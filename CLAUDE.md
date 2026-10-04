@@ -43,3 +43,14 @@ supabase functions deploy <name>
 - Host chat controls live on `live_streams` (`chat_cleared_at`, `pinned_notice`) via `RoomChatState`.
 - Seat "who is talking": Agora volume -> `SeatSpeaking` using `live_stream_seats.agora_uid`.
 - Don't run `dart format` on whole directories; it reformats unrelated files.
+
+## Translations (9 languages)
+- Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
+  translates its English string at build time. Hints / tooltips use `tr('...')`. English in code is the key.
+- Add or change strings through `tool/i18n/` (see its README): `keys.json` + `tr_<lang>.tsv` -> `gen.py` writes
+  `lib/core/i18n/strings_*.dart`. Never hand-edit those. `missing.py` lists untranslated candidates.
+- New screens must use that `Text` (copy the two imports from any other screen) or they stay English.
+- Language switch = `I18n.set(...)`: persists, flips MaterialApp's locale (RTL for Arabic/Urdu) and
+  marks every element dirty so nothing loses its state.
+- Audio: Agora scenario is game-streaming (media volume) so MP4 gift sound and music are audible; local
+  songs use the system file picker (no storage permission) + Agora audio mixing (`LocalMusicController`).

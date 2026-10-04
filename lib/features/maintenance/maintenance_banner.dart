@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../state/maintenance_controller.dart';
 import '../../theme/app_colors.dart';
+import '../../core/i18n/text.dart';
 
 /// A thin notice across the top while maintenance is coming (or running but the
 /// app is still usable): "Maintenance starts in 00:14:32". Doesn't take taps.
