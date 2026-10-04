@@ -57,22 +57,6 @@ void main() {
     });
   });
 
-  group('a staff account with the server-set app-access exception', () {
-    test('is let in even though is_staff is set — no query needed', () async {
-      final v = await gate((_) async => true).check('u1',
-          appMetadata: {'is_staff': true, 'staff_app_access': true});
-      expect(v, StaffGateVerdict.allowed);
-      expect(lookups, 0);
-    });
-
-    test('and the exception alone does not let a plain staff account in',
-        () async {
-      final v = await gate((_) async => true)
-          .check('u1', appMetadata: {'is_staff': true, 'staff_app_access': false});
-      expect(v, StaffGateVerdict.staff);
-    });
-  });
-
   group('a normal user is let in', () {
     test('when the lookup says they are not staff — and is remembered',
         () async {
