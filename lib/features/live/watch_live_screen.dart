@@ -999,6 +999,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
+      // The video stage keeps its size when the keyboard opens (resizing a live video
+      // surface on every keyboard frame is slow and can crash some phones); the chat
+      // bar is lifted above the keyboard by hand below instead.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1025,7 +1029,9 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               ),
             ),
           ),
-          SafeArea(
+          Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+            child: SafeArea(
             child: Column(
               children: [
                 _topBar(context, following, session),
@@ -1053,6 +1059,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 SizedBox(height: MediaQuery.of(context).padding.bottom + 6),
               ],
             ),
+          ),
           ),
           // floating hearts
           Positioned(

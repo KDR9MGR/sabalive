@@ -85,6 +85,8 @@ class _MarqueeTextState extends State<MarqueeText>
     super.dispose();
   }
 
+  /// Measured while building (pure); the animation itself is started after the frame,
+  /// never from inside a build.
   void _measure() {
     final tp = TextPainter(
       text: TextSpan(text: widget.text, style: widget.style),
@@ -95,6 +97,11 @@ class _MarqueeTextState extends State<MarqueeText>
     if (overflow == _overflow && widget.text == _measuredText) return;
     _overflow = overflow;
     _measuredText = widget.text;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restart(overflow));
+  }
+
+  void _restart(double overflow) {
+    if (!mounted || overflow != _overflow) return;
     if (overflow <= 0) {
       _c.stop();
       _c.value = 0;

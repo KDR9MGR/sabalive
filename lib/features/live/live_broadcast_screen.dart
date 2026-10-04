@@ -1544,6 +1544,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
+      // The camera stage keeps its size when the keyboard opens (resizing a live video
+      // surface on every keyboard frame is slow and can crash some phones); the chat
+      // bar is lifted above the keyboard by hand below instead.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1696,7 +1700,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 0,
+                  bottom: MediaQuery.viewInsetsOf(context).bottom,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [

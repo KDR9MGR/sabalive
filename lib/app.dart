@@ -61,6 +61,7 @@ class SabaLiveApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           navigatorKey: rootNavigatorKey,
+          navigatorObservers: [UnfocusOnPopup()],
           title: 'SABALIVE',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.dark(
@@ -280,10 +281,31 @@ class _ActiveLiveSessionOverlay extends StatelessWidget {
     return HeroControllerScope.none(
       child: Navigator(
         key: session.navKey,
+        observers: [UnfocusOnPush()],
         onGenerateRoute: (_) =>
             _TransparentRoute(builder: (context) => session.buildActive(context)),
       ),
     );
+  }
+}
+
+/// Drops the keyboard focus whenever something opens over a live (an option sheet, an
+/// option page, a dialog). Otherwise the chat box keeps focus after it was used, and
+/// when whatever opened over it closes, Flutter hands focus straight back to it — so
+/// the keyboard pops up by itself after any option.
+class UnfocusOnPush extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) FocusManager.instance.primaryFocus?.unfocus();
+  }
+}
+
+/// The same for sheets and dialogs opened from ordinary routes (the PK battle screens):
+/// only popups, so typing in a form and moving on to another screen is untouched.
+class UnfocusOnPopup extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is PopupRoute) FocusManager.instance.primaryFocus?.unfocus();
   }
 }
 
