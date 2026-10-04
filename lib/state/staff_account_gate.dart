@@ -14,6 +14,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///     already verified as a normal user on this device, so a flaky network
 ///     never locks an ordinary user out of their own app.
 ///
+/// Exception: an account whose `app_metadata` carries `staff_app_access: true`
+/// may use the app even though it is staff. That flag is written only by the
+/// server (migration 20261005180000) — a user can't edit their own app_metadata —
+/// so it is a deliberate, per-account allowance, not something the client decides.
+///
 /// What this cannot do: the server has no way to tell the app from the panel at
 /// sign-in (same project, same login endpoint), so this is enforced in the app.
 enum StaffGateVerdict {
@@ -74,6 +79,9 @@ class StaffAccountGate {
     String userId, {
     Map<String, dynamic>? appMetadata,
   }) async {
+    if (appMetadata?['staff_app_access'] == true) {
+      return StaffGateVerdict.allowed;
+    }
     if (appMetadata?['is_staff'] == true) {
       await cache.clear();
       return StaffGateVerdict.staff;
