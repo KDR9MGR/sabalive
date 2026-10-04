@@ -7,7 +7,7 @@
 // The platform JWT check proves the caller holds a valid project key (the
 // anon key satisfies that), so we additionally resolve the caller to a
 // real user. Who may create WHICH role is decided in SQL, not here:
-//   super_admin   -> admin (Master) only
+//   super_admin   -> admin (Master), agency_manager
 //   admin         -> global_admin, country_admin, sub_admin, agency_manager
 //   global_admin  -> country_admin, sub_admin, agency_manager
 //   country_admin -> sub_admin (owned by them), agency_manager (in their tree)
