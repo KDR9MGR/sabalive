@@ -696,4 +696,7 @@ const Map<String, String> ptBrStrings = {
   '1 day ago': 'há 1 dia',
   'joined': 'entrou',
   'left': 'saiu',
+  'Can\'t reach the live service right now. Please try again in a moment.': 'Não foi possível conectar ao serviço de lives agora. Tente novamente em instantes.',
+  'Your connection to this room expired. Please leave and join again.': 'Sua conexão com esta sala expirou. Saia e entre novamente.',
+  'View profile': 'Ver perfil',
 };

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_client.dart';
+import '../core/utils/coalesced_runner.dart';
 import '../data/models.dart';
 import 'blocks_controller.dart';
 
@@ -17,13 +18,17 @@ class LiveStreamsController extends ChangeNotifier {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'live_streams',
-          callback: (_) => _load(),
+          // Every heartbeat and every viewer join/leave changes a live_streams row; reloading
+          // the whole list (and rebuilding Home) for each one is what made busy evenings
+          // heavy on every phone. One reload per burst is enough.
+          callback: (_) => _reload.trigger(),
         )
         .subscribe();
     // blocking or unblocking someone changes whose lives are shown
     BlocksController.instance.addListener(notifyListeners);
   }
 
+  late final _reload = CoalescedRunner(_load);
   List<LiveStream> _streams = const [];
   bool _loading = true;
   RealtimeChannel? _channel;
@@ -97,12 +102,13 @@ class LiveStreamsController extends ChangeNotifier {
   Future<void> endStream(String id) async {
     await supabase.from('live_streams').update({
       'status': 'ended',
-      'ended_at': DateTime.now().toIso8601String(),
+      'ended_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', id);
   }
 
   @override
   void dispose() {
+    _reload.cancel();
     _channel?.unsubscribe();
     BlocksController.instance.removeListener(notifyListeners);
     super.dispose();

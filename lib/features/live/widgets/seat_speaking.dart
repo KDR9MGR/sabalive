@@ -10,14 +10,21 @@ import '../../../core/i18n/text.dart';
 /// the host's is on the stream row, so a uid maps back to a seat.
 class SeatSpeaking {
   final Map<int, int> _seatByUid = {};
+  int? _hostUid;
+
+  /// Agora uids are unsigned 32-bit numbers. Depending on the layer that reports them they
+  /// can arrive as a negative number for the large ones, so every uid is compared in its
+  /// unsigned form and a match can never be missed because of the sign.
+  static int _u(int uid) => uid & 0xFFFFFFFF;
 
   /// The host's Agora uid (live_streams.host_agora_uid), when known.
-  int? hostUid;
+  int? get hostUid => _hostUid;
+  set hostUid(int? uid) => _hostUid = uid == null ? null : _u(uid);
 
   /// Remember (or, with a null [uid], forget) which Agora uid sits in [seat].
   void bindSeat(int seat, int? uid) {
     _seatByUid.removeWhere((_, s) => s == seat);
-    if (uid != null) _seatByUid[uid] = seat;
+    if (uid != null) _seatByUid[_u(uid)] = seat;
   }
 
   void unbindSeat(int seat) => bindSeat(seat, null);
@@ -46,11 +53,33 @@ class SeatSpeaking {
       if (uid == 0) {
         seat = meMuted ? null : mySeat;
       } else {
-        seat = _seatByUid[uid] ?? (uid == hostUid ? hostSeat() : null);
+        final u = _u(uid);
+        seat = _seatByUid[u] ?? (u == _hostUid ? hostSeat() : null);
       }
       if (seat != null) out.add(seat);
     }
     return out;
+  }
+
+  /// Whether the host is talking right now, from one volume report. In a video live the
+  /// host is on screen rather than in a seat, so this is how their voice is shown.
+  /// [iAmHost] is true on the host's own screen, where their voice is Agora's uid 0.
+  bool hostTalking(
+    List<AudioVolumeInfo> speakers, {
+    required bool iAmHost,
+    required bool meMuted,
+    int threshold = 25,
+  }) {
+    for (final s in speakers) {
+      if ((s.volume ?? 0) < threshold) continue;
+      final uid = s.uid ?? 0;
+      if (uid == 0) {
+        if (iAmHost && !meMuted) return true;
+      } else if (_hostUid != null && _u(uid) == _hostUid) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static bool same(Set<int> a, Set<int> b) => setEquals(a, b);

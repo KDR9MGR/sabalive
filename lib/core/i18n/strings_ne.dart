@@ -696,4 +696,7 @@ const Map<String, String> neStrings = {
   '1 day ago': '१ दिन अघि',
   'joined': 'सामेल भए',
   'left': 'गए',
+  'Can\'t reach the live service right now. Please try again in a moment.': 'अहिले लाइभ सेवासँग जोडिन सकिएन। कृपया केही बेरपछि फेरि प्रयास गर्नुहोस्।',
+  'Your connection to this room expired. Please leave and join again.': 'यो रुमसँगको तपाईंको जडानको अवधि सकियो। कृपया बाहिर निस्केर फेरि जोडिनुहोस्।',
+  'View profile': 'प्रोफाइल हेर्नुहोस्',
 };

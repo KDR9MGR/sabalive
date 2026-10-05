@@ -102,10 +102,6 @@ class _RankingsScreenState extends State<RankingsScreen> {
                     children: [
                       Text('Rankings',
                           style: Theme.of(context).textTheme.headlineSmall),
-                      const Spacer(),
-                      IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.info_outline_rounded)),
                     ],
                   ),
                 ),

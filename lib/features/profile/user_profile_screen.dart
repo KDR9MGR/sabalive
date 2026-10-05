@@ -15,8 +15,8 @@ import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
+import 'user_safety_menu.dart';
 import 'widgets/equipped_cosmetics.dart';
-import '../../state/blocks_controller.dart';
 import '../../core/i18n/text.dart';
 
 /// Another user's profile — real `profiles` data, follow/unfollow, and a
@@ -252,90 +252,5 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Future<void> _overflowMenu() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.bgElevated,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.block_rounded, color: AppColors.danger),
-              title: const Text('Block'),
-              onTap: () => Navigator.pop(context, 'block'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined),
-              title: const Text('Report'),
-              onTap: () => Navigator.pop(context, 'report'),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (!mounted) return;
-    if (choice == 'block') {
-      await _block();
-    } else if (choice == 'report') {
-      await _report();
-    }
-  }
-
-  Future<void> _block() async {
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-    try {
-      await _repo.block(_user.id);
-      BlocksController.instance.markBlocked(_user.id);
-      messenger.showSnackBar(SnackBar(content: Text('Blocked ${_user.name}')));
-      navigator.pop();
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
-  }
-
-  Future<void> _report() async {
-    final reason = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.bgElevated,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(14),
-              child: Text('Report reason',
-                  style: TextStyle(
-                      fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
-            ),
-            for (final r in const [
-              'Harassment or bullying',
-              'Nudity or sexual content',
-              'Spam or scam',
-              'Hate speech',
-              'Impersonation',
-              'Something else',
-            ])
-              ListTile(title: Text(r), onTap: () => Navigator.pop(context, r)),
-          ],
-        ),
-      ),
-    );
-    if (reason == null || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await _repo.report(
-        targetType: 'user',
-        targetId: _user.id,
-        reason: reason,
-      );
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Report submitted — thank you')));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
-  }
+  Future<void> _overflowMenu() => showUserSafetyMenu(context, _user, repo: _repo);
 }

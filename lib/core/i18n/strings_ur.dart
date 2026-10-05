@@ -696,4 +696,7 @@ const Map<String, String> urStrings = {
   '1 day ago': '1 دن پہلے',
   'joined': 'شامل ہوئے',
   'left': 'چلے گئے',
+  'Can\'t reach the live service right now. Please try again in a moment.': 'اس وقت لائیو سروس سے رابطہ نہیں ہو سکا۔ براہِ کرم کچھ دیر بعد دوبارہ کوشش کریں۔',
+  'Your connection to this room expired. Please leave and join again.': 'اس روم سے آپ کا کنکشن ختم ہو گیا ہے۔ براہِ کرم باہر نکل کر دوبارہ شامل ہوں۔',
+  'View profile': 'پروفائل دیکھیں',
 };

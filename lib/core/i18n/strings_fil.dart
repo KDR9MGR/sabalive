@@ -696,4 +696,7 @@ const Map<String, String> filStrings = {
   '1 day ago': '1 araw ang nakalipas',
   'joined': 'sumali',
   'left': 'umalis',
+  'Can\'t reach the live service right now. Please try again in a moment.': 'Hindi makakonekta sa live service ngayon. Pakisubukan ulit sa ilang sandali.',
+  'Your connection to this room expired. Please leave and join again.': 'Nag-expire na ang koneksyon mo sa room na ito. Pakilabas at sumali ulit.',
+  'View profile': 'Tingnan ang profile',
 };

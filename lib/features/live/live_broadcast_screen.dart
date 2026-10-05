@@ -20,6 +20,7 @@ import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
 import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
+import '../../services/agora_errors.dart';
 import '../../services/agora_service.dart';
 import '../../services/local_music_service.dart';
 import '../../data/store_repository.dart';
@@ -38,7 +39,9 @@ import 'widgets/lucky_box_badge.dart';
 import 'widgets/music_sheet.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
+import 'widgets/speaking_waves.dart';
 import 'widgets/stream_diamonds.dart';
 import 'widgets/tool_grid.dart';
 import '../../core/i18n/text.dart';
@@ -70,10 +73,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   RealtimeChannel? _viewerChannel;
   String? _error;
   bool _reconnecting = false;
+  String? _connectionFailure;
 
   final _input = TextEditingController();
   Timer? _ticker;
-  Duration _elapsed = Duration.zero;
+  // a notifier, so the once-a-second tick repaints just the clock pill, not the whole screen
+  final _elapsed = ValueNotifier<Duration>(Duration.zero);
   // The stream's own start time, so the timer is always "now minus start" — it
   // can't restart, drift, or fall behind while the app is in the background.
   late final DateTime _startedAt = widget.stream.startedAt ?? DateTime.now();
@@ -101,6 +106,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   // who is talking right now (Agora volume reports mapped back to seats)
   final _speaking = SeatSpeaking();
   Set<int> _speakingSeats = {};
+  bool _hostSpeaking = false;
   late final StreamDiamonds _diamonds =
       StreamDiamonds(widget.stream.id, onChanged: () {
         if (mounted) setState(() {});
@@ -152,7 +158,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         final d = DateTime.now().difference(_startedAt);
-        setState(() => _elapsed = d.isNegative ? Duration.zero : d);
+        _elapsed.value = d.isNegative ? Duration.zero : d;
       }
     });
     // Keeps the stream row from being auto-ended as stale while this
@@ -188,20 +194,32 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               mySeat: [for (final e in _seatOccupants.entries) if (e.value.id == widget.stream.host.id) e.key].firstOrNull,
               meMuted: _micMuted,
             );
-            if (mounted && !SeatSpeaking.same(next, _speakingSeats)) {
-              setState(() => _speakingSeats = next);
+            final hostNow = _speaking.hostTalking(
+              speakers,
+              iAmHost: true,
+              meMuted: _micMuted,
+            );
+            if (mounted &&
+                (!SeatSpeaking.same(next, _speakingSeats) || hostNow != _hostSpeaking)) {
+              setState(() {
+                _speakingSeats = next;
+                _hostSpeaking = hostNow;
+              });
             }
           },
           onError: (err, msg) {
-            if (mounted) setState(() => _error = msg);
+            if (mounted) setState(() => _error = agoraErrorMessage(err, msg));
           },
           onConnectionStateChanged: (connection, state, reason) {
-            if (mounted) {
-              setState(
-                () => _reconnecting =
-                    state == ConnectionStateType.connectionStateReconnecting,
-              );
-            }
+            if (!mounted) return;
+            setState(() {
+              _reconnecting =
+                  state == ConnectionStateType.connectionStateReconnecting;
+              _connectionFailure =
+                  state == ConnectionStateType.connectionStateFailed
+                      ? agoraFailureMessage(reason)
+                      : null;
+            });
           },
           // Persist the host's actual assigned uid so viewers can tell
           // them apart from a seat-holder who also becomes a broadcaster
@@ -354,6 +372,80 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   /// Live seat occupancy — who's actually sitting where, kept in sync across
   /// the host and every viewer via the same live_stream_seats row set.
+  Timer? _seatSyncTimer;
+  bool _sittingHostDown = false;
+
+  /// Re-read the seats on a timer (see SeatSnapshot for why Realtime alone isn't
+  /// enough) and make sure the host is on a seat in an audio room.
+  void _startSeatSync() {
+    _seatSyncTimer?.cancel();
+    _seatSyncTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => unawaited(_reconcileSeats()),
+    );
+  }
+
+  Future<void> _reconcileSeats() async {
+    if (!mounted) return;
+    final snap = await fetchSeatSnapshot(widget.stream.id);
+    if (snap == null || !mounted) return;
+    setState(() {
+      for (final seat in _seatOccupants.keys) {
+        if (!snap.occupants.containsKey(seat)) _speaking.unbindSeat(seat);
+      }
+      _seatOccupants
+        ..clear()
+        ..addAll(snap.occupants);
+      _mutedSeats
+        ..clear()
+        ..addAll(snap.muted);
+      for (final e in snap.agoraUids.entries) {
+        _speaking.bindSeat(e.key, e.value);
+      }
+      if (snap.locked != null) _lockedSeats = snap.locked!;
+      if (snap.seatCount != null) _seatCount = snap.seatCount!;
+    });
+    if (widget.audioOnly && snap.seatOf(widget.stream.host.id) == null) {
+      unawaited(_sitHostDown(snap));
+    }
+  }
+
+  /// The host of an audio room always has a seat. If theirs was freed (a lapse in
+  /// heartbeats, a clean-up) and a guest has since taken seat 1, any free seat will do —
+  /// the host must never be missing from their own room.
+  Future<void> _sitHostDown(SeatSnapshot snap) async {
+    if (_sittingHostDown) return;
+    _sittingHostDown = true;
+    try {
+      // look again first: the opening claim may simply not have landed when the
+      // snapshot was read, and claiming a second seat would move the host
+      var fresh = await fetchSeatSnapshot(widget.stream.id) ?? snap;
+      final hostId = widget.stream.host.id;
+      final count = snap.seatCount ?? _seatCount;
+      for (var seat = 1; seat <= count && fresh.seatOf(hostId) == null; seat++) {
+        final locked = fresh.locked ?? _lockedSeats;
+        if (fresh.occupants.containsKey(seat) || locked.contains(seat)) continue;
+        try {
+          await supabase.rpc(
+            'claim_seat',
+            params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
+          );
+          await supabase.rpc(
+            'heartbeat_seat',
+            params: {'p_stream_id': widget.stream.id},
+          );
+          break;
+        } catch (_) {
+          // someone just took it (or it was ours all along) — look again, then move on
+          fresh = await fetchSeatSnapshot(widget.stream.id) ?? fresh;
+        }
+      }
+    } finally {
+      _sittingHostDown = false;
+    }
+    if (mounted) unawaited(_reconcileSeats());
+  }
+
   Future<void> _subscribeSeats() async {
     final rows = await supabase
         .from('live_stream_seats')
@@ -453,7 +545,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
             }
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+          // a (re)connected channel replays nothing it missed — read the seats again
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            unawaited(_reconcileSeats());
+          }
+        });
+    _startSeatSync();
   }
 
   /// Pending "may I have a seat?" requests for this video stream — mirrors
@@ -665,17 +763,24 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _music?.dispose();
     WakelockPlus.disable().catchError((_) {});
     _ticker?.cancel();
+    _elapsed.dispose();
     _heartbeat?.cancel();
     _input.dispose();
     _effects.dispose();
     _chatChannel?.unsubscribe();
     _viewerChannel?.unsubscribe();
+    _seatSyncTimer?.cancel();
     _seatsChannel?.unsubscribe();
     _seatRequestsChannel?.unsubscribe();
     AgoraService.instance.release();
     super.dispose();
   }
 
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_reconcileSeats());
+  }
 
   /// "Minimize" is hidden while already minimized (tapping the bubble's own
   /// X) — offering to minimize what's already minimized was confusing.
@@ -687,7 +792,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         backgroundColor: AppColors.bgElevated,
         title: const Text('End live stream?'),
         content: Text(
-          'You streamed for ${_fmt(_elapsed)} to $_viewers viewer${_viewers == 1 ? '' : 's'}.',
+          'You streamed for ${_fmt(_elapsed.value)} to $_viewers viewer${_viewers == 1 ? '' : 's'}.',
         ),
         actions: [
           TextButton(
@@ -1610,7 +1715,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ConnectionBanner(reconnecting: _reconnecting),
+                      ConnectionBanner(reconnecting: _reconnecting, failure: _connectionFailure),
                       Row(
                         children: [
                           _hostChip(),
@@ -1632,7 +1737,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          _miniPill(Icons.schedule_rounded, _fmt(_elapsed)),
+                          ValueListenableBuilder<Duration>(
+                            valueListenable: _elapsed,
+                            builder: (_, elapsed, _) =>
+                                _miniPill(Icons.schedule_rounded, _fmt(elapsed)),
+                          ),
                           const SizedBox(width: 8),
                           _miniPill(
                             Icons.diamond_rounded,
@@ -1756,11 +1865,15 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AppAvatar(
-            name: widget.stream.host.name,
-            imageUrl: widget.stream.host.avatarUrl,
-            frameUrl: widget.stream.host.frameUrl,
-            size: 24,
+          SpeakingWaves(
+            active: _hostSpeaking,
+            diameter: 24,
+            child: AppAvatar(
+              name: widget.stream.host.name,
+              imageUrl: widget.stream.host.avatarUrl,
+              frameUrl: widget.stream.host.frameUrl,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 6),
           Column(

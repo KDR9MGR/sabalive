@@ -61,6 +61,36 @@ void main() {
       expect(seats, isEmpty);
     });
 
+    test('Agora uids above 2^31 (about half of them) still match, whichever sign they arrive with', () {
+      const hostBig = 4287323012; // the largest uid seen in production
+      const guestBig = 3000000001;
+      int signed32(int uid) => uid - 0x100000000; // the same uid as a signed 32-bit number
+      final speaking = SeatSpeaking()
+        ..hostUid = signed32(hostBig) // stored one way...
+        ..bindSeat(3, guestBig);
+      expect(
+        speaking.seatsFor(
+          [v(hostBig, 90), v(signed32(guestBig), 90)], // ...reported the other way
+          occupants: {1: _u('host'), 3: _u('guest')},
+          hostId: 'host',
+          mySeat: null,
+          meMuted: false,
+        ),
+        {1, 3},
+      );
+    });
+
+    test('hostTalking: the host heard remotely, or this device when I am the host', () {
+      final speaking = SeatSpeaking()..hostUid = 7;
+      expect(speaking.hostTalking([v(7, 60)], iAmHost: false, meMuted: false), isTrue);
+      expect(speaking.hostTalking([v(7, 5)], iAmHost: false, meMuted: false), isFalse);
+      expect(speaking.hostTalking([v(8, 90)], iAmHost: false, meMuted: false), isFalse);
+      expect(speaking.hostTalking([v(0, 90)], iAmHost: false, meMuted: false), isFalse,
+          reason: 'my own voice is not the host\'s when I am a viewer');
+      expect(speaking.hostTalking([v(0, 90)], iAmHost: true, meMuted: false), isTrue);
+      expect(speaking.hostTalking([v(0, 90)], iAmHost: true, meMuted: true), isFalse);
+    });
+
     test('a seat that is freed stops matching its old uid', () {
       final speaking = SeatSpeaking()..bindSeat(3, 55);
       speaking.unbindSeat(3);

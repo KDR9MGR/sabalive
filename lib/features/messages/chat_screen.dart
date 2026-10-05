@@ -12,6 +12,7 @@ import '../../data/messages_repository.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
+import '../profile/user_safety_menu.dart';
 import '../calls/call_screen.dart';
 import '../../core/i18n/text.dart';
 
@@ -195,8 +196,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 onPressed: () => _startCall(CallKind.video),
                 icon: const Icon(Icons.videocam_rounded)),
           ],
-          IconButton(
-              onPressed: () {}, icon: const Icon(Icons.more_vert_rounded)),
+          if (!_isGroup)
+            IconButton(
+              tooltip: tr('More'),
+              onPressed: () => showUserSafetyMenu(
+                context,
+                widget.user,
+                onViewProfile: () => AppNav.userProfile(context, widget.user),
+              ),
+              icon: const Icon(Icons.more_vert_rounded),
+            ),
         ],
       ),
       body: Column(
@@ -358,9 +367,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.add_circle_outline_rounded,
-              color: AppColors.primaryBright),
-          const SizedBox(width: 10),
           Expanded(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -384,8 +390,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       onSubmitted: (_) => _send(),
                     ),
                   ),
-                  const Icon(Icons.emoji_emotions_outlined,
-                      color: AppColors.textMuted, size: 20),
                 ],
               ),
             ),

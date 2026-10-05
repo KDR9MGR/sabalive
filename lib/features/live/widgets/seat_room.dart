@@ -8,6 +8,7 @@ import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
 import 'seat_speaking.dart';
+import 'speaking_waves.dart';
 import '../../../core/i18n/text.dart';
 
 /// One seat circle — empty/locked/occupied/muted — shared by the full
@@ -65,28 +66,15 @@ class SeatCircle extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               if (occupant case final occupant?)
-                AnimatedScale(
-                  scale: speaking ? 1.07 : 1,
-                  duration: const Duration(milliseconds: 160),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    padding: EdgeInsets.all(speaking ? 3 : 2),
-                    decoration: BoxDecoration(
+                // the ring of waves around the avatar is the "this person is talking" cue
+                SpeakingWaves(
+                  active: speaking,
+                  diameter: size,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: speaking
-                          ? const LinearGradient(
-                              colors: [Color(0xFF22C55E), Color(0xFF86EFAC)],
-                            )
-                          : AppColors.primaryGradient,
-                      boxShadow: speaking
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFF22C55E).withValues(alpha: 0.75),
-                                blurRadius: 14,
-                                spreadRadius: 2,
-                              ),
-                            ]
-                          : null,
+                      gradient: AppColors.primaryGradient,
                     ),
                     child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, frameUrl: occupant.frameUrl, size: size - 4),
                   ),
@@ -319,10 +307,12 @@ class CompactSeatStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 62,
+      height: 70,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        // room around the seats for the speaking waves, which stand outside the avatar
+        clipBehavior: Clip.none,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         itemCount: seatCount,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (_, i) {

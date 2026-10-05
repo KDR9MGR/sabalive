@@ -5,6 +5,9 @@ import '../utils/formatters.dart';
 import 'remote_media.dart';
 import '../i18n/text.dart';
 
+/// Avatars smaller than this show their frame as a still picture instead of playing it.
+const double kAnimatedFrameMinSize = 48;
+
 /// Shows the user's real uploaded photo when [imageUrl] is set; otherwise
 /// falls back to a deterministic gradient with initials, keeping every user
 /// visually distinct even with no photo.
@@ -99,6 +102,10 @@ class AppAvatar extends StatelessWidget {
                         frame,
                         key: ValueKey(frame),
                         fit: BoxFit.contain,
+                        // A live room has dozens of avatars (chat, viewers, seats); a
+                        // frame animating on each one kept the GPU busy and heated phones.
+                        // Small ones show the still first frame; big ones still play.
+                        animate: size >= kAnimatedFrameMinSize,
                       ),
                     ),
                   ),

@@ -49,7 +49,7 @@ class AgoraService {
       // this extension available — never worth failing engine setup over.
     }
     // Raw SDK defaults are 960x540@15fps and a generic audio profile — too
-    // soft for a live-streaming app. Portrait HD at 30fps with an
+    // soft for a live-streaming app. Portrait HD at 24fps with an
     // auto-managed bitrate is the standard profile for vertical social
     // live streaming.
     //
@@ -61,7 +61,9 @@ class AgoraService {
     await engine.setVideoEncoderConfiguration(
       const VideoEncoderConfiguration(
         dimensions: VideoDimensions(width: 720, height: 1280),
-        frameRate: 30,
+        // 24 fps looks the same on a phone-sized live and cuts the camera, beauty filter
+        // and encoder work by a fifth, which is what keeps a host's phone from heating up.
+        frameRate: 24,
         bitrate: 0, // standardBitrate — SDK auto-picks the optimal bitrate
         orientationMode: OrientationMode.orientationModeAdaptive,
       ),

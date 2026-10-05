@@ -10,6 +10,7 @@ import 'core/i18n/i18n.dart';
 import 'core/widgets/permissions_prompt_host.dart';
 import 'features/auth/auth_flow.dart';
 import 'features/live/live_access_exit.dart';
+import 'features/live/widgets/live_back_guard.dart';
 import 'features/maintenance/maintenance_banner.dart';
 import 'features/maintenance/maintenance_screen.dart';
 import 'features/calls/incoming_call_banner.dart';
@@ -344,9 +345,12 @@ class _RootGate extends StatelessWidget {
       child: KeyedSubtree(key: ValueKey(status), child: child),
     );
 
+    // LiveBackGuard: see its doc — without it Android 16's back gesture leaves the live
     if (status != AuthStatus.authenticated || !FeatureFlags.callsEnabled) {
-      return switcher;
+      return LiveBackGuard(child: switcher);
     }
-    return Stack(children: [switcher, const IncomingCallBanner()]);
+    return LiveBackGuard(
+      child: Stack(children: [switcher, const IncomingCallBanner()]),
+    );
   }
 }

@@ -26,6 +26,7 @@ import '../../data/stream_end_watcher.dart';
 import '../../data/viewer_ban_watcher.dart';
 import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
+import '../../services/agora_errors.dart';
 import '../../services/agora_service.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
@@ -42,6 +43,7 @@ import 'widgets/live_chat_bubble.dart';
 import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
 import 'widgets/stream_diamonds.dart';
 import 'widgets/tool_grid.dart';
@@ -82,6 +84,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   RealtimeChannel? _chatChannel;
   String? _joinError;
   bool _reconnecting = false;
+  String? _connectionFailure;
   Timer? _waitTimer;
   bool _waitingTooLong = false;
 
@@ -193,6 +196,73 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
 
   /// Live seat occupancy + locks — mirrors the host's own subscription in
   /// live_broadcast_screen.dart so both sides see the identical room state.
+  Timer? _seatSyncTimer;
+  int _missingMySeat = 0;
+
+  /// Re-read the seats on a timer (see SeatSnapshot for why Realtime alone isn't enough).
+  void _startSeatSync() {
+    _seatSyncTimer?.cancel();
+    _seatSyncTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => unawaited(_reconcileSeats()),
+    );
+  }
+
+  Future<void> _reconcileSeats() async {
+    if (!_isReal || !mounted) return;
+    final snap = await fetchSeatSnapshot(widget.stream.id);
+    if (snap == null || !mounted) return;
+    final mine = snap.seatOf(supabase.auth.currentUser?.id);
+    // my own seat is gone (the host removed me, or it was freed): act only if the next
+    // look agrees, so a claim that was still landing isn't mistaken for it
+    var lostMine = false;
+    if (_mySeat != null && mine == null) {
+      _missingMySeat++;
+      lostMine = _missingMySeat >= 2;
+    } else {
+      _missingMySeat = 0;
+    }
+    final keepMine = _mySeat != null && mine == null && !lostMine;
+    setState(() {
+      final keep = keepMine ? _seatOccupants[_mySeat!] : null;
+      for (final seat in _seatOccupants.keys) {
+        if (!snap.occupants.containsKey(seat)) _speaking.unbindSeat(seat);
+      }
+      _seatOccupants
+        ..clear()
+        ..addAll(snap.occupants);
+      if (keep != null) _seatOccupants[_mySeat!] = keep;
+      _mutedSeats
+        ..clear()
+        ..addAll(snap.muted);
+      for (final e in snap.agoraUids.entries) {
+        _speaking.bindSeat(e.key, e.value);
+      }
+      if (snap.locked != null) _lockedSeats = snap.locked!;
+      if (snap.seatCount != null) _seatCount = snap.seatCount!;
+      if (snap.hostAgoraUid != null) _speaking.hostUid = snap.hostAgoraUid;
+      if (mine != null) _mySeat = mine;
+      if (lostMine) {
+        _mySeat = null;
+        _myMuted = false;
+        _missingMySeat = 0;
+      }
+    });
+    if (lostMine) {
+      final engine = _engine;
+      if (engine != null) {
+        unawaited(AgoraService.instance.switchRole(
+          engine,
+          channelName: widget.stream.id,
+          asBroadcaster: false,
+        ));
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You are no longer on a seat')),
+      );
+    }
+  }
+
   Future<void> _subscribeSeats() async {
     final rows = await supabase
         .from('live_stream_seats')
@@ -337,7 +407,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             }
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+          // a (re)connected channel replays nothing it missed — read the seats again
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            unawaited(_reconcileSeats());
+          }
+        });
+    _startSeatSync();
     _seatStreamChannel = supabase
         .channel('live-seatlocks-${widget.stream.id}')
         .onPostgresChanges(
@@ -425,15 +501,18 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             }
           },
           onError: (err, msg) {
-            if (mounted) setState(() => _joinError = msg);
+            if (mounted) setState(() => _joinError = agoraErrorMessage(err, msg));
           },
           onConnectionStateChanged: (connection, state, reason) {
-            if (mounted) {
-              setState(
-                () => _reconnecting =
-                    state == ConnectionStateType.connectionStateReconnecting,
-              );
-            }
+            if (!mounted) return;
+            final failed = state == ConnectionStateType.connectionStateFailed;
+            setState(() {
+              _reconnecting =
+                  state == ConnectionStateType.connectionStateReconnecting;
+              _connectionFailure = failed ? agoraFailureMessage(reason) : null;
+              // a viewer who never got in sees the reason, not a spinner
+              if (failed) _joinError = _connectionFailure;
+            });
           },
         ),
       );
@@ -580,6 +659,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   /// stops actually publishing anyway.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_reconcileSeats());
     if (_isReal &&
         _mySeat != null &&
         (state == AppLifecycleState.paused ||
@@ -617,6 +697,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _msgController.dispose();
     _effects.dispose();
     _chatChannel?.unsubscribe();
+    _seatSyncTimer?.cancel();
     _seatsChannel?.unsubscribe();
     _seatStreamChannel?.unsubscribe();
     if (_isReal) {
@@ -1101,7 +1182,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ConnectionBanner(reconnecting: _reconnecting),
+          ConnectionBanner(reconnecting: _reconnecting, failure: _connectionFailure),
           Row(
             children: [
               Container(

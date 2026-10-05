@@ -696,4 +696,7 @@ const Map<String, String> bnStrings = {
   '1 day ago': '১ দিন আগে',
   'joined': 'যোগ দিয়েছেন',
   'left': 'চলে গেছেন',
+  'Can\'t reach the live service right now. Please try again in a moment.': 'এই মুহূর্তে লাইভ সার্ভিসের সাথে সংযোগ করা যাচ্ছে না। অনুগ্রহ করে একটু পরে আবার চেষ্টা করুন।',
+  'Your connection to this room expired. Please leave and join again.': 'এই রুমের সাথে আপনার সংযোগের মেয়াদ শেষ হয়ে গেছে। অনুগ্রহ করে বেরিয়ে আবার যোগ দিন।',
+  'View profile': 'প্রোফাইল দেখুন',
 };

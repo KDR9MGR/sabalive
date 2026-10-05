@@ -696,4 +696,7 @@ const Map<String, String> arStrings = {
   '1 day ago': 'منذ يوم',
   'joined': 'انضم',
   'left': 'غادر',
+  'Can\'t reach the live service right now. Please try again in a moment.': 'تعذّر الاتصال بخدمة البث المباشر الآن. يُرجى المحاولة مرة أخرى بعد قليل.',
+  'Your connection to this room expired. Please leave and join again.': 'انتهت صلاحية اتصالك بهذه الغرفة. يُرجى المغادرة ثم الانضمام مرة أخرى.',
+  'View profile': 'عرض الملف الشخصي',
 };

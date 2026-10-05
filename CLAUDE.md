@@ -40,8 +40,18 @@ supabase functions deploy <name>
   MaterialPageRoute directly there.
 - System back goes through `_LiveBackInterceptor` -> `ActiveLiveSessionController.handleBack`
   (screens register `backHandler`); don't add `didPopRoute` to live screens.
+- `LiveBackGuard` (wraps `_RootGate`) blocks pop on the home route while a full-screen live is up. Without it
+  Android 16 (targetSdk 36) lets the system take the back gesture and the user is thrown out of the live
+  instead of seeing "leave / end?". Keep it, and keep the live out of the root Navigator's routes.
+- Heat / battery: avatar frames animate only at `size >= kAnimatedFrameMinSize`; Realtime bursts on lists are
+  coalesced with `CoalescedRunner`; the host clock is a `ValueNotifier` (never `setState` on the whole screen
+  from a timer). Don't add looping animations or `ImageFilter.blur` to anything shown during a live
+  (the speaking waves are the exception: they run only while someone is talking). Don't mute remote video
+  or audio when the app is backgrounded: the product wants the live's audio to keep going.
 - Host chat controls live on `live_streams` (`chat_cleared_at`, `pinned_notice`) via `RoomChatState`.
-- Seat "who is talking": Agora volume -> `SeatSpeaking` using `live_stream_seats.agora_uid`.
+- Seat "who is talking": Agora volume -> `SeatSpeaking` using `live_stream_seats.agora_uid`, drawn as the
+  `SpeakingWaves` ring. Agora uids are UNSIGNED 32-bit (about half exceed 2^31): store them as bigint, never
+  integer, or the RPC fails silently for those users and their seat never lights up.
 - Don't run `dart format` on whole directories; it reformats unrelated files.
 
 ## Translations (9 languages)
