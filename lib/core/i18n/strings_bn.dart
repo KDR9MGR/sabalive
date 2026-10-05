@@ -699,4 +699,7 @@ const Map<String, String> bnStrings = {
   'Can\'t reach the live service right now. Please try again in a moment.': 'এই মুহূর্তে লাইভ সার্ভিসের সাথে সংযোগ করা যাচ্ছে না। অনুগ্রহ করে একটু পরে আবার চেষ্টা করুন।',
   'Your connection to this room expired. Please leave and join again.': 'এই রুমের সাথে আপনার সংযোগের মেয়াদ শেষ হয়ে গেছে। অনুগ্রহ করে বেরিয়ে আবার যোগ দিন।',
   'View profile': 'প্রোফাইল দেখুন',
+  'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'এই ফোনে এখন Google সাইন-ইন পাওয়া যাচ্ছে না। অনুগ্রহ করে আপনার ইমেল বা ফোন নম্বর ব্যবহার করুন।',
+  'Check your internet connection and try again.': 'আপনার ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।',
+  'Something went wrong on this device. Please try again.': 'এই ডিভাইসে কিছু ভুল হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।',
 };

@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/google_config.dart';
 import '../config/supabase_client.dart';
 import '../config/supabase_config.dart';
+import '../core/utils/errors.dart';
 import '../data/models.dart';
 import '../data/restrictions_repository.dart';
 import '../data/session_repository.dart';
@@ -456,29 +457,43 @@ class AuthController extends ChangeNotifier {
     await _requireLoginsOpen();
     await _requireDeviceAllowed();
     if (provider == 'Google' && GoogleConfig.isConfigured) {
-      final googleUser = await GoogleSignIn(
-        serverClientId: GoogleConfig.webClientId,
-      ).signIn();
-      if (googleUser == null) return; // user cancelled the native picker
-      final googleAuth = await googleUser.authentication;
-      final idToken = googleAuth.idToken;
-      if (idToken == null) {
-        throw Exception('Google sign-in did not return an ID token');
+      // The on-device Google picker needs its Android plugin and Play Services. If either
+      // is not working on this phone (it answers `channel-error`, or Google refuses the
+      // build's signature), fall through to the browser sign-in below, which needs
+      // neither, instead of leaving the person stuck on an error.
+      GoogleSignInAccount? googleUser;
+      var nativeWorked = true;
+      try {
+        googleUser = await GoogleSignIn(
+          serverClientId: GoogleConfig.webClientId,
+        ).signIn();
+      } catch (e) {
+        if (!googleNativeSignInUnavailable(e)) rethrow;
+        debugPrint('Native Google sign-in unavailable, using the browser: $e');
+        nativeWorked = false;
       }
-      await supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: googleAuth.accessToken,
-      );
-      final user = supabase.auth.currentUser!;
-      await _requireNormalUser(user);
-      final banned = await _enforceBan(user.id, notice: false);
-      if (banned != null) throw Exception(banned);
-      await _afterSignIn(user, 'google');
-      await _refreshProfile(user.id);
-      _status = AuthStatus.authenticated;
-      notifyListeners();
-      return;
+      if (nativeWorked) {
+        if (googleUser == null) return; // user cancelled the native picker
+        final googleAuth = await googleUser.authentication;
+        final idToken = googleAuth.idToken;
+        if (idToken == null) {
+          throw Exception('Google sign-in did not return an ID token');
+        }
+        await supabase.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+          accessToken: googleAuth.accessToken,
+        );
+        final user = supabase.auth.currentUser!;
+        await _requireNormalUser(user);
+        final banned = await _enforceBan(user.id, notice: false);
+        if (banned != null) throw Exception(banned);
+        await _afterSignIn(user, 'google');
+        await _refreshProfile(user.id);
+        _status = AuthStatus.authenticated;
+        notifyListeners();
+        return;
+      }
     }
     final oauth = switch (provider) {
       'Google' => OAuthProvider.google,

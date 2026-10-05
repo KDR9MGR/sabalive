@@ -699,4 +699,7 @@ const Map<String, String> hiStrings = {
   'Can\'t reach the live service right now. Please try again in a moment.': 'अभी लाइव सेवा से कनेक्ट नहीं हो पा रहा है। कृपया थोड़ी देर बाद फिर कोशिश करें।',
   'Your connection to this room expired. Please leave and join again.': 'इस रूम से आपका कनेक्शन समाप्त हो गया है। कृपया बाहर निकलकर दोबारा जुड़ें।',
   'View profile': 'प्रोफ़ाइल देखें',
+  'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'अभी इस फ़ोन पर Google साइन-इन उपलब्ध नहीं है। कृपया अपने ईमेल या फ़ोन नंबर से लॉगिन करें।',
+  'Check your internet connection and try again.': 'अपना इंटरनेट कनेक्शन जाँचें और फिर कोशिश करें।',
+  'Something went wrong on this device. Please try again.': 'इस डिवाइस पर कुछ गड़बड़ हो गई। कृपया फिर कोशिश करें।',
 };

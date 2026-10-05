@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/core/utils/errors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,6 +34,36 @@ void main() {
 
     test('a plain Exception loses its prefix', () {
       expect(friendlyError(Exception('Nope')), 'Nope');
+    });
+
+    test('a plugin that did not answer is not shown as a raw PlatformException', () {
+      final shown = friendlyError(PlatformException(
+        code: 'channel-error',
+        message: 'Unable to establish connection on channel: "dev.flutter.pigeon.google_sign_in_android.GoogleSignInApi.signIn".',
+      ));
+      expect(shown, isNot(contains('PlatformException')));
+      expect(shown, isNot(contains('pigeon')));
+      expect(shown, contains('email or phone'));
+    });
+
+    test('other device errors keep a readable message', () {
+      expect(friendlyError(PlatformException(code: 'network_error')), contains('internet'));
+      expect(friendlyError(PlatformException(code: 'x', message: 'Camera busy')), 'Camera busy');
+      expect(friendlyError(PlatformException(code: 'x')), isNotEmpty);
+    });
+  });
+
+  group('googleNativeSignInUnavailable', () {
+    test('the plugin not answering, or Google refusing the build, means try the browser sign-in', () {
+      expect(googleNativeSignInUnavailable(PlatformException(code: 'channel-error')), isTrue);
+      expect(googleNativeSignInUnavailable(PlatformException(code: 'sign_in_failed')), isTrue);
+    });
+
+    test('a network problem, a cancel or any other error does not', () {
+      expect(googleNativeSignInUnavailable(PlatformException(code: 'network_error')), isFalse);
+      expect(googleNativeSignInUnavailable(PlatformException(code: 'sign_in_canceled')), isFalse);
+      expect(googleNativeSignInUnavailable(Exception('boom')), isFalse);
+      expect(googleNativeSignInUnavailable(AuthException('bad token')), isFalse);
     });
   });
 

@@ -699,4 +699,7 @@ const Map<String, String> filStrings = {
   'Can\'t reach the live service right now. Please try again in a moment.': 'Hindi makakonekta sa live service ngayon. Pakisubukan ulit sa ilang sandali.',
   'Your connection to this room expired. Please leave and join again.': 'Nag-expire na ang koneksyon mo sa room na ito. Pakilabas at sumali ulit.',
   'View profile': 'Tingnan ang profile',
+  'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'Hindi available ang Google sign-in sa phone na ito ngayon. Gamitin na lang ang iyong email o numero ng telepono.',
+  'Check your internet connection and try again.': 'Tingnan ang iyong internet connection at subukan ulit.',
+  'Something went wrong on this device. Please try again.': 'May nangyaring mali sa device na ito. Pakisubukan ulit.',
 };

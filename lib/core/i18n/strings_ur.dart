@@ -699,4 +699,7 @@ const Map<String, String> urStrings = {
   'Can\'t reach the live service right now. Please try again in a moment.': 'اس وقت لائیو سروس سے رابطہ نہیں ہو سکا۔ براہِ کرم کچھ دیر بعد دوبارہ کوشش کریں۔',
   'Your connection to this room expired. Please leave and join again.': 'اس روم سے آپ کا کنکشن ختم ہو گیا ہے۔ براہِ کرم باہر نکل کر دوبارہ شامل ہوں۔',
   'View profile': 'پروفائل دیکھیں',
+  'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'اس فون پر اس وقت Google سائن اِن دستیاب نہیں ہے۔ براہِ کرم اپنا ای میل یا فون نمبر استعمال کریں۔',
+  'Check your internet connection and try again.': 'اپنا انٹرنیٹ کنکشن چیک کریں اور دوبارہ کوشش کریں۔',
+  'Something went wrong on this device. Please try again.': 'اس ڈیوائس پر کچھ غلط ہو گیا۔ براہِ کرم دوبارہ کوشش کریں۔',
 };

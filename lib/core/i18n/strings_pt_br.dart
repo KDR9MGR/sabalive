@@ -699,4 +699,7 @@ const Map<String, String> ptBrStrings = {
   'Can\'t reach the live service right now. Please try again in a moment.': 'Não foi possível conectar ao serviço de lives agora. Tente novamente em instantes.',
   'Your connection to this room expired. Please leave and join again.': 'Sua conexão com esta sala expirou. Saia e entre novamente.',
   'View profile': 'Ver perfil',
+  'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'O login com o Google não está disponível neste celular agora. Use seu e-mail ou número de telefone.',
+  'Check your internet connection and try again.': 'Verifique sua conexão com a internet e tente de novo.',
+  'Something went wrong on this device. Please try again.': 'Algo deu errado neste dispositivo. Tente de novo.',
 };

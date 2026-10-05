@@ -699,4 +699,7 @@ const Map<String, String> arStrings = {
   'Can\'t reach the live service right now. Please try again in a moment.': 'تعذّر الاتصال بخدمة البث المباشر الآن. يُرجى المحاولة مرة أخرى بعد قليل.',
   'Your connection to this room expired. Please leave and join again.': 'انتهت صلاحية اتصالك بهذه الغرفة. يُرجى المغادرة ثم الانضمام مرة أخرى.',
   'View profile': 'عرض الملف الشخصي',
+  'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'تسجيل الدخول عبر Google غير متاح على هذا الهاتف الآن. استخدم بريدك الإلكتروني أو رقم هاتفك بدلاً منه.',
+  'Check your internet connection and try again.': 'تحقق من اتصالك بالإنترنت وحاول مرة أخرى.',
+  'Something went wrong on this device. Please try again.': 'حدث خطأ ما على هذا الجهاز. يُرجى المحاولة مرة أخرى.',
 };
