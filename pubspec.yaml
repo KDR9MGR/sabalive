@@ -2,7 +2,7 @@ name: sabalive
 description: "SABALIVE - Social live-streaming, video/audio chat and virtual-gifting app."
 publish_to: 'none'
 
-version: 1.0.0+7
+version: 1.0.0+8
 
 environment:
   sdk: ^3.11.3
