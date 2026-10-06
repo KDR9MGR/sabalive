@@ -9,9 +9,14 @@ flutter pub get
 flutter analyze        # ~12 pre-existing infos; don't add new ones
 flutter test           # keep green
 flutter build appbundle   # Play; bump version in pubspec.yaml (+N) per upload
-supabase db push       # apply migrations (linked to the project)
+supabase db push       # apply migrations (linked to the project) - LIVE: read docs/DEPLOY_CHECKLIST.md first
 supabase functions deploy <name>
+scripts/db/replay_migrations.sh      # replay every migration on a throwaway local Postgres
+scripts/prod/healthcheck.sh          # read-only: is production healthy?
+scripts/prod/smoke_play_app.sh       # replays the Play app's key actions, rolled back
+scripts/prod/backup.sh               # data + schema backup to ~/sabalive-backups (before every push)
 ```
+Production is shared with the live Play app: follow "Production safety" in the root CLAUDE.md.
 
 ## Layout
 - `lib/features/*` screens (live/ has watch_live, watch_audio_room, watch_pk_battle,

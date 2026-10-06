@@ -7,9 +7,15 @@
 class SupabaseConfig {
   SupabaseConfig._();
 
-  static const String url = 'https://sfehzhtqtpuobnrvzvzp.supabase.co';
+  /// The live project. Every normal build uses it.
+  static const String productionUrl = 'https://sfehzhtqtpuobnrvzvzp.supabase.co';
+  static const String _productionKey = 'sb_publishable_vdDsGi-wEgeJm_BpQE7MlA_Z5ZusWOi';
+
+  /// Production unless the build was started with `--dart-define=SUPABASE_URL=...` (a staging build;
+  /// see docs/STAGING.md). [AppEnvironment.validate] checks the two agree before the app starts.
+  static const String url = String.fromEnvironment('SUPABASE_URL', defaultValue: productionUrl);
   static const String publishableKey =
-      'sb_publishable_vdDsGi-wEgeJm_BpQE7MlA_Z5ZusWOi';
+      String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY', defaultValue: _productionKey);
 
   /// Deep link the OS hands back to this app once a social (Apple/Google/
   /// Facebook) sign-in finishes in the browser. Registered as a custom URL

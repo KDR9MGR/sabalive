@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
+import 'config/app_environment.dart';
 import 'config/feature_flags.dart';
 import 'core/i18n/app_language.dart';
 import 'core/i18n/i18n.dart';
@@ -12,12 +13,14 @@ import 'features/auth/auth_flow.dart';
 import 'features/live/live_access_exit.dart';
 import 'features/live/widgets/live_back_guard.dart';
 import 'features/maintenance/maintenance_banner.dart';
+import 'features/release/update_required_gate.dart';
 import 'features/maintenance/maintenance_screen.dart';
 import 'features/calls/incoming_call_banner.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/main_shell.dart';
 import 'features/splash/splash_screen.dart';
 import 'state/active_live_session_controller.dart';
+import 'state/remote_config_controller.dart';
 import 'state/auth_controller.dart';
 import 'state/calls_controller.dart';
 import 'state/live_streams_controller.dart';
@@ -79,10 +82,17 @@ class SabaLiveApp extends StatelessWidget {
           // lets a minimized (or even full-screen) live session stay
           // mounted and interactive-underneath no matter where the user
           // navigates elsewhere in the app.
-          builder: (context, child) => _LiveBanWatcher(
-            child: _MaintenanceOverlay(
-              child: Stack(
-                children: [?child, const _ActiveLiveSessionOverlay()],
+          builder: (context, child) => EnvironmentRibbon(
+            show: AppEnvironment.isStaging,
+            // "Update required" covers the app when this build is below the server's minimum version
+            child: UpdateRequiredGate(
+              controller: RemoteConfigController.instance,
+              child: _LiveBanWatcher(
+                child: _MaintenanceOverlay(
+                  child: Stack(
+                    children: [?child, const _ActiveLiveSessionOverlay()],
+                  ),
+                ),
               ),
             ),
           ),
