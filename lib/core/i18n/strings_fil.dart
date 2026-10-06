@@ -702,4 +702,7 @@ const Map<String, String> filStrings = {
   'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'Hindi available ang Google sign-in sa phone na ito ngayon. Gamitin na lang ang iyong email o numero ng telepono.',
   'Check your internet connection and try again.': 'Tingnan ang iyong internet connection at subukan ulit.',
   'Something went wrong on this device. Please try again.': 'May nangyaring mali sa device na ito. Pakisubukan ulit.',
+  'Update required': 'Kailangan ng update',
+  'A newer version of SABALIVE is available. Please update to keep using the app.': 'May mas bagong bersyon na ng SABALIVE. Paki-update para magamit pa rin ang app.',
+  'Update now': 'I-update ngayon',
 };

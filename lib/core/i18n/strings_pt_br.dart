@@ -702,4 +702,7 @@ const Map<String, String> ptBrStrings = {
   'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'O login com o Google não está disponível neste celular agora. Use seu e-mail ou número de telefone.',
   'Check your internet connection and try again.': 'Verifique sua conexão com a internet e tente de novo.',
   'Something went wrong on this device. Please try again.': 'Algo deu errado neste dispositivo. Tente de novo.',
+  'Update required': 'Atualização necessária',
+  'A newer version of SABALIVE is available. Please update to keep using the app.': 'Há uma versão mais nova do SABALIVE. Atualize para continuar usando o app.',
+  'Update now': 'Atualizar agora',
 };

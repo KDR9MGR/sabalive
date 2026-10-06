@@ -702,4 +702,7 @@ const Map<String, String> bnStrings = {
   'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'এই ফোনে এখন Google সাইন-ইন পাওয়া যাচ্ছে না। অনুগ্রহ করে আপনার ইমেল বা ফোন নম্বর ব্যবহার করুন।',
   'Check your internet connection and try again.': 'আপনার ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।',
   'Something went wrong on this device. Please try again.': 'এই ডিভাইসে কিছু ভুল হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।',
+  'Update required': 'আপডেট প্রয়োজন',
+  'A newer version of SABALIVE is available. Please update to keep using the app.': 'SABALIVE-এর নতুন সংস্করণ পাওয়া যাচ্ছে। অ্যাপ ব্যবহার চালিয়ে যেতে অনুগ্রহ করে আপডেট করুন।',
+  'Update now': 'এখনই আপডেট করুন',
 };

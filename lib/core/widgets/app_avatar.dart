@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../utils/formatters.dart';
 import 'remote_media.dart';
 import '../i18n/text.dart';
+import '../../state/remote_config_controller.dart';
 
 /// Avatars smaller than this show their frame as a still picture instead of playing it.
 const double kAnimatedFrameMinSize = 48;
@@ -105,7 +106,9 @@ class AppAvatar extends StatelessWidget {
                         // A live room has dozens of avatars (chat, viewers, seats); a
                         // frame animating on each one kept the GPU busy and heated phones.
                         // Small ones show the still first frame; big ones still play.
-                        animate: size >= kAnimatedFrameMinSize,
+                        // also switchable from the panel (feature_flags.animated_frames) without a release
+                        animate: size >= kAnimatedFrameMinSize &&
+                            RemoteConfigController.instance.flag('animated_frames'),
                       ),
                     ),
                   ),

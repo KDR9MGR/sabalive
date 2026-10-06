@@ -702,4 +702,7 @@ const Map<String, String> neStrings = {
   'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'यो फोनमा अहिले Google साइन-इन उपलब्ध छैन। कृपया आफ्नो इमेल वा फोन नम्बर प्रयोग गर्नुहोस्।',
   'Check your internet connection and try again.': 'आफ्नो इन्टरनेट जडान जाँच गरेर फेरि प्रयास गर्नुहोस्।',
   'Something went wrong on this device. Please try again.': 'यो उपकरणमा केही गडबड भयो। कृपया फेरि प्रयास गर्नुहोस्।',
+  'Update required': 'अपडेट आवश्यक छ',
+  'A newer version of SABALIVE is available. Please update to keep using the app.': 'SABALIVE को नयाँ संस्करण उपलब्ध छ। एप प्रयोग गरिरहन कृपया अपडेट गर्नुहोस्।',
+  'Update now': 'अहिले अपडेट गर्नुहोस्',
 };

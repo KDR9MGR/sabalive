@@ -702,4 +702,7 @@ const Map<String, String> urStrings = {
   'Google sign-in isn\'t available on this phone right now. Use your email or phone number instead.': 'اس فون پر اس وقت Google سائن اِن دستیاب نہیں ہے۔ براہِ کرم اپنا ای میل یا فون نمبر استعمال کریں۔',
   'Check your internet connection and try again.': 'اپنا انٹرنیٹ کنکشن چیک کریں اور دوبارہ کوشش کریں۔',
   'Something went wrong on this device. Please try again.': 'اس ڈیوائس پر کچھ غلط ہو گیا۔ براہِ کرم دوبارہ کوشش کریں۔',
+  'Update required': 'اپڈیٹ ضروری ہے',
+  'A newer version of SABALIVE is available. Please update to keep using the app.': 'SABALIVE کا نیا ورژن دستیاب ہے۔ ایپ کا استعمال جاری رکھنے کے لیے براہِ کرم اپڈیٹ کریں۔',
+  'Update now': 'ابھی اپڈیٹ کریں',
 };

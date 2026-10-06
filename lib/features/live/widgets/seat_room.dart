@@ -7,6 +7,7 @@ import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../state/remote_config_controller.dart';
 import 'seat_speaking.dart';
 import 'speaking_waves.dart';
 import '../../../core/i18n/text.dart';
@@ -68,7 +69,8 @@ class SeatCircle extends StatelessWidget {
               if (occupant case final occupant?)
                 // the ring of waves around the avatar is the "this person is talking" cue
                 SpeakingWaves(
-                  active: speaking,
+                  // feature_flags.speaking_waves can switch the ring off from the panel
+                  active: speaking && RemoteConfigController.instance.flag('speaking_waves'),
                   diameter: size,
                   child: Container(
                     padding: const EdgeInsets.all(2),
