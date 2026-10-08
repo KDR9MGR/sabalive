@@ -14,11 +14,13 @@ cd "$(dirname "$0")/../.."    # the sabalive/ app repo
 command -v supabase >/dev/null || { echo "supabase CLI not found"; exit 2; }
 command -v jq >/dev/null || { echo "jq not found (brew install jq)"; exit 2; }
 
-# the same public URL and publishable key the app ships with
-URL=$(grep -E "static const String url" lib/config/supabase_config.dart | sed -E "s/.*'([^']+)'.*/\1/")
-KEY=$(grep -A1 -E "static const String anonKey|static const String publishableKey" lib/config/supabase_config.dart | grep -oE "sb_publishable_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9._-]+" | head -1)
-LINKED=$(cat supabase/.temp/project-ref 2>/dev/null || echo "")
-if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "Could not read the API URL / key from lib/config/supabase_config.dart"; exit 2; fi
+# which project: production by default (the URL and key the app ships with); SABALIVE_API_URL / SABALIVE_API_KEY /
+# SUPABASE_WORKDIR point it at another project (scripts/staging/check.sh does that for staging)
+URL="${SABALIVE_API_URL:-$(grep -E "static const String productionUrl" lib/config/supabase_config.dart | grep -oE 'https://[a-z0-9]+\.supabase\.co')}"
+KEY="${SABALIVE_API_KEY:-$(grep -E "_productionKey *=" lib/config/supabase_config.dart | grep -oE "sb_publishable_[A-Za-z0-9_-]+")}"
+sb() { supabase ${SUPABASE_WORKDIR:+--workdir "$SUPABASE_WORKDIR"} "$@"; }
+LINKED=$(cat "${SUPABASE_WORKDIR:-.}/supabase/.temp/project-ref" 2>/dev/null || echo "")
+if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "Could not read the API URL / key (lib/config/supabase_config.dart, or set SABALIVE_API_URL / SABALIVE_API_KEY)"; exit 2; fi
 
 FAILS=0; WARNS=0
 pass() { printf '  PASS  %s\n' "$1"; }
@@ -27,7 +29,7 @@ fail() { printf '  FAIL  %s\n' "$1"; FAILS=$((FAILS + 1)); }
 
 echo "Production health check  ($(date -u +%Y-%m-%d\ %H:%M:%S) UTC)"
 echo "Project: ${LINKED:-unknown}   API: $URL"
-case "$URL" in *"$LINKED"*) ;; *) [ -n "$LINKED" ] && warn "the linked project ($LINKED) is not the one in supabase_config.dart: are you checking the right one?";; esac
+case "$URL" in *"$LINKED"*) ;; *) [ -n "$LINKED" ] && warn "the linked project ($LINKED) is not the project at $URL: are you checking the right one?";; esac
 
 echo
 echo "1. What users see"
@@ -53,7 +55,7 @@ AUTH=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$URL/auth/v1/health" -H "ap
 
 echo
 echo "2. The database"
-Q=$(supabase db query --linked -o json "select
+Q=$(sb db query --linked -o json "select
     (select count(*) from pg_stat_activity)::int as connections,
     current_setting('max_connections')::int as max_connections,
     (select count(*) from pg_stat_activity where state = 'active' and backend_type = 'client backend' and pid <> pg_backend_pid())::int as active,
@@ -86,7 +88,7 @@ fi
 
 echo
 echo "3. Migrations: repo vs production"
-ML=$(supabase migration list --linked 2>/dev/null)
+ML=$(sb migration list --linked 2>/dev/null)
 if [ -z "$ML" ]; then
   warn "could not read the migration list"
 else

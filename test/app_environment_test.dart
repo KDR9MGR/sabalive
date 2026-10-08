@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sabalive/config/agora_config.dart';
 import 'package:sabalive/config/app_environment.dart';
 import 'package:sabalive/config/supabase_config.dart';
 
 void main() {
+  agoraDefaults();
   const staging = 'https://stagingstagingstaging.supabase.co';
 
   group('AppEnvironment.validate', () {
@@ -47,6 +49,14 @@ void main() {
       expect(find.byType(Banner), findsOneWidget);
       expect(t.widget<Banner>(find.byType(Banner)).message, 'STAGING');
       expect(find.text('app'), findsOneWidget);
+    });
+  });
+}
+
+void agoraDefaults() {
+  group('AgoraConfig', () {
+    test('a normal build uses the production App ID (a staging build overrides it with --dart-define=AGORA_APP_ID)', () {
+      expect(AgoraConfig.appId, AgoraConfig.productionAppId);
     });
   });
 }

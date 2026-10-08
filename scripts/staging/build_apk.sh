@@ -21,10 +21,14 @@ if [ "$STAGING_URL" = "$PROD_URL" ]; then echo "STAGING_URL is the production ad
 
 VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
 flutter clean >/dev/null
+# STAGING_AGORA_APP_ID (optional, in staging.env): the App ID of the separate staging Agora project. Without it the
+# build keeps production's App ID, but staging's agora-token has no credentials, so no live video can start.
+AGORA_ARG=""
+[ -n "${STAGING_AGORA_APP_ID:-}" ] && AGORA_ARG="--dart-define=AGORA_APP_ID=$STAGING_AGORA_APP_ID"
 flutter build apk --release \
   --dart-define=SABALIVE_ENV=staging \
   --dart-define=SUPABASE_URL="$STAGING_URL" \
-  --dart-define=SUPABASE_PUBLISHABLE_KEY="$STAGING_PUBLISHABLE_KEY"
+  --dart-define=SUPABASE_PUBLISHABLE_KEY="$STAGING_PUBLISHABLE_KEY" $AGORA_ARG
 
 OUT="${SABALIVE_RELEASES_DIR:-$HOME/sabalive-releases}/sabalive-staging-$VERSION.apk"
 mkdir -p "$(dirname "$OUT")"

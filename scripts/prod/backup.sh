@@ -25,6 +25,7 @@ cd "$(dirname "$0")/../.."    # the sabalive/ app repo (where supabase/ lives)
 
 command -v supabase >/dev/null || { echo "supabase CLI not found"; exit 2; }
 command -v jq >/dev/null || { echo "jq not found (brew install jq)"; exit 2; }
+sb() { supabase ${SUPABASE_WORKDIR:+--workdir "$SUPABASE_WORKDIR"} "$@"; }   # SUPABASE_WORKDIR targets another project
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 ROOT="${SABALIVE_BACKUP_DIR:-$HOME/sabalive-backups}"
@@ -36,9 +37,9 @@ mkdir -p "$OUT/data" "$OUT/schema"
 echo "Backing up the linked project to $OUT"
 
 # run SQL, print only the rows array (stderr, with the CLI's progress and update notices, is dropped)
-rows() { supabase db query --linked -o json "$1" 2>/dev/null | jq -c '.rows'; }
+rows() { sb db query --linked -o json "$1" 2>/dev/null | jq -c '.rows'; }
 
-PROJECT=$(cat supabase/.temp/project-ref 2>/dev/null || echo "unknown")
+PROJECT=$(cat "${SUPABASE_WORKDIR:-.}/supabase/.temp/project-ref" 2>/dev/null || echo "unknown")
 echo "Project ref: $PROJECT"
 echo "$PROJECT" > "$OUT/PROJECT_REF"
 
@@ -106,7 +107,7 @@ rows "select table_name, column_name, data_type, is_nullable, column_default fro
 rows "select jobid, jobname, schedule, command, active from cron.job order by jobid" > "$OUT/schema/cron_jobs.json" || true
 rows "select bucket_id, name, (metadata->>'size')::bigint as bytes from storage.objects order by 1, 2" \
   > "$OUT/storage-objects.json" || true
-supabase migration list --linked > "$OUT/migrations.txt" 2>/dev/null || true
+sb migration list --linked > "$OUT/migrations.txt" 2>/dev/null || true
 
 # ---- 5. checksums and a verdict
 ( cd "$OUT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS )

@@ -41,6 +41,9 @@ push at 14:00-20:00 UTC, the evening peak.
 - [ ] `flutter test` and `flutter analyze` pass (no new analyzer infos).
 - [ ] **Replay on a scratch database:** `scripts/db/replay_migrations.sh`  ->  `ALL_OK`.
       For a new migration, also write a small test SQL and run `scripts/db/replay_migrations.sh my_test.sql`.
+- [ ] **Rehearse on staging:** `scripts/staging/db_push.sh --apply`, then `scripts/staging/check.sh` must end ALL PASSED
+      (health + the 12-step Play-app smoke test). Try the change in a staging app build or the staging panel
+      (`docs/STAGING.md`). Anything that fails there never reaches production.
 - [ ] Classify each migration with the table above. Anything in the middle column: plan the quiet hour
       and write the down script. Anything in the third column: stop, redesign.
 - [ ] `supabase/rollbacks/<version>_down.sql` exists for each new migration.
