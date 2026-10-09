@@ -91,7 +91,7 @@ class _RoomSkinSheetState extends State<RoomSkinSheet> {
         await _repo.setEquipped(skin.item.id, true); // swaps out any other skin
       }
       await _load();
-      if (mounted) setState(() => _message = skin == null ? 'Back to the plain room' : '${skin.item.name} is on');
+      if (mounted) setState(() => _message = skin == null ? 'Back to the plain room' : '${skin.item.name} is now your room skin');
     } catch (e) {
       if (mounted) setState(() => _message = friendlyError(e));
     } finally {

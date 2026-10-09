@@ -19,6 +19,7 @@ import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
+import '../../data/profile_cache.dart';
 import '../../data/pk_battles_repository.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_service.dart';
@@ -368,11 +369,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           ),
           callback: (payload) async {
             final senderId = payload.newRecord['sender_id'] as String;
-            final profileRow = await supabase
-                .from('profiles')
-                .select()
-                .eq('id', senderId)
-                .maybeSingle();
+            final profileRow = await ProfileCache.instance.get(senderId);
             final sender = profileRow != null
                 ? AppUser.fromRow(profileRow)
                 : AppUser(id: senderId, name: 'Someone', username: '@user');
@@ -736,11 +733,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           callback: (payload) async {
             final seat = payload.newRecord['seat_number'] as int;
             final occupantId = payload.newRecord['occupant_id'] as String;
-            final profileRow = await supabase
-                .from('profiles')
-                .select()
-                .eq('id', occupantId)
-                .maybeSingle();
+            final profileRow = await ProfileCache.instance.get(occupantId);
             if (mounted && profileRow != null) {
               setState(() {
                 _mySeatOccupants[seat] = AppUser.fromRow(profileRow);

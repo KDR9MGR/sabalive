@@ -62,7 +62,7 @@ void main() {
     await t.tap(find.byKey(const ValueKey('skin-b')));
     await t.pumpAndSettle();
     expect(repo.calls, ['b:true']);
-    expect(find.text('Sunset Lounge is on'), findsOneWidget);
+    expect(find.text('Sunset Lounge is now your room skin'), findsOneWidget);
   });
 
   testWidgets('tapping the skin that is already on does nothing more', (t) async {

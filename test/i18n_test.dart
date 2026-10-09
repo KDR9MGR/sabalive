@@ -70,6 +70,23 @@ void main() {
     expect(tr('Resend OTP in 00:25'), '00:25 में OTP दोबारा भेजें');
   });
 
+  test('the room skin and Lucky Box cooldown strings are translated, with their live values', () async {
+    await I18n.set(languageByCode('pt_BR'));
+    expect(tr('Plain room'), 'Sala simples');
+    expect(tr('Sunset Lounge is now your room skin'), 'Sunset Lounge agora é o visual da sua sala');
+    expect(tr('Next in 23h 12m'), 'Próxima em 23h 12m');
+    expect(
+      tr('You already earned a Lucky Box in the last 24 hours, so this live will not open one. '
+          'Start a new live in 23h 12m (and stay on for 40 minutes) to earn the next one.'),
+      contains('24 horas'),
+    );
+    await I18n.set(languageByCode('hi'));
+    expect(tr('Next in 45m'), 'अगला 45m में');
+    expect(tr('Opened'), 'खुल गया');
+    await I18n.set(languageByCode('ar'));
+    expect(tr('Room skins are for audio rooms'), 'خلفيات الغرف للغرف الصوتية فقط');
+  });
+
   test('text with no translation (user content, new strings) passes through', () async {
     await I18n.set(languageByCode('pt_BR'));
     expect(tr('Some host wrote this title'), 'Some host wrote this title');
