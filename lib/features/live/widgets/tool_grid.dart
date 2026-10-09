@@ -45,7 +45,7 @@ Future<void> showToolGridSheet(
               ),
             ),
             const SizedBox(height: 12),
-            const Divider(color: AppColors.stroke, height: 1),
+            Divider(color: AppColors.stroke, height: 1),
             const SizedBox(height: 16),
             GridView.count(
               crossAxisCount: 4,

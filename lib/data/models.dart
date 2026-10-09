@@ -164,6 +164,14 @@ class LiveStream {
   bool get pk => mode == LiveMode.pk;
 }
 
+/// The panel's "play speed" column (numeric: arrives as a number or a string), clamped to the
+/// range the database accepts; anything unreadable means "no preference".
+double? parsePlaySpeed(Object? v) {
+  final n = v is num ? v.toDouble() : double.tryParse('$v');
+  if (n == null || n.isNaN) return null;
+  return n.clamp(0.1, 2.0).toDouble();
+}
+
 class Gift {
   const Gift(
     this.id,
@@ -173,6 +181,8 @@ class Gift {
     this.effect = false,
     this.iconUrl,
     this.category = 'basic',
+    this.playSpeed,
+    this.soundUrl,
   });
 
   factory Gift.fromRow(Map<String, dynamic> row) => Gift(
@@ -183,6 +193,8 @@ class Gift {
     effect: row['has_effect'] as bool? ?? false,
     iconUrl: _nonEmpty(row['icon_url']),
     category: row['category'] as String? ?? 'basic',
+    playSpeed: parsePlaySpeed(row['play_speed']),
+    soundUrl: _nonEmpty(row['sound_url']),
   );
 
   final String id;
@@ -197,6 +209,13 @@ class Gift {
   /// The panel-uploaded artwork (SVGA / MP4 / WebP / PNG). The emoji stays the
   /// fallback for gifts that have none, and while the file loads.
   final String? iconUrl;
+
+  /// How fast the effect plays (1 = the file's own speed), set per gift in the
+  /// panel. Null means "the app default" (see kDefaultEffectSpeed).
+  final double? playSpeed;
+
+  /// An audio file the panel attached to the gift; it plays with the effect.
+  final String? soundUrl;
 
   static String? _nonEmpty(Object? v) {
     final s = (v as String?)?.trim();

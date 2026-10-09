@@ -16,7 +16,8 @@ class _Page {
   final Color accent;
 }
 
-const _pages = [
+/// (a getter: the accent colours follow the panel's branding, so they can't be `const`)
+List<_Page> get _pages => [
   _Page(Icons.podcasts_rounded, 'Go Live.\nBe a Star!',
       'Broadcast your moments, connect with fans and grow your community worldwide.',
       AppColors.primary),
@@ -87,7 +88,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               SmoothPageIndicator(
                 controller: _controller,
                 count: _pages.length,
-                effect: const ExpandingDotsEffect(
+                effect: ExpandingDotsEffect(
                   activeDotColor: AppColors.primaryBright,
                   dotColor: AppColors.stroke,
                   dotHeight: 8,

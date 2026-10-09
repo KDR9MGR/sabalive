@@ -226,7 +226,7 @@ class LiveListTile extends StatelessWidget {
                       ),
                       if (stream.host.verified) ...[
                         const SizedBox(width: 4),
-                        const Icon(
+                        Icon(
                           Icons.verified_rounded,
                           size: 13,
                           color: AppColors.primaryBright,

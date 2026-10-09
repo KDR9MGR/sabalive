@@ -79,7 +79,7 @@ class _BottomBar extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: AppColors.bgElevated.withValues(alpha: 0.96),
-        border: const Border(top: BorderSide(color: AppColors.stroke)),
+        border: Border(top: BorderSide(color: AppColors.stroke)),
       ),
       child: Row(
         children: [

@@ -221,7 +221,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
                     child: Container(
                       width: 46,
                       height: 46,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         gradient: AppColors.primaryGradient,
                         shape: BoxShape.circle,
                       ),

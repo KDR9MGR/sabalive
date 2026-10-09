@@ -14,17 +14,21 @@ import 'services/device_identity_service.dart';
 import 'services/maintenance_http_client.dart';
 import 'state/maintenance_controller.dart';
 import 'state/remote_config_controller.dart';
+import 'state/theme_config_controller.dart';
+import 'theme/app_colors.dart';
 import 'services/push_notifications_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // the language the user picked, so the very first frame is already in it
   await I18n.load();
+  // the colours and font the panel last set, so the very first frame already wears them
+  await ThemeConfigController.restore();
   SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
+    SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0B0716),
+      systemNavigationBarColor: AppColors.bg,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );

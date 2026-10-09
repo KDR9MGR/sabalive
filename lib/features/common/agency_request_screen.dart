@@ -165,7 +165,7 @@ class _AgencyRequestScreenState extends State<AgencyRequestScreen>
                 Container(
                   width: 84,
                   height: 84,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: AppColors.primaryGradient,
                     shape: BoxShape.circle,
                   ),
@@ -181,7 +181,7 @@ class _AgencyRequestScreenState extends State<AgencyRequestScreen>
                 ),
                 const SizedBox(height: 20),
                 if (_checking && _gate == null)
-                  const CircularProgressIndicator(
+                  CircularProgressIndicator(
                     color: AppColors.primaryBright,
                   )
                 else if (banned)

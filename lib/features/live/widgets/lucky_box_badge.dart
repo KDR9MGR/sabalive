@@ -7,22 +7,36 @@ import '../../../data/lucky_box_repository.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
 
-/// The Lucky Box on the host's live screen: a gift box with the time left
-/// until the reward under it. Counts down using the panel's settings
-/// (re-read every minute, so a panel change shows up without a restart),
-/// then shows "Opening…" until the server pays out, then the diamonds won.
-/// Shows nothing if the settings can't be read — it's a bonus, never an error.
+/// The Lucky Box on a video live: a gift box with the time left until the
+/// reward under it. Counts down using the panel's settings (re-read every
+/// minute, so a panel change shows up without a restart), then shows
+/// "Opening…" until the server pays out, then the diamonds won.
+///
+/// The host sees their own reward. A viewer ([forViewer]) sees the same box and
+/// countdown, and "Opened" when the time is up; the reward is the host's, so a
+/// viewer's wallet and the amount are never looked up.
+///
+/// Shows nothing while the settings can't be read — it's a bonus, never an
+/// error — and keeps trying in the background, so it appears once the network does.
 class LuckyBoxBadge extends StatefulWidget {
   const LuckyBoxBadge({
     super.key,
     required this.streamId,
+    this.forViewer = false,
     this.repo,
     this.now,
     this.configRefresh = const Duration(minutes: 1),
     this.rewardCheck = const Duration(seconds: 10),
+    this.retryEvery = const Duration(seconds: 15),
   });
 
   final String streamId;
+
+  /// Watching someone else's live: no reward lookup, wording about the host.
+  final bool forViewer;
+
+  /// How often a failed first load is tried again.
+  final Duration retryEvery;
 
   /// Injectable for tests.
   final LuckyBoxRepository? repo;
@@ -39,6 +53,8 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
   Timer? _tick;
   Timer? _refresh;
   Timer? _rewardTimer;
+  Timer? _retry;
+  bool _loading = false;
   LuckyBoxConfig? _config;
   DateTime? _startedAt;
   int? _reward;
@@ -55,6 +71,10 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
     });
     _refresh = Timer.periodic(widget.configRefresh, (_) => _loadConfig());
     _rewardTimer = Timer.periodic(widget.rewardCheck, (_) => _checkReward());
+    // the first load can fail (no network yet): keep trying until it works
+    _retry = Timer.periodic(widget.retryEvery, (_) {
+      if (_failed || _config == null || _startedAt == null) _load();
+    });
   }
 
   @override
@@ -62,14 +82,17 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
     _tick?.cancel();
     _refresh?.cancel();
     _rewardTimer?.cancel();
+    _retry?.cancel();
     super.dispose();
   }
 
   Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
     try {
       final started = await _repo.streamStartedAt(widget.streamId);
       final config = await _repo.config();
-      final reward = await _repo.rewardGranted(widget.streamId);
+      final reward = widget.forViewer ? null : await _repo.rewardGranted(widget.streamId);
       if (!mounted) return;
       setState(() {
         _startedAt = started;
@@ -79,6 +102,8 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
       });
     } catch (_) {
       if (mounted) setState(() => _failed = true);
+    } finally {
+      _loading = false;
     }
   }
 
@@ -90,7 +115,7 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
   }
 
   Future<void> _checkReward() async {
-    if (_reward != null || _startedAt == null || _config == null) return;
+    if (widget.forViewer || _reward != null || _startedAt == null || _config == null) return;
     // only worth asking once the countdown is over
     final p = luckyBoxProgress(
       startedAt: _startedAt!,
@@ -106,16 +131,23 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
 
   void _explain(LuckyBoxConfig c) {
     final won = _reward;
+    final String message;
+    if (widget.forViewer) {
+      message = 'The host wins ${withThousands(c.rewardDiamonds)} diamonds '
+          'for staying live ${c.durationMinutes} minutes without a break. '
+          'The box opens when the time is up.';
+    } else if (won != null) {
+      message = 'You won ${withThousands(won)} diamonds from this live. Well done!';
+    } else {
+      message = 'Stay live for ${c.durationMinutes} minutes without a break in '
+          'this stream and win ${withThousands(c.rewardDiamonds)} diamonds.';
+    }
     showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgElevated,
         title: const Text('Lucky Box'),
-        content: Text(won != null
-            ? 'You won ${withThousands(won)} diamonds from this live. '
-                'Well done!'
-            : 'Stay live for ${c.durationMinutes} minutes without a break in '
-                'this stream and win ${withThousands(c.rewardDiamonds)} diamonds.'),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -138,12 +170,13 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
       duration: config.duration,
       now: _now(),
       rewardPaid: _reward,
+      pastDeadlineMeansOpened: widget.forViewer,
     );
     final opened = p.phase == LuckyBoxPhase.opened;
     final label = switch (p.phase) {
       LuckyBoxPhase.counting => luckyBoxClock(p.remaining),
       LuckyBoxPhase.opening => 'Opening…',
-      LuckyBoxPhase.opened => '+${withThousands(p.reward!)}',
+      LuckyBoxPhase.opened => p.reward == null ? 'Opened' : '+${withThousands(p.reward!)}',
     };
 
     return GestureDetector(
@@ -151,7 +184,7 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
       behavior: HitTestBehavior.opaque,
       child: Semantics(
         label: opened
-            ? 'Lucky Box opened, won ${p.reward} diamonds'
+            ? (p.reward == null ? 'Lucky Box opened' : 'Lucky Box opened, won ${p.reward} diamonds')
             : 'Lucky Box, $label',
         excludeSemantics: true,
         child: Column(
@@ -200,7 +233,7 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
                       fontFeatures: [FontFeature.tabularFigures()],
                     ),
                   ),
-                  if (opened) ...[
+                  if (opened && p.reward != null) ...[
                     const SizedBox(width: 3),
                     const Icon(Icons.diamond_rounded,
                         size: 11, color: AppColors.diamond),

@@ -139,7 +139,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             _startTimer();
                             _requestOtp();
                           },
-                          child: const Text('Resend OTP',
+                          child: Text('Resend OTP',
                               style: TextStyle(color: AppColors.primaryBright)),
                         ),
                 ),

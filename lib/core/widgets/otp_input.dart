@@ -101,7 +101,7 @@ class _OtpInputState extends State<OtpInput> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: AppColors.primaryBright, width: 1.8),
+                borderSide: BorderSide(color: AppColors.primaryBright, width: 1.8),
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),

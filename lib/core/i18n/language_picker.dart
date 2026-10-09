@@ -41,7 +41,7 @@ Future<void> showLanguagePicker(BuildContext context) async {
                 ),
               ),
               trailing: l.code == I18n.current.code
-                  ? const Icon(
+                  ? Icon(
                       Icons.check_circle_rounded,
                       color: AppColors.primaryBright,
                     )

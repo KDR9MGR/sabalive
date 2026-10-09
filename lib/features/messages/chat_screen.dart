@@ -313,7 +313,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Padding(
               padding: const EdgeInsets.only(left: 6, top: 4),
               child: Text(b.senderName,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       color: AppColors.primaryBright)),
@@ -361,7 +361,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       padding: EdgeInsets.fromLTRB(
           12, 8, 12, 8 + MediaQuery.of(context).padding.bottom),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.bgElevated,
         border: Border(top: BorderSide(color: AppColors.stroke)),
       ),
@@ -400,7 +400,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Container(
               width: 42,
               height: 42,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: AppColors.primaryGradient,
                 shape: BoxShape.circle,
               ),

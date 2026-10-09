@@ -74,7 +74,7 @@ class SeatCircle extends StatelessWidget {
                   diameter: size,
                   child: Container(
                     padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: AppColors.primaryGradient,
                     ),
@@ -184,11 +184,11 @@ class SeatRoom extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const gradient = BoxDecoration(
+    final gradient = BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Color(0xFF1B1140), Color(0xFF0B0716)],
+        colors: [AppColors.roomTop, AppColors.bg],
       ),
     );
     final skin = skinUrl;

@@ -30,7 +30,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(gradient: AppColors.heroGlow),
+      decoration: BoxDecoration(gradient: AppColors.heroGlow),
       child: Stack(
         fit: StackFit.expand,
         children: [

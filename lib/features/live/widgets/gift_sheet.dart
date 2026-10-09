@@ -85,7 +85,7 @@ class _GiftSheetState extends State<_GiftSheet> {
     final gifts = _list(wallet.gifts, tabs[tab]);
 
     if (gifts.isEmpty) {
-      return const SizedBox(
+      return SizedBox(
         height: 220,
         child: Center(
           child: CircularProgressIndicator(color: AppColors.primaryBright),
@@ -159,7 +159,7 @@ class _GiftSheetState extends State<_GiftSheet> {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(
+                        Icon(
                           Icons.add_circle,
                           color: AppColors.primaryBright,
                           size: 16,
@@ -333,7 +333,7 @@ class _GiftSheetState extends State<_GiftSheet> {
                 selected: _sendToAll,
                 label: 'All',
                 onTap: () => setState(() => _sendToAll = true),
-                child: const CircleAvatar(
+                child: CircleAvatar(
                   radius: 22,
                   backgroundColor: AppColors.surface,
                   child: Icon(
@@ -428,7 +428,7 @@ class _GiftSheetState extends State<_GiftSheet> {
                   ListTile(
                     title: Text('x$q'),
                     trailing: q == _quantity
-                        ? const Icon(
+                        ? Icon(
                             Icons.check_rounded,
                             color: AppColors.primaryBright,
                           )

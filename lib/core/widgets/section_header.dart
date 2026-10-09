@@ -41,14 +41,14 @@ class SectionHeader extends StatelessWidget {
                 children: [
                   Text(
                     actionLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w600,
                       fontSize: 12.5,
                       color: AppColors.primaryBright,
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded,
+                  Icon(Icons.chevron_right_rounded,
                       size: 16, color: AppColors.primaryBright),
                 ],
               ),

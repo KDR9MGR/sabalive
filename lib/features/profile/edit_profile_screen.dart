@@ -103,7 +103,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   Container(
                     padding: const EdgeInsets.all(7),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: AppColors.primaryGradient,
                       shape: BoxShape.circle,
                     ),
@@ -115,7 +115,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Center(
+          Center(
             child: Text('Change Photo',
                 style: TextStyle(
                     color: AppColors.primaryBright, fontSize: 12.5)),

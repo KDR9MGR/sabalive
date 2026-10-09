@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
+import 'app_font.dart';
 
 class AppTheme {
   AppTheme._();
@@ -63,14 +64,14 @@ class AppTheme {
         errorBorder: _inputBorder(AppColors.danger),
         focusedErrorBorder: _inputBorder(AppColors.danger),
       ),
-      bottomSheetTheme: const BottomSheetThemeData(
+      bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: AppColors.bgElevated,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
       ),
-      dialogTheme: const DialogThemeData(
+      dialogTheme: DialogThemeData(
         backgroundColor: AppColors.bgElevated,
         surfaceTintColor: Colors.transparent,
       ),
@@ -82,7 +83,7 @@ class AppTheme {
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: AppColors.surface,
         labelStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-        side: const BorderSide(color: AppColors.stroke),
+        side: BorderSide(color: AppColors.stroke),
         shape: const StadiumBorder(),
       ),
     );
@@ -113,7 +114,9 @@ class AppTheme {
       color: color ?? AppColors.textPrimary,
     );
     if (font == fontFamily) return style.copyWith(fontFamily: font);
-    return GoogleFonts.getFont(font, textStyle: style);
+    // a name that is not a real Google font keeps Poppins instead of throwing
+    if (AppFont.resolve(font) == null) return style.copyWith(fontFamily: fontFamily);
+    return GoogleFonts.getFont(AppFont.resolve(font)!, textStyle: style);
   }
 
   static TextTheme _textTheme(TextTheme base, String font) {

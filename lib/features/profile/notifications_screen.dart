@@ -62,7 +62,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (_items.any((n) => n.unread))
             TextButton(
               onPressed: _markAll,
-              child: const Text('Mark all read',
+              child: Text('Mark all read',
                   style: TextStyle(color: AppColors.primaryBright, fontSize: 12)),
             ),
         ],
@@ -88,7 +88,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _items.length,
       separatorBuilder: (_, _) =>
-          const Divider(color: AppColors.stroke, height: 1, indent: 68),
+          Divider(color: AppColors.stroke, height: 1, indent: 68),
       itemBuilder: (context, i) {
         final n = _items[i];
         return Container(
@@ -129,7 +129,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ? Container(
                     width: 8,
                     height: 8,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.primaryBright,
                       shape: BoxShape.circle,
                     ),

@@ -74,11 +74,15 @@ class LuckyBoxProgress {
 
 /// Pure so it can be tested: where the box is, given when the stream started,
 /// the configured duration, "now", and whether a reward has been paid.
+///
+/// A viewer cannot see the host's wallet, so [pastDeadlineMeansOpened] is set for them: the box
+/// simply shows as opened (without an amount) once the time is up.
 LuckyBoxProgress luckyBoxProgress({
   required DateTime startedAt,
   required Duration duration,
   required DateTime now,
   int? rewardPaid,
+  bool pastDeadlineMeansOpened = false,
 }) {
   if (rewardPaid != null) {
     return LuckyBoxProgress(LuckyBoxPhase.opened, Duration.zero, rewardPaid);
@@ -87,7 +91,11 @@ LuckyBoxProgress luckyBoxProgress({
   if (remaining > Duration.zero) {
     return LuckyBoxProgress(LuckyBoxPhase.counting, remaining, null);
   }
-  return const LuckyBoxProgress(LuckyBoxPhase.opening, Duration.zero, null);
+  return LuckyBoxProgress(
+    pastDeadlineMeansOpened ? LuckyBoxPhase.opened : LuckyBoxPhase.opening,
+    Duration.zero,
+    null,
+  );
 }
 
 /// "12:05", or "1:02:05" past an hour.

@@ -1,23 +1,37 @@
 import 'package:flutter/material.dart';
 
+import 'app_palette.dart';
+
 /// SABALIVE palette — dark theme with purple / pink / gold brand accents.
 class AppColors {
   AppColors._();
 
-  // Backgrounds
-  static const Color bg = Color(0xFF0B0716);
-  static const Color bgElevated = Color(0xFF130C24);
-  static const Color surface = Color(0xFF1A1230);
-  static const Color surfaceAlt = Color(0xFF221743);
-  static const Color card = Color(0xFF1E1638);
-  static const Color stroke = Color(0xFF2E2352);
+  /// The brand-driven colours (backgrounds, the purples, the accent) come from the panel's
+  /// Site / Branding settings through [apply]; everything else below stays fixed. Read them when a
+  /// widget builds, not in a `const` expression, so a recolour reaches a running app.
+  static AppPalette _palette = AppPalette.stock;
+  static AppPalette get palette => _palette;
+
+  /// Switch to a new palette. Callers rebuild the UI afterwards (see ThemeConfigController).
+  static void apply(AppPalette palette) => _palette = palette;
+
+  // Backgrounds (the brand's hue, turned down to near-black)
+  static Color get bg => _palette.bg;
+  static Color get bgElevated => _palette.bgElevated;
+  static Color get surface => _palette.surface;
+  static Color get surfaceAlt => _palette.surfaceAlt;
+  static Color get card => _palette.card;
+  static Color get stroke => _palette.stroke;
   static const Color strokeSoft = Color(0x1AFFFFFF);
 
+  /// The top of the audio room's backdrop; it fades down to [bg].
+  static Color get roomTop => _palette.roomTop;
+
   // Brand
-  static const Color primary = Color(0xFF9B3DF5);
-  static const Color primaryDeep = Color(0xFF6D28D9);
-  static const Color primaryBright = Color(0xFFB25CFF);
-  static const Color magenta = Color(0xFFF5279B);
+  static Color get primary => _palette.primary;
+  static Color get primaryDeep => _palette.primaryDeep;
+  static Color get primaryBright => _palette.primaryBright;
+  static Color get magenta => _palette.magenta;
   static const Color pink = Color(0xFFEC4899);
   static const Color gold = Color(0xFFFFC93C);
   static const Color goldDeep = Color(0xFFF5A623);
@@ -36,16 +50,18 @@ class AppColors {
   static const Color textOnPrimary = Color(0xFFFFFFFF);
 
   // Gradients
-  static const LinearGradient primaryGradient = LinearGradient(
+  static LinearGradient get primaryGradient => LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [Color(0xFFB25CFF), Color(0xFF7C3AED)],
+    colors: [primaryBright, identical(_palette, AppPalette.stock) ? const Color(0xFF7C3AED) : _palette.primaryDeep],
   );
 
-  static const LinearGradient brandGradient = LinearGradient(
+  static LinearGradient get brandGradient => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF7C3AED), Color(0xFFC026D3), Color(0xFFF5279B)],
+    colors: identical(_palette, AppPalette.stock)
+        ? const [Color(0xFF7C3AED), Color(0xFFC026D3), Color(0xFFF5279B)]
+        : [_palette.primaryDeep, Color.lerp(_palette.primary, _palette.magenta, 0.5)!, _palette.magenta],
   );
 
   static const LinearGradient goldGradient = LinearGradient(
@@ -60,10 +76,10 @@ class AppColors {
     colors: [Color(0xFFFF2D55), Color(0xFFF5279B)],
   );
 
-  static const RadialGradient heroGlow = RadialGradient(
-    center: Alignment(0, -0.4),
+  static RadialGradient get heroGlow => RadialGradient(
+    center: const Alignment(0, -0.4),
     radius: 1.1,
-    colors: [Color(0xFF2A1755), Color(0xFF0B0716)],
+    colors: [_palette.heroGlowTop, _palette.bg],
   );
 
   /// Palette used to derive deterministic avatar / thumbnail gradients.

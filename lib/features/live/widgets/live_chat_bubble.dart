@@ -102,7 +102,7 @@ class _StickerBubble extends StatelessWidget {
         children: [
           Text(
             line.user.name,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Poppins',
               fontSize: 11.5,
               fontWeight: FontWeight.w600,

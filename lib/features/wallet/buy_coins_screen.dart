@@ -65,7 +65,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
     final packs = wallet.coinPacks;
 
     if (packs.isEmpty) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(child: CircularProgressIndicator(color: AppColors.primaryBright)),
       );
     }
@@ -227,7 +227,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
           Container(
             padding: EdgeInsets.fromLTRB(
                 20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.bgElevated,
               border: Border(top: BorderSide(color: AppColors.stroke)),
             ),

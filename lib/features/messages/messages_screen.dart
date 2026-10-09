@@ -226,7 +226,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   constraints: const BoxConstraints(minHeight: 44),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.stroke),
+                    borderSide: BorderSide(color: AppColors.stroke),
                   ),
                 ),
               ),
@@ -279,7 +279,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
       children: [
         if (recent.isNotEmpty) _recentStrip(recent),
         if (recent.isNotEmpty)
-          const Divider(color: AppColors.stroke, height: 24),
+          Divider(color: AppColors.stroke, height: 24),
         ...rows.map(_conversationTile),
       ],
     );
@@ -361,7 +361,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 margin: const EdgeInsets.only(left: 8),
                 width: 9,
                 height: 9,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: AppColors.primaryGradient,
                   shape: BoxShape.circle,
                 ),
@@ -534,7 +534,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                   isDense: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.stroke),
+                    borderSide: BorderSide(color: AppColors.stroke),
                   ),
                 ),
               ),

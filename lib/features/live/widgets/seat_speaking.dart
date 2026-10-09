@@ -29,6 +29,9 @@ class SeatSpeaking {
 
   void unbindSeat(int seat) => bindSeat(seat, null);
 
+  /// The seat whose holder uses Agora uid [uid], if one is known.
+  int? seatOfUid(int uid) => _seatByUid[_u(uid)];
+
   /// The seats whose holder is talking, from one volume report.
   Set<int> seatsFor(
     List<AudioVolumeInfo> speakers, {

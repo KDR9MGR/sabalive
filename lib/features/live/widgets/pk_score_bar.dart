@@ -79,7 +79,7 @@ class PkScoreBar extends StatelessWidget {
                 child: Text('🥊', style: TextStyle(fontSize: 18))),
             Positioned(
               left: (w * ratioA - 9).clamp(0.0, w - 18),
-              child: const Icon(Icons.diamond_rounded,
+              child: Icon(Icons.diamond_rounded,
                   color: AppColors.primaryBright, size: 18),
             ),
           ],

@@ -101,7 +101,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         style: Theme.of(context).textTheme.titleLarge),
                     if (_user.verified) ...[
                       const SizedBox(width: 6),
-                      const Icon(Icons.verified_rounded,
+                      Icon(Icons.verified_rounded,
                           color: AppColors.primaryBright, size: 18),
                     ],
                   ],

@@ -98,6 +98,15 @@ void main() {
         speaking.seatsFor([v(55, 90)], occupants: {}, hostId: 'h', mySeat: null, meMuted: false),
         isEmpty,
       );
+      expect(speaking.seatOfUid(55), isNull);
+    });
+
+    test('seatOfUid finds the seat of a big uid whichever sign it arrives with', () {
+      const big = 3000000001;
+      final speaking = SeatSpeaking()..bindSeat(4, big);
+      expect(speaking.seatOfUid(big), 4);
+      expect(speaking.seatOfUid(big - 0x100000000), 4);
+      expect(speaking.seatOfUid(12), isNull);
     });
   });
 

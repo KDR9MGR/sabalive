@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart' as w;
 
+import '../../theme/app_font.dart';
 import 'i18n.dart';
 
 export 'i18n.dart' show tr;
@@ -63,11 +64,16 @@ class Text extends w.StatelessWidget {
 
   @override
   w.Widget build(w.BuildContext context) {
+    // the panel's font, when one other than the bundled Poppins is chosen: applied on top of the
+    // surrounding text style so weight, size and colour stay what the screen asked for
+    final w.TextStyle? shown = AppFont.isCustom
+        ? AppFont.style(w.DefaultTextStyle.of(context).style.merge(style))
+        : style;
     final span = textSpan;
     if (span != null) {
       return w.Text.rich(
         translateSpan(span),
-        style: style,
+        style: shown,
         strutStyle: strutStyle,
         textAlign: textAlign,
         textDirection: textDirection,
@@ -84,7 +90,7 @@ class Text extends w.StatelessWidget {
     }
     return w.Text(
       I18n.tr(data!),
-      style: style,
+      style: shown,
       strutStyle: strutStyle,
       textAlign: textAlign,
       textDirection: textDirection,

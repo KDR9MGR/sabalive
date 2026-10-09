@@ -74,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               if (user.verified) ...[
                                 const SizedBox(width: 6),
-                                const Icon(Icons.verified_rounded,
+                                Icon(Icons.verified_rounded,
                                     color: AppColors.primaryBright, size: 16),
                               ],
                             ],
@@ -338,7 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: GestureDetector(
               onTap: () => AppNav.wallet(context),
-              child: const Column(
+              child: Column(
                 children: [
                   Icon(Icons.account_balance_wallet_rounded,
                       color: AppColors.primaryBright, size: 20),

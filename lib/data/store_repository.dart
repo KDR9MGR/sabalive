@@ -1,4 +1,5 @@
 import '../config/supabase_client.dart';
+import 'models.dart' show parsePlaySpeed;
 
 enum StoreCategory { frame, vip, entryEffect, vehicle, roomSkin }
 
@@ -19,6 +20,8 @@ class StoreItem {
     required this.priceCoins,
     required this.durationDays,
     this.assetUrl,
+    this.playSpeed,
+    this.soundUrl,
   });
 
   factory StoreItem.fromRow(Map<String, dynamic> row) => StoreItem(
@@ -29,6 +32,8 @@ class StoreItem {
         priceCoins: row['price_coins'] as int,
         durationDays: row['duration_days'] as int,
         assetUrl: _nonEmpty(row['asset_url']),
+        playSpeed: parsePlaySpeed(row['play_speed']),
+        soundUrl: _nonEmpty(row['sound_url']),
       );
 
   static String? _nonEmpty(Object? v) {
@@ -46,6 +51,12 @@ class StoreItem {
   /// Artwork uploaded in the admin panel (SVGA / MP4 / WebP / GIF / PNG); the
   /// emoji stays the stand-in for items that have none.
   final String? assetUrl;
+
+  /// How fast the effect plays (1 = the file's own speed); null = the app default.
+  final double? playSpeed;
+
+  /// An audio file attached in the panel; it plays with the effect.
+  final String? soundUrl;
 }
 
 class OwnedItem {
@@ -73,26 +84,41 @@ class StoreRepository {
     return rows.map(StoreItem.fromRow).toList();
   }
 
-  static final Map<String, StoreItem> _byId = {};
+  static final Map<String, ({StoreItem item, DateTime at})> _byId = {};
+
+  /// How long a fetched item is trusted. The same handful of items come up again and again in a
+  /// room, but an owner can change one in the panel (new artwork, speed or sound), so it is read
+  /// again after this.
+  static const itemCacheLifetime = Duration(minutes: 10);
 
   /// Store items by id, for rendering something another user has equipped (an
-  /// entry effect, a room skin). Remembered for the session, since the same
-  /// handful of items come up again and again.
+  /// entry effect, a room skin).
   Future<List<StoreItem>> itemsByIds(List<String> ids) async {
+    final now = DateTime.now();
+    bool fresh(String id) {
+      final hit = _byId[id];
+      return hit != null && now.difference(hit.at) < itemCacheLifetime;
+    }
+
     final missing = [
       for (final id in ids.toSet())
-        if (!_byId.containsKey(id)) id,
+        if (!fresh(id)) id,
     ];
     if (missing.isNotEmpty) {
-      final rows = await supabase.from('store_items').select().inFilter('id', missing);
-      for (final r in rows) {
-        final item = StoreItem.fromRow(r);
-        _byId[item.id] = item;
+      try {
+        final rows = await supabase.from('store_items').select().inFilter('id', missing);
+        for (final r in rows) {
+          final item = StoreItem.fromRow(r);
+          _byId[item.id] = (item: item, at: now);
+        }
+      } catch (_) {
+        // offline: an older copy of an item is better than no effect at all
+        if (_byId.keys.toSet().intersection(ids.toSet()).isEmpty) rethrow;
       }
     }
     return [
       for (final id in ids)
-        if (_byId[id] case final item?) item,
+        if (_byId[id] case final hit?) hit.item,
     ];
   }
 

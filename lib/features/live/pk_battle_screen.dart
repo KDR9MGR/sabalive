@@ -727,7 +727,7 @@ class _PkBattleScreenState extends State<PkBattleScreen>
               ),
               const SizedBox(height: 16),
               ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.wallpaper_rounded,
                   color: AppColors.primaryBright,
                 ),
@@ -1068,7 +1068,7 @@ class _PkBattleScreenState extends State<PkBattleScreen>
         },
         child: _pillRow(
           'Invite an opponent',
-          trailing: const Icon(
+          trailing: Icon(
             Icons.add_rounded,
             color: AppColors.primaryDeep,
             size: 20,

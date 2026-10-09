@@ -98,7 +98,7 @@ class _PkOpponentPickerSheetState extends State<_PkOpponentPickerSheet> {
                   shrinkWrap: true,
                   itemCount: candidates.length,
                   separatorBuilder: (_, _) =>
-                      const Divider(height: 1, color: AppColors.stroke),
+                      Divider(height: 1, color: AppColors.stroke),
                   itemBuilder: (_, i) {
                     final s = candidates[i];
                     final busy = _inviting == s.id;

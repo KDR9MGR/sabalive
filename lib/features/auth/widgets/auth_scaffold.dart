@@ -116,13 +116,13 @@ class OrDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Expanded(child: Divider(color: AppColors.stroke)),
+        Expanded(child: Divider(color: AppColors.stroke)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(label,
               style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
         ),
-        const Expanded(child: Divider(color: AppColors.stroke)),
+        Expanded(child: Divider(color: AppColors.stroke)),
       ],
     );
   }

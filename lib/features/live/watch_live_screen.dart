@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
+import '../../core/utils/fire_and_forget.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
 import '../../core/utils/share_links.dart';
@@ -17,10 +18,12 @@ import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/app_thumb.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../core/widgets/keyboard_lift.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
+import '../../data/profile_cache.dart';
 import '../../data/store_repository.dart';
 import '../../data/stream_end_watcher.dart';
 import '../../data/viewer_ban_watcher.dart';
@@ -34,9 +37,11 @@ import '../../state/blocks_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import 'widgets/entry_catch_up.dart';
 import 'widgets/room_effect.dart';
 import 'live_access_exit.dart';
 import 'widgets/gift_sheet.dart';
+import 'widgets/lucky_box_badge.dart';
 import 'widgets/live_emoji_sheet.dart';
 import 'widgets/ghost_watch_bar.dart';
 import 'widgets/live_chat_bubble.dart';
@@ -103,6 +108,15 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   RealtimeChannel? _seatStreamChannel;
   bool _seatBusy = false;
   int? _mySeat;
+
+  /// A seat in my name that was already there when I walked in: a leftover of an earlier visit (the
+  /// app closed without letting go). It is released, never adopted; a seat the host approves LATER
+  /// arrives through the realtime insert (or the next seat re-read) and is a real one.
+  int? _leftoverSeat;
+
+  /// Bumped whenever a seat changes hands, so a profile lookup that finishes late cannot paint the
+  /// previous occupant over the current one.
+  final Map<int, int> _seatGen = {};
   bool _myMuted = false;
   Timer? _heartbeat;
   int? _myAgoraUid;
@@ -138,6 +152,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       // timers (Android suspends both once the display turns off), which
       // looked like random disconnects with no error at all.
       WakelockPlus.enable().catchError((_) {});
+      // gifts changed in the panel since the app opened (artwork, speed, sound, new ones) are picked up now
+      unawaited(context.read<WalletController>().refreshCatalog());
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
@@ -186,11 +202,59 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     );
   }
 
+  int _bumpSeat(int seat) => _seatGen[seat] = (_seatGen[seat] ?? 0) + 1;
+
+  /// Let go of a seat that is in my name but that I did not just get approved for. Safe to repeat.
+  void _dropLeftoverSeat() {
+    fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
+  }
+
+  /// The host approved my request: I hold [seat] now, so start publishing my microphone.
+  Future<void> _becomeSeated(int seat) async {
+    if (!mounted || _mySeat == seat) return;
+    _leftoverSeat = null;
+    setState(() => _mySeat = seat);
+    _syncMySeatUid();
+    final engine = _engine;
+    if (engine != null) {
+      try {
+        await AgoraService.instance.switchRole(
+          engine,
+          channelName: widget.stream.id,
+          asBroadcaster: true,
+        );
+      } catch (e) {
+        debugPrint('switchRole(broadcaster) failed: $e');
+      }
+    }
+    // The seat row already carries a fresh heartbeat, but the periodic timer may not tick for up to
+    // 30 s: one now keeps it well inside the server's sweep window.
+    supabase
+        .rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id})
+        .catchError((e) => debugPrint('heartbeat_seat failed: $e'));
+  }
+
   Future<void> _reconcileSeats() async {
     if (!_isReal || !mounted) return;
     final snap = await fetchSeatSnapshot(widget.stream.id);
     if (snap == null || !mounted) return;
-    final mine = snap.seatOf(supabase.auth.currentUser?.id);
+    var mine = snap.seatOf(supabase.auth.currentUser?.id);
+    final occupants = Map<int, AppUser>.of(snap.occupants);
+    // a seat in my name that was there when I arrived is a leftover; once the database no longer
+    // shows it, a seat in my name is a new, approved one
+    int? approved;
+    if (mine != null && _mySeat == null) {
+      if (mine == _leftoverSeat) {
+        occupants.remove(mine);
+        _speaking.unbindSeat(mine);
+        _dropLeftoverSeat();
+        mine = null;
+      } else {
+        approved = mine; // the realtime insert was missed: take the seat now
+      }
+    } else if (mine == null) {
+      _leftoverSeat = null;
+    }
     // my own seat is gone (the host removed me, or it was freed): act only if the next
     // look agrees, so a claim that was still landing isn't mistaken for it
     var lostMine = false;
@@ -204,17 +268,20 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     setState(() {
       final keep = keepMine ? _seatOccupants[_mySeat!] : null;
       for (final seat in _seatOccupants.keys) {
-        if (!snap.occupants.containsKey(seat)) _speaking.unbindSeat(seat);
+        if (!occupants.containsKey(seat)) {
+          _speaking.unbindSeat(seat);
+          _bumpSeat(seat);
+        }
       }
       _seatOccupants
         ..clear()
-        ..addAll(snap.occupants);
+        ..addAll(occupants);
       if (keep != null) _seatOccupants[_mySeat!] = keep;
       _mutedSeats
         ..clear()
         ..addAll(snap.muted);
       for (final e in snap.agoraUids.entries) {
-        _speaking.bindSeat(e.key, e.value);
+        if (occupants.containsKey(e.key)) _speaking.bindSeat(e.key, e.value);
       }
       if (snap.locked != null) _lockedSeats = snap.locked!;
       if (snap.seatCount != null) _seatCount = snap.seatCount!;
@@ -222,13 +289,14 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         _hostAgoraUid = snap.hostAgoraUid;
         _recomputeRemoteUid();
       }
-      if (mine != null) _mySeat = mine;
+      if (mine != null && _mySeat != null) _mySeat = mine;
       if (lostMine) {
         _mySeat = null;
         _myMuted = false;
         _missingMySeat = 0;
       }
     });
+    if (approved != null) unawaited(_becomeSeated(approved));
     if (lostMine) {
       final engine = _engine;
       if (engine != null) {
@@ -263,15 +331,18 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
             final seat = r['seat_number'] as int;
+            // A seat in my name when I walk in is a leftover of an earlier visit (the app closed
+            // without letting go). Adopting it showed my old face on the seat while this phone was
+            // only an audience member; it is released instead. (_mySeat is set when the host
+            // approves a request: see _becomeSeated.)
+            if (profileRow['id'] == myId) {
+              _leftoverSeat = seat;
+              continue;
+            }
+            ProfileCache.instance.put(profileRow);
             _speaking.bindSeat(seat, r['agora_uid'] as int?);
             _seatOccupants[seat] = AppUser.fromRow(profileRow);
             if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
-            // Without this, reopening the screen while already seated (a
-            // reconnect, a hot navigation back, etc.) never restores
-            // _mySeat — it was only ever set by the INSERT callback below,
-            // so this client wouldn't recognize its own seat being deleted
-            // later and would miss the "removed from your seat" handling.
-            if (profileRow['id'] == myId) _mySeat = seat;
           }
         }
         final locked = streamRow?['locked_seats'] as List?;
@@ -282,6 +353,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         if (streamRow != null) _room.apply(streamRow, initial: true);
         _recomputeRemoteUid();
       });
+      if (_leftoverSeat != null) _dropLeftoverSeat();
     }
     _seatsChannel = supabase
         .channel('live-seats-${widget.stream.id}')
@@ -298,46 +370,20 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             final seat = payload.newRecord['seat_number'] as int;
             final occupantId = payload.newRecord['occupant_id'] as String;
             _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
-            final profileRow = await supabase
-                .from('profiles')
-                .select()
-                .eq('id', occupantId)
-                .maybeSingle();
-            if (mounted && profileRow != null) {
-              setState(() {
-                _seatOccupants[seat] = AppUser.fromRow(profileRow);
-                _mutedSeats.remove(seat);
-              });
-            }
+            final gen = _bumpSeat(seat);
             // My own pending request just got approved by the host — this is
             // the only place that seat assignment becomes known to me, since
             // approve_pk_seat_request runs on the HOST's device. Start
             // actually publishing mic audio now that I'm really seated.
-            if (mounted &&
-                occupantId == supabase.auth.currentUser?.id &&
-                _mySeat != seat) {
-              setState(() => _mySeat = seat);
-              _syncMySeatUid();
-              final engine = _engine;
-              if (engine != null) {
-                await AgoraService.instance.switchRole(
-                  engine,
-                  channelName: widget.stream.id,
-                  asBroadcaster: true,
-                );
-              }
-              // approve_pk_seat_request already stamps last_heartbeat_at at
-              // insert time, but the periodic timer above won't necessarily
-              // tick again for up to 30s — sending one right away narrows
-              // the window before the next tick has to land cleanly to stay
-              // under finalize_stale_presence's 90s threshold.
-              supabase
-                  .rpc(
-                    'heartbeat_seat',
-                    params: {'p_stream_id': widget.stream.id},
-                  )
-                  .catchError((e) => debugPrint('heartbeat_seat failed: $e'));
-            }
+            final isMe = occupantId == supabase.auth.currentUser?.id;
+            if (isMe) unawaited(_becomeSeated(seat));
+            final profileRow = await ProfileCache.instance.get(occupantId);
+            // the seat changed hands (or emptied) while the profile was on its way
+            if (!mounted || profileRow == null || _seatGen[seat] != gen) return;
+            setState(() {
+              _seatOccupants[seat] = AppUser.fromRow(profileRow);
+              _mutedSeats.remove(seat);
+            });
           },
         )
         .onPostgresChanges(
@@ -391,7 +437,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           callback: (payload) {
             if (payload.oldRecord['live_stream_id'] != widget.stream.id) return;
             final seat = payload.oldRecord['seat_number'] as int?;
-            if (seat != null) _speaking.unbindSeat(seat);
+            if (seat != null) {
+              _speaking.unbindSeat(seat);
+              _bumpSeat(seat);
+            }
             if (mounted && seat != null) {
               final wasMe = _mySeat == seat;
               setState(() {
@@ -575,6 +624,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         'join_live_stream',
         params: {'p_stream_id': widget.stream.id},
       );
+      // my own vehicle / entry effect plays now, from what I have equipped (see playMyEntry)
+      if (mounted && !_ghost) {
+        unawaited(playMyEntry(_effects, meId: supabase.auth.currentUser?.id));
+      }
     } catch (e) {
       // Banned from live, or removed by the host: this must stop the join (the
       // server has already refused it). Anything else is best-effort — a missed
@@ -701,36 +754,11 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   }
 
   Future<void> _loadRealChat() async {
-    // A new arrival sees only what is said from now on — no earlier chat. The last
-    // few seconds are still read, but only to catch this user's own join row (its
-    // entry effect can land before this screen starts listening); no lines are shown.
-    final rows = await supabase
-        .from('live_chat_messages')
-        .select()
-        .eq('live_stream_id', widget.stream.id)
-        .gte(
-          'created_at',
-          DateTime.now().toUtc().subtract(const Duration(seconds: 20)).toIso8601String(),
-        )
-        .order('created_at', ascending: false)
-        .limit(30);
-    if (!mounted) return;
-    // If our own join row landed before this screen began listening, our own
-    // entry effect would otherwise be missed.
+    // A new arrival sees only what is said from now on: no earlier chat. The room listens FIRST and
+    // then, once the channel is really subscribed, reads the last few seconds only to catch this user's
+    // own join row (its entry effect can land before the channel is up, and Realtime never replays).
+    // No lines are shown from that read.
     final meId = context.read<AuthController>().user?.id;
-    for (final row in rows.reversed) {
-      unawaited(
-        _effects.handleRow(
-          row,
-          meId: meId,
-          senderName: 'You',
-          giftById: (_) => null,
-          loadItems: StoreRepository().itemsByIds,
-          history: true,
-        ),
-      );
-    }
-
     _chatChannel = supabase
         .channel('live-chat-${widget.stream.id}')
         .onPostgresChanges(
@@ -744,11 +772,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           ),
           callback: (payload) async {
             final senderId = payload.newRecord['sender_id'] as String;
-            final profileRow = await supabase
-                .from('profiles')
-                .select()
-                .eq('id', senderId)
-                .maybeSingle();
+            final profileRow = await ProfileCache.instance.get(senderId);
             final sender = profileRow != null
                 ? AppUser.fromRow(profileRow)
                 : AppUser(id: senderId, name: 'Someone', username: '@user');
@@ -774,7 +798,11 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             );
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            unawaited(catchUpOwnEntry(widget.stream.id, _effects, meId: meId));
+          }
+        });
   }
 
   LiveChatLine _chatLineFromRow(
@@ -808,10 +836,29 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         _mySeat != null &&
         (state == AppLifecycleState.paused ||
             state == AppLifecycleState.detached)) {
-      unawaited(
-        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
-      );
-      _mySeat = null;
+      final seat = _mySeat!;
+      fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
+      // Stop publishing too (see the same note in watch_audio_room_screen.dart).
+      final engine = _engine;
+      if (engine != null) {
+        unawaited(AgoraService.instance.switchRole(
+          engine,
+          channelName: widget.stream.id,
+          asBroadcaster: false,
+        ));
+      }
+      _speaking.unbindSeat(seat);
+      _bumpSeat(seat);
+      if (mounted) {
+        setState(() {
+          _seatOccupants.remove(seat);
+          _mutedSeats.remove(seat);
+          _mySeat = null;
+          _myMuted = false;
+        });
+      } else {
+        _mySeat = null;
+      }
     }
   }
 
@@ -846,15 +893,11 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     if (_isReal) {
       WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
-      unawaited(
-        supabase.rpc(
+      fireAndForget(supabase.rpc(
           'leave_live_stream',
           params: {'p_stream_id': widget.stream.id},
-        ),
-      );
-      unawaited(
-        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
-      );
+        ));
+      fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
     }
     super.dispose();
   }
@@ -926,14 +969,23 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         : [if (giftChoice.recipient != null) giftChoice.recipient!];
     if (recipients.isEmpty) return;
     try {
-      for (final recipient in recipients) {
-        final qty = giftChoice.sendToAll ? 1 : giftChoice.quantity;
-        for (var i = 0; i < qty; i++) {
-          await context.read<WalletController>().sendGift(
-            gift,
-            recipient,
-            liveStreamId: _isReal ? widget.stream.id : null,
-          );
+      if (giftChoice.sendToAll && _isReal) {
+        // one server action for everyone (host + seated, never me): charged up front, one chat line
+        await context.read<WalletController>().sendGiftToAll(
+          gift,
+          liveStreamId: widget.stream.id,
+          fallbackRecipients: recipients,
+        );
+      } else {
+        for (final recipient in recipients) {
+          final qty = giftChoice.sendToAll ? 1 : giftChoice.quantity;
+          for (var i = 0; i < qty; i++) {
+            await context.read<WalletController>().sendGift(
+              gift,
+              recipient,
+              liveStreamId: _isReal ? widget.stream.id : null,
+            );
+          }
         }
       }
     } catch (e) {
@@ -945,7 +997,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     }
     if (!mounted) return;
     final label = giftChoice.sendToAll
-        ? 'sent everyone ${gift.name}'
+        ? 'sent ${gift.name} to All'
         : giftChoice.quantity > 1
         ? 'sent ${giftChoice.quantity}x ${gift.name}'
         : 'sent ${gift.name}';
@@ -956,7 +1008,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         gift: gift,
         senderName: 'You',
         senderId: me.id,
-        count: giftChoice.sendToAll ? recipients.length : giftChoice.quantity,
+        count: giftChoice.sendToAll ? 1 : giftChoice.quantity,
+        toAll: giftChoice.sendToAll,
       ),
     );
     // Demo streams have no Realtime chat feed, so echo the line locally.
@@ -1096,8 +1149,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       // The video stage keeps its size when the keyboard opens (resizing a live video
-      // surface on every keyboard frame is slow and can crash some phones); the chat
-      // bar is lifted above the keyboard by hand below instead.
+      // surface on every keyboard frame is slow and can crash some phones).
       resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
@@ -1125,38 +1177,50 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               ),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          // Nothing here is laid out again for the keyboard: the video, top bar and seat strip stay
+          // put (the strip and the side rail simply sit behind the keyboard), and only the chat and
+          // the input bar are painted higher (KeyboardStable / KeyboardLift).
+          KeyboardStable(
+            // the system bar is counted twice under the input bar (SafeArea and the spacer), so it rests that much higher
+            restInset: 2 * MediaQuery.viewPaddingOf(context).bottom,
             child: SafeArea(
-            child: Column(
-              children: [
-                _topBar(context, following, session),
-                const Spacer(),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(child: _chatColumn()),
-                    _sideRail(),
-                  ],
-                ),
-                if (_isReal) ...[
-                  const SizedBox(height: 8),
-                  CompactSeatStrip(
-                    seatCount: _seatCount,
-                    occupants: _seatOccupants,
-                    lockedSeats: _lockedSeats,
-                    mutedSeats: _mutedSeats,
-                    speakingSeats: _speakingSeats,
-                    onSeatTap: _seatTap,
+              child: Column(
+                children: [
+                  _topBar(context, following, session),
+                  const Spacer(),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(child: KeyboardLift(child: _chatColumn())),
+                      _sideRail(),
+                    ],
                   ),
+                  if (_isReal) ...[
+                    const SizedBox(height: 8),
+                    CompactSeatStrip(
+                      seatCount: _seatCount,
+                      occupants: _seatOccupants,
+                      lockedSeats: _lockedSeats,
+                      mutedSeats: _mutedSeats,
+                      speakingSeats: _speakingSeats,
+                      onSeatTap: _seatTap,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  KeyboardLift(child: _inputBar()),
+                  SizedBox(height: MediaQuery.viewPaddingOf(context).bottom + 6),
                 ],
-                const SizedBox(height: 10),
-                _inputBar(),
-                SizedBox(height: MediaQuery.of(context).padding.bottom + 6),
-              ],
+              ),
             ),
           ),
-          ),
+          // the Lucky Box: a gift box with the panel's countdown, under the top bar (video lives only;
+          // the reward is the host's, so viewers just see the box and when it opens)
+          if (_isReal)
+            Positioned(
+              left: 12,
+              top: MediaQuery.viewPaddingOf(context).top + 64,
+              child: LuckyBoxBadge(streamId: widget.stream.id, forViewer: true),
+            ),
           // floating hearts
           Positioned(
             right: 6,
@@ -1197,7 +1261,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                 )
-              : const CircularProgressIndicator(color: AppColors.primaryBright),
+              : CircularProgressIndicator(color: AppColors.primaryBright),
         ),
       );
     }

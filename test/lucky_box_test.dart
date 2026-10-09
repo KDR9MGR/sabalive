@@ -202,5 +202,57 @@ void main() {
       await t.pump();
       expect(find.byIcon(Icons.card_giftcard_rounded), findsNothing);
     });
+
+    testWidgets('a first load that failed is tried again and the box then appears', (t) async {
+      clock = start.add(const Duration(minutes: 10));
+      final repo = _FakeRepo(startedAt: start, failConfig: true);
+      await t.pumpWidget(host(repo));
+      await t.pump();
+      expect(find.byIcon(Icons.card_giftcard_rounded), findsNothing);
+
+      repo.failConfig = false; // the network came up
+      await t.pump(const Duration(seconds: 15));
+      await t.pump();
+      expect(find.byIcon(Icons.card_giftcard_rounded), findsOneWidget);
+      expect(find.text('30:00'), findsOneWidget);
+    });
+  });
+
+  group('LuckyBoxBadge for a viewer', () {
+    late DateTime clock;
+    Widget host(_FakeRepo repo) => MaterialApp(
+          home: Scaffold(
+            body: LuckyBoxBadge(streamId: 's1', forViewer: true, repo: repo, now: () => clock),
+          ),
+        );
+
+    testWidgets('sees the box and the countdown, and never looks at a wallet', (t) async {
+      clock = start.add(const Duration(minutes: 10));
+      final repo = _FakeRepo(startedAt: start);
+      await t.pumpWidget(host(repo));
+      await t.pump();
+      expect(find.text('30:00'), findsOneWidget);
+      await t.pump(const Duration(seconds: 30));
+      expect(repo.rewardChecks, 0);
+    });
+
+    testWidgets('when the time is up the box shows Opened, without an amount', (t) async {
+      clock = start.add(const Duration(minutes: 41));
+      await t.pumpWidget(host(_FakeRepo(startedAt: start)));
+      await t.pump();
+      expect(find.text('Opened'), findsOneWidget);
+      expect(find.text('Opening…'), findsNothing);
+      expect(find.byIcon(Icons.diamond_rounded), findsNothing);
+    });
+
+    testWidgets('tapping explains it is the host who wins', (t) async {
+      clock = start.add(const Duration(minutes: 10));
+      await t.pumpWidget(host(_FakeRepo(startedAt: start)));
+      await t.pump();
+      await t.tap(find.byIcon(Icons.card_giftcard_rounded));
+      await t.pumpAndSettle();
+      expect(find.textContaining('The host wins 3,000 diamonds'), findsOneWidget);
+      expect(find.textContaining('40 minutes'), findsOneWidget);
+    });
   });
 }

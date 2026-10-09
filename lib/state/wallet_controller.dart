@@ -69,6 +69,8 @@ class WalletController extends ChangeNotifier {
 
   bool canAfford(int price) => _coins >= price;
 
+  DateTime? _catalogAt;
+
   Future<void> _loadCatalog() async {
     final giftRows = await supabase.from('gifts').select().eq('status', 'active').order('sort_order', ascending: true);
     final packRows = await supabase.from('coin_packages').select().eq('status', 'active').order('sort_order', ascending: true);
@@ -77,7 +79,19 @@ class WalletController extends ChangeNotifier {
       packRows.length,
       (i) => CoinPack.fromRow(packRows[i], popular: i == packRows.length ~/ 2),
     );
+    _catalogAt = DateTime.now();
     notifyListeners();
+  }
+
+  /// Reads the gift catalog again if it is older than [maxAge]. It was only read when the app started, so a
+  /// gift added or changed in the panel (new artwork, speed, sound) did not reach a phone until it restarted,
+  /// and a viewer could not play a new gift that someone else sent. Called when a live opens. Never throws.
+  Future<void> refreshCatalog({Duration maxAge = const Duration(minutes: 5)}) async {
+    final at = _catalogAt;
+    if (at != null && DateTime.now().difference(at) < maxAge) return;
+    try {
+      await _loadCatalog();
+    } catch (_) {/* keep the catalog we have */}
   }
 
   /// Wallet & Earnings' Transaction History excludes these same kinds, so
@@ -172,6 +186,47 @@ class WalletController extends ChangeNotifier {
       'p_receiver_id': receiver.id,
       'p_live_stream_id': liveStreamId,
     });
+  }
+
+  /// Sends [gift] to everyone in the room as ONE server action (`send_gift_to_all`): the host and whoever is
+  /// on a seat, never the sender. The server charges price x people up front, so it either all goes or none
+  /// of it does, and the room gets a single "sent (gift) to All" line. Returns how many people got it.
+  ///
+  /// If the backend doesn't have the function yet (an app newer than the database), it falls back to
+  /// sending one gift per person in [fallbackRecipients].
+  Future<int> sendGiftToAll(
+    Gift gift, {
+    required String liveStreamId,
+    required List<AppUser> fallbackRecipients,
+  }) async {
+    try {
+      final n = await supabase.rpc('send_gift_to_all', params: {
+        'p_gift_id': gift.id,
+        'p_live_stream_id': liveStreamId,
+      });
+      return (n as num?)?.toInt() ?? 0;
+    } catch (e) {
+      if (!isMissingFunction(e)) rethrow;
+    }
+    final me = supabase.auth.currentUser?.id;
+    var sent = 0;
+    for (final r in fallbackRecipients) {
+      if (r.id == me) continue;
+      await sendGift(gift, r, liveStreamId: liveStreamId);
+      sent++;
+    }
+    return sent;
+  }
+
+  /// The database has no function with that name (yet): PostgREST code PGRST202 / Postgres 42883.
+  @visibleForTesting
+  static bool isMissingFunction(Object e) {
+    if (e is PostgrestException) {
+      return e.code == 'PGRST202' ||
+          e.code == '42883' ||
+          e.message.contains('Could not find the function');
+    }
+    return false;
   }
 
   /// ALPHA: no real payment gateway yet, so this credits the pack's coins

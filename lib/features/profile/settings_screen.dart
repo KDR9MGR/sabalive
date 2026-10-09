@@ -77,7 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _switch('Read Receipts', 'read_receipts'),
           _switch('Private Account', 'private_account'),
           ListTile(
-            leading: const Icon(Icons.language_rounded,
+            leading: Icon(Icons.language_rounded,
                 color: AppColors.primaryBright, size: 20),
             title: const Text('Language', style: TextStyle(fontSize: 13.5)),
             trailing: Row(

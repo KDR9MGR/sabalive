@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svga/flutter_svga.dart';
 import 'package:video_player/video_player.dart';
+
+import '../media/effect_file_cache.dart';
 
 enum MediaKind { svga, video, animatedImage, image }
 
@@ -53,6 +56,9 @@ class RemoteMedia extends StatelessWidget {
     this.muted = true,
     this.onFinished,
     this.onError,
+    this.onPlaying,
+    this.speed = 1,
+    this.silenceEmbeddedAudio = false,
     this.fallback,
     this.svgaLoader,
     this.imageLoader,
@@ -73,6 +79,17 @@ class RemoteMedia extends StatelessWidget {
   /// The file could not be loaded or played. Called just before [onFinished],
   /// so a caller can show something else (a gift falls back to its emoji).
   final VoidCallback? onError;
+
+  /// Playback has begun. [expected] is how long this one pass will take at the chosen [speed], when the
+  /// file says (a one-shot effect uses it to know when to give up waiting for [onFinished]).
+  final void Function(Duration? expected)? onPlaying;
+
+  /// 1 = the file's own speed; 0.75 plays it a quarter slower. Applies to SVGA, MP4 and GIF / WebP.
+  final double speed;
+
+  /// Mute the sound inside the file (an MP4's or an SVGA's own audio). Used when the panel attached a
+  /// separate sound to the effect, so the two don't play over each other.
+  final bool silenceEmbeddedAudio;
   final Widget? fallback;
 
   /// Injectable for tests; defaults to downloading (and caching) the file.
@@ -91,6 +108,9 @@ class RemoteMedia extends StatelessWidget {
           animate: animate,
           onFinished: onFinished,
           onError: onError,
+          onPlaying: onPlaying,
+          speed: speed,
+          silence: silenceEmbeddedAudio,
           fallback: blank,
           loader: svgaLoader ?? SVGAParser.shared.decodeFromURL,
         ),
@@ -99,10 +119,12 @@ class RemoteMedia extends StatelessWidget {
           url: url,
           fit: fit,
           loop: loop,
-          muted: muted,
+          muted: muted || silenceEmbeddedAudio,
           still: !animate,
           onFinished: onFinished,
           onError: onError,
+          onPlaying: onPlaying,
+          speed: speed,
           fallback: blank,
         ),
       MediaKind.animatedImage => _AnimatedImageMedia(
@@ -113,6 +135,8 @@ class RemoteMedia extends StatelessWidget {
           animate: animate,
           onFinished: onFinished,
           onError: onError,
+          onPlaying: onPlaying,
+          speed: speed,
           fallback: blank,
           loader: imageLoader ?? _downloadImageBytes,
         ),
@@ -144,6 +168,9 @@ class _SvgaMedia extends StatefulWidget {
     required this.animate,
     required this.onFinished,
     required this.onError,
+    required this.onPlaying,
+    required this.speed,
+    required this.silence,
     required this.fallback,
     required this.loader,
   });
@@ -153,6 +180,9 @@ class _SvgaMedia extends StatefulWidget {
   final bool animate;
   final VoidCallback? onFinished;
   final VoidCallback? onError;
+  final void Function(Duration? expected)? onPlaying;
+  final double speed;
+  final bool silence;
   final Widget fallback;
   final SvgaLoader loader;
 
@@ -197,11 +227,19 @@ class _SvgaMediaState extends State<_SvgaMedia>
         return;
       }
       _ctl.videoItem = movie;
+      if (widget.silence) _ctl.muted = true;
+      // the controller's duration is the file's own; stretch it for a slower (or faster) play
+      final own = _ctl.duration;
+      if (own != null && own > Duration.zero && widget.speed != 1 && widget.speed > 0) {
+        _ctl.duration = Duration(microseconds: (own.inMicroseconds / widget.speed).round());
+      }
       setState(() => _ready = true);
       if (!widget.animate) return; // first frame only
       if (widget.loop) {
         _ctl.repeat();
       } else {
+        final total = _ctl.duration;
+        widget.onPlaying?.call(total == null || total == Duration.zero ? null : total);
         _ctl.forward().whenComplete(_done);
       }
     } catch (_) {
@@ -241,12 +279,16 @@ class _VideoMedia extends StatefulWidget {
     required this.still,
     required this.onFinished,
     required this.onError,
+    required this.onPlaying,
+    required this.speed,
     required this.fallback,
   });
   final String url;
   final BoxFit fit;
   final bool loop;
   final bool muted;
+  final void Function(Duration? expected)? onPlaying;
+  final double speed;
 
   /// A thumbnail: show the first frame, paused.
   final bool still;
@@ -285,10 +327,19 @@ class _VideoMediaState extends State<_VideoMedia> {
       _activeStills++;
       _holdsStill = true;
     }
-    final c = VideoPlayerController.networkUrl(
-      Uri.parse(widget.url),
-      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-    );
+    // A one-shot effect plays from the stored copy when there is one (instant start, no stalls), and
+    // otherwise streams while a copy is fetched for next time. Thumbnails and loops always stream.
+    File? stored;
+    final oneShot = !widget.still && !widget.loop;
+    if (oneShot) {
+      stored = await EffectFileCache.instance.cached(widget.url);
+      if (stored == null) EffectFileCache.instance.prefetch(widget.url);
+      if (!mounted) return;
+    }
+    final options = VideoPlayerOptions(mixWithOthers: true);
+    final c = stored != null
+        ? VideoPlayerController.file(stored, videoPlayerOptions: options)
+        : VideoPlayerController.networkUrl(Uri.parse(widget.url), videoPlayerOptions: options);
     _c = c;
     try {
       await c.initialize();
@@ -301,9 +352,16 @@ class _VideoMediaState extends State<_VideoMedia> {
       }
       await c.setLooping(widget.loop);
       await c.setVolume(widget.muted ? 0 : 1);
+      if (widget.speed != 1 && widget.speed > 0) await c.setPlaybackSpeed(widget.speed);
       c.addListener(_watchEnd);
       await c.play();
       if (mounted) setState(() => _ready = true);
+      if (!widget.loop && mounted) {
+        final own = c.value.duration;
+        widget.onPlaying?.call(
+          own > Duration.zero ? Duration(microseconds: (own.inMicroseconds / widget.speed).round()) : null,
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _failed = true);
@@ -376,6 +434,8 @@ class _AnimatedImageMedia extends StatefulWidget {
     required this.animate,
     required this.onFinished,
     required this.onError,
+    required this.onPlaying,
+    required this.speed,
     required this.fallback,
     required this.loader,
   });
@@ -385,6 +445,8 @@ class _AnimatedImageMedia extends StatefulWidget {
   final bool animate;
   final VoidCallback? onFinished;
   final VoidCallback? onError;
+  final void Function(Duration? expected)? onPlaying;
+  final double speed;
   final Widget fallback;
   final ImageBytesLoader loader;
 
@@ -437,6 +499,13 @@ class _AnimatedImageMediaState extends State<_AnimatedImageMedia> {
     old?.dispose();
     _shown++;
 
+    if (_shown == 1 && widget.animate && !widget.loop) {
+      // the first frame's delay stands in for the rest: enough to size the wait for a long GIF
+      final per = normalizedFrameDelay(frame.duration);
+      widget.onPlaying?.call(
+        Duration(microseconds: (per.inMicroseconds * codec.frameCount / (widget.speed > 0 ? widget.speed : 1)).round()),
+      );
+    }
     final single = codec.frameCount <= 1;
     final passDone = _shown >= codec.frameCount;
     if (!widget.animate || single) {
@@ -447,7 +516,13 @@ class _AnimatedImageMediaState extends State<_AnimatedImageMedia> {
       _done();
       return;
     }
-    _timer = Timer(normalizedFrameDelay(frame.duration), _nextFrame);
+    final delay = normalizedFrameDelay(frame.duration);
+    _timer = Timer(
+      widget.speed > 0 && widget.speed != 1
+          ? Duration(microseconds: (delay.inMicroseconds / widget.speed).round())
+          : delay,
+      _nextFrame,
+    );
   }
 
   void _done() {

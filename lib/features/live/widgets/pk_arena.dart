@@ -224,7 +224,7 @@ class PkArena extends StatelessWidget {
               if (occupant != null)
                 Container(
                   padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: AppColors.primaryGradient,
                   ),

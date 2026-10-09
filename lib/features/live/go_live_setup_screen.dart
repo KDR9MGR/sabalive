@@ -141,7 +141,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                     ),
                     Container(
                       padding: const EdgeInsets.all(7),
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         gradient: AppColors.primaryGradient,
                         shape: BoxShape.circle,
                       ),

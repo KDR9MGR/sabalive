@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
+import '../../core/utils/fire_and_forget.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
 import '../../core/utils/share_links.dart';
@@ -16,11 +17,13 @@ import '../../core/utils/share_sheet.dart';
 import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../core/widgets/keyboard_lift.dart';
 import '../../core/widgets/pills.dart';
 import '../../core/widgets/remote_media.dart';
 import '../../data/mock_data.dart';
 import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
+import '../../data/profile_cache.dart';
 import '../../data/store_repository.dart';
 import '../../data/stream_end_watcher.dart';
 import '../../data/viewer_ban_watcher.dart';
@@ -35,6 +38,7 @@ import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'live_access_exit.dart';
+import 'widgets/entry_catch_up.dart';
 import 'widgets/room_effect.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/live_emoji_sheet.dart';
@@ -103,7 +107,20 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   RealtimeChannel? _seatsChannel;
   RealtimeChannel? _seatStreamChannel;
   bool _seatBusy = false;
+
+  /// The seat THIS screen claimed. It is set only by [_seatTap], never adopted from the database:
+  /// a seat in my name that I did not just claim is a leftover of an earlier visit (the app closed
+  /// without letting go), shown to everyone with my face until the sweep removed it, and it left me
+  /// "seated" without a microphone. Such a seat is released instead (see [_dropLeftoverSeat]).
   int? _mySeat;
+
+  /// Bumped whenever a seat changes hands, so a profile lookup that finishes late cannot paint the
+  /// previous occupant over the current one.
+  final Map<int, int> _seatGen = {};
+
+  /// Seats whose holder's Agora connection ended (they quit or dropped) -> that holder's id. Hidden
+  /// at once, without waiting for the server to sweep the seat; shown again if they reconnect.
+  final Map<int, String> _goneSeats = {};
   bool _myMuted = false;
   Timer? _heartbeat;
   int? _myAgoraUid;
@@ -138,6 +155,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       // screen timeout suspends the Agora connection and this screen's own
       // heartbeat/seat timers, which looked exactly like a random disconnect.
       WakelockPlus.enable().catchError((_) {});
+      // gifts changed in the panel since the app opened (artwork, speed, sound, new ones) are picked up now
+      unawaited(context.read<WalletController>().refreshCatalog());
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
@@ -179,6 +198,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         'join_live_stream',
         params: {'p_stream_id': widget.stream.id},
       );
+      // my own vehicle / entry effect plays now, from what I have equipped (see playMyEntry)
+      if (mounted && !_ghost) {
+        unawaited(playMyEntry(_effects, meId: supabase.auth.currentUser?.id));
+      }
     } catch (e) {
       // Banned from live, or removed by the host: this must stop the join (the
       // server has already refused it). Anything else is best-effort — a missed
@@ -208,11 +231,56 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     );
   }
 
+  int _bumpSeat(int seat) => _seatGen[seat] = (_seatGen[seat] ?? 0) + 1;
+
+  /// Let go of a seat that is in my name but that this screen did not claim. Safe to repeat.
+  void _dropLeftoverSeat() {
+    fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
+  }
+
+  /// A seat holder's Agora connection ended: take their seat off the screen now.
+  void _hideGoneSeat(int uid) {
+    final seat = _speaking.seatOfUid(uid);
+    if (seat == null || !mounted) return;
+    final occupant = _seatOccupants[seat];
+    // never the host (their absence is handled as "host left"), and never me
+    if (occupant == null ||
+        occupant.id == widget.stream.host.id ||
+        occupant.id == supabase.auth.currentUser?.id) {
+      return;
+    }
+    setState(() {
+      _goneSeats[seat] = occupant.id;
+      _seatOccupants.remove(seat);
+      _mutedSeats.remove(seat);
+      _speakingSeats = {..._speakingSeats}..remove(seat);
+    });
+  }
+
+  /// They reconnected: bring the seat back (the database still has it).
+  void _showBackSeat(int uid) {
+    final seat = _speaking.seatOfUid(uid);
+    if (seat != null && _goneSeats.remove(seat) != null) unawaited(_reconcileSeats());
+  }
+
   Future<void> _reconcileSeats() async {
     if (!_isReal || !mounted) return;
     final snap = await fetchSeatSnapshot(widget.stream.id);
     if (snap == null || !mounted) return;
-    final mine = snap.seatOf(supabase.auth.currentUser?.id);
+    var mine = snap.seatOf(supabase.auth.currentUser?.id);
+    final occupants = Map<int, AppUser>.of(snap.occupants);
+    // a seat in my name that this screen did not claim (and is not mid-claim) is a leftover
+    if (mine != null && _mySeat == null && !_seatBusy) {
+      occupants.remove(mine);
+      _speaking.unbindSeat(mine);
+      _dropLeftoverSeat();
+      mine = null;
+    }
+    // hidden-because-gone seats stay hidden only while the same person is still on them
+    _goneSeats.removeWhere((seat, id) => occupants[seat]?.id != id);
+    for (final seat in _goneSeats.keys) {
+      occupants.remove(seat);
+    }
     // my own seat is gone (the host removed me, or it was freed): act only if the next
     // look agrees, so a claim that was still landing isn't mistaken for it
     var lostMine = false;
@@ -226,22 +294,28 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     setState(() {
       final keep = keepMine ? _seatOccupants[_mySeat!] : null;
       for (final seat in _seatOccupants.keys) {
-        if (!snap.occupants.containsKey(seat)) _speaking.unbindSeat(seat);
+        if (!occupants.containsKey(seat)) {
+          _speaking.unbindSeat(seat);
+          _bumpSeat(seat);
+        }
       }
       _seatOccupants
         ..clear()
-        ..addAll(snap.occupants);
+        ..addAll(occupants);
       if (keep != null) _seatOccupants[_mySeat!] = keep;
       _mutedSeats
         ..clear()
         ..addAll(snap.muted);
       for (final e in snap.agoraUids.entries) {
-        _speaking.bindSeat(e.key, e.value);
+        if (occupants.containsKey(e.key) || _goneSeats.containsKey(e.key)) {
+          _speaking.bindSeat(e.key, e.value);
+        }
       }
       if (snap.locked != null) _lockedSeats = snap.locked!;
       if (snap.seatCount != null) _seatCount = snap.seatCount!;
       if (snap.hostAgoraUid != null) _speaking.hostUid = snap.hostAgoraUid;
-      if (mine != null) _mySeat = mine;
+      // a seat I hold stays mine; a seat in my name that I did not claim was dropped above
+      if (mine != null && _mySeat != null) _mySeat = mine;
       if (lostMine) {
         _mySeat = null;
         _myMuted = false;
@@ -280,17 +354,23 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _speaking.hostUid = streamRow?['host_agora_uid'] as int?;
     if (mounted) {
       final myId = supabase.auth.currentUser?.id;
+      var leftover = false;
       setState(() {
         for (final r in rows as List) {
           final profileRow = r['profiles'] as Map<String, dynamic>?;
           if (profileRow != null) {
             final seat = r['seat_number'] as int;
+            // A seat in my name when I walk in is a leftover of an earlier visit (the app closed
+            // without letting go): showing it kept my old face on the seat while I could not speak.
+            // It is released, not adopted.
+            if (profileRow['id'] == myId) {
+              leftover = true;
+              continue;
+            }
+            ProfileCache.instance.put(profileRow);
             _speaking.bindSeat(seat, r['agora_uid'] as int?);
             _seatOccupants[seat] = AppUser.fromRow(profileRow);
             if (r['is_muted'] as bool? ?? false) _mutedSeats.add(seat);
-            // Without this, reopening the screen while already seated never
-            // restores _mySeat — see the same note in watch_live_screen.dart.
-            if (profileRow['id'] == myId) _mySeat = seat;
           }
         }
         final locked = streamRow?['locked_seats'] as List?;
@@ -298,6 +378,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         final count = streamRow?['seat_count'] as int?;
         if (count != null) _seatCount = count;
       });
+      if (leftover) _dropLeftoverSeat();
     }
     _seatsChannel = supabase
         .channel('live-seats-${widget.stream.id}')
@@ -313,18 +394,21 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           callback: (payload) async {
             final seat = payload.newRecord['seat_number'] as int;
             final occupantId = payload.newRecord['occupant_id'] as String;
-            _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
-            final profileRow = await supabase
-                .from('profiles')
-                .select()
-                .eq('id', occupantId)
-                .maybeSingle();
-            if (mounted && profileRow != null) {
-              setState(() {
-                _seatOccupants[seat] = AppUser.fromRow(profileRow);
-                _mutedSeats.remove(seat);
-              });
+            // a seat in my name that this screen is not claiming (another device, or a leftover)
+            if (occupantId == supabase.auth.currentUser?.id && _mySeat == null && !_seatBusy) {
+              _dropLeftoverSeat();
+              return;
             }
+            _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
+            final gen = _bumpSeat(seat);
+            _goneSeats.remove(seat);
+            final profileRow = await ProfileCache.instance.get(occupantId);
+            // the seat changed hands (or emptied) while the profile was on its way
+            if (!mounted || profileRow == null || _seatGen[seat] != gen) return;
+            setState(() {
+              _seatOccupants[seat] = AppUser.fromRow(profileRow);
+              _mutedSeats.remove(seat);
+            });
           },
         )
         .onPostgresChanges(
@@ -378,7 +462,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           callback: (payload) {
             if (payload.oldRecord['live_stream_id'] != widget.stream.id) return;
             final seat = payload.oldRecord['seat_number'] as int?;
-            if (seat != null) _speaking.unbindSeat(seat);
+            if (seat != null) {
+              _speaking.unbindSeat(seat);
+              _bumpSeat(seat);
+              _goneSeats.remove(seat);
+            }
             if (mounted && seat != null) {
               final wasMe = _mySeat == seat;
               setState(() {
@@ -494,11 +582,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 _waitingTooLong = false;
               });
             }
+            _showBackSeat(remoteUid);
           },
           onUserOffline: (connection, remoteUid, reason) {
             if (mounted && _remoteUid == remoteUid) {
               setState(() => _remoteUid = null);
             }
+            // Agora only reports people who were publishing, i.e. seat holders and the host. One
+            // leaving (or dropping) frees their seat on this screen now, not when the server sweeps.
+            _hideGoneSeat(remoteUid);
           },
           onError: (err, msg) {
             if (mounted) setState(() => _joinError = agoraErrorMessage(err, msg));
@@ -553,36 +645,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   }
 
   Future<void> _loadRealChat() async {
-    // A new arrival sees only what is said from now on — no earlier chat. The last
-    // few seconds are still read, but only to catch this user's own join row (its
-    // entry effect can land before this screen starts listening); no lines are shown.
-    final rows = await supabase
-        .from('live_chat_messages')
-        .select()
-        .eq('live_stream_id', widget.stream.id)
-        .gte(
-          'created_at',
-          DateTime.now().toUtc().subtract(const Duration(seconds: 20)).toIso8601String(),
-        )
-        .order('created_at', ascending: false)
-        .limit(30);
-    if (!mounted) return;
-    // If our own join row landed before this screen began listening, our own
-    // entry effect would otherwise be missed.
+    // A new arrival sees only what is said from now on: no earlier chat. The room listens FIRST and
+    // then, once the channel is really subscribed, reads the last few seconds only to catch this user's
+    // own join row (its entry effect can land before the channel is up, and Realtime never replays).
+    // No lines are shown from that read.
     final meId = context.read<AuthController>().user?.id;
-    for (final row in rows.reversed) {
-      unawaited(
-        _effects.handleRow(
-          row,
-          meId: meId,
-          senderName: 'You',
-          giftById: (_) => null,
-          loadItems: StoreRepository().itemsByIds,
-          history: true,
-        ),
-      );
-    }
-
     _chatChannel = supabase
         .channel('live-chat-${widget.stream.id}')
         .onPostgresChanges(
@@ -596,11 +663,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           ),
           callback: (payload) async {
             final senderId = payload.newRecord['sender_id'] as String;
-            final profileRow = await supabase
-                .from('profiles')
-                .select()
-                .eq('id', senderId)
-                .maybeSingle();
+            final profileRow = await ProfileCache.instance.get(senderId);
             final sender = profileRow != null
                 ? AppUser.fromRow(profileRow)
                 : AppUser(id: senderId, name: 'Someone', username: '@user');
@@ -626,7 +689,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             );
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            unawaited(catchUpOwnEntry(widget.stream.id, _effects, meId: meId));
+          }
+        });
   }
 
   LiveChatLine _chatLineFromRow(
@@ -664,10 +731,30 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         _mySeat != null &&
         (state == AppLifecycleState.paused ||
             state == AppLifecycleState.detached)) {
-      unawaited(
-        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
-      );
-      _mySeat = null;
+      final seat = _mySeat!;
+      fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
+      // Stop publishing too. Before, only the database row was let go, so the phone stayed a
+      // broadcaster and (coming back) the room showed me seated with a seat the server had freed.
+      final engine = _engine;
+      if (engine != null) {
+        unawaited(AgoraService.instance.switchRole(
+          engine,
+          channelName: widget.stream.id,
+          asBroadcaster: false,
+        ));
+      }
+      _speaking.unbindSeat(seat);
+      _bumpSeat(seat);
+      if (mounted) {
+        setState(() {
+          _seatOccupants.remove(seat);
+          _mutedSeats.remove(seat);
+          _mySeat = null;
+          _myMuted = false;
+        });
+      } else {
+        _mySeat = null;
+      }
     }
   }
 
@@ -703,15 +790,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     if (_isReal) {
       WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
-      unawaited(
-        supabase.rpc(
+      fireAndForget(supabase.rpc(
           'leave_live_stream',
           params: {'p_stream_id': widget.stream.id},
-        ),
-      );
-      unawaited(
-        supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}),
-      );
+        ));
+      fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
     }
     super.dispose();
   }
@@ -881,14 +964,23 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         : [if (giftChoice.recipient != null) giftChoice.recipient!];
     if (recipients.isEmpty) return;
     try {
-      for (final recipient in recipients) {
-        final qty = giftChoice.sendToAll ? 1 : giftChoice.quantity;
-        for (var i = 0; i < qty; i++) {
-          await context.read<WalletController>().sendGift(
-            gift,
-            recipient,
-            liveStreamId: _isReal ? widget.stream.id : null,
-          );
+      if (giftChoice.sendToAll && _isReal) {
+        // one server action for everyone (host + seated, never me): charged up front, one chat line
+        await context.read<WalletController>().sendGiftToAll(
+          gift,
+          liveStreamId: widget.stream.id,
+          fallbackRecipients: recipients,
+        );
+      } else {
+        for (final recipient in recipients) {
+          final qty = giftChoice.sendToAll ? 1 : giftChoice.quantity;
+          for (var i = 0; i < qty; i++) {
+            await context.read<WalletController>().sendGift(
+              gift,
+              recipient,
+              liveStreamId: _isReal ? widget.stream.id : null,
+            );
+          }
         }
       }
     } catch (e) {
@@ -900,7 +992,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     }
     if (!mounted) return;
     final label = giftChoice.sendToAll
-        ? 'sent everyone ${gift.name}'
+        ? 'sent ${gift.name} to All'
         : giftChoice.quantity > 1
         ? 'sent ${giftChoice.quantity}x ${gift.name}'
         : 'sent ${gift.name}';
@@ -911,7 +1003,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         gift: gift,
         senderName: 'You',
         senderId: me.id,
-        count: giftChoice.sendToAll ? recipients.length : giftChoice.quantity,
+        count: giftChoice.sendToAll ? 1 : giftChoice.quantity,
+        toAll: giftChoice.sendToAll,
       ),
     );
     if (!_isReal) {
@@ -1042,6 +1135,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
+      // The seat stage never moves for the keyboard: only the chat and the input bar rise
+      // (KeyboardStable / KeyboardLift), so typing a message does not push the room up.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1054,12 +1150,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           // had this problem because it was already laid out in-flow;
           // this brings audio in line with that instead of continuing to
           // patch the overlay approach.
-          const DecoratedBox(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF1B1140), Color(0xFF0B0716)],
+                colors: [AppColors.roomTop, AppColors.bg],
               ),
             ),
           ),
@@ -1084,22 +1180,26 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
               ),
             ),
           ),
-          SafeArea(
-            child: Column(
-              children: [
-                _topBar(context, following, session),
-                Expanded(child: _seatArea()),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(child: _chatColumn()),
-                    _sideRail(),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _inputBar(),
-                SizedBox(height: MediaQuery.of(context).padding.bottom + 6),
-              ],
+          KeyboardStable(
+            // the system bar is counted twice under the input bar (SafeArea and the spacer), so it rests that much higher
+            restInset: 2 * MediaQuery.viewPaddingOf(context).bottom,
+            child: SafeArea(
+              child: Column(
+                children: [
+                  _topBar(context, following, session),
+                  Expanded(child: _seatArea()),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(child: KeyboardLift(child: _chatColumn())),
+                      _sideRail(),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  KeyboardLift(child: _inputBar()),
+                  SizedBox(height: MediaQuery.viewPaddingOf(context).bottom + 6),
+                ],
+              ),
             ),
           ),
           Positioned(

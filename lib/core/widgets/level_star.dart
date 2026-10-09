@@ -76,7 +76,8 @@ class _LevelStarState extends State<LevelStar>
   }
 
   static const _gold = [Color(0xFFFFE69A), AppColors.gold, AppColors.goldDeep];
-  static const _purple = [
+  // follows the panel's branding, so not const
+  static List<Color> get _purple => [
     Color(0xFFE6C2FF),
     AppColors.primaryBright,
     AppColors.primaryDeep,

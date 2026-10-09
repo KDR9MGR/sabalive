@@ -16,8 +16,10 @@ import '../../core/utils/viewer_list_sheet.dart';
 import '../../core/utils/viewer_picker_sheet.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../core/widgets/keyboard_lift.dart';
 import '../../data/live_emojis_repository.dart';
 import '../../data/models.dart';
+import '../../data/profile_cache.dart';
 import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_errors.dart';
@@ -31,6 +33,7 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
 import 'widgets/room_effect.dart';
+import 'widgets/room_skin_sheet.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/live_emoji_sheet.dart';
 import 'widgets/live_chat_bubble.dart';
@@ -112,6 +115,33 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         if (mounted) setState(() {});
       });
   RealtimeChannel? _seatsChannel;
+
+  /// Bumped whenever a seat changes hands, so a profile lookup that finishes late cannot paint the
+  /// previous occupant over the current one.
+  final Map<int, int> _seatGen = {};
+  int _bumpSeat(int seat) => _seatGen[seat] = (_seatGen[seat] ?? 0) + 1;
+
+  /// Seats whose guest's Agora connection ended (they quit or dropped) -> that guest's id. Hidden at
+  /// once instead of waiting for the server to sweep the seat; shown again if they reconnect.
+  final Map<int, String> _goneSeats = {};
+
+  void _hideGoneSeat(int uid) {
+    final seat = _speaking.seatOfUid(uid);
+    if (seat == null || !mounted) return;
+    final occupant = _seatOccupants[seat];
+    if (occupant == null || occupant.id == widget.stream.host.id) return;
+    setState(() {
+      _goneSeats[seat] = occupant.id;
+      _seatOccupants.remove(seat);
+      _mutedSeats.remove(seat);
+      _speakingSeats = {..._speakingSeats}..remove(seat);
+    });
+  }
+
+  void _showBackSeat(int uid) {
+    final seat = _speaking.seatOfUid(uid);
+    if (seat != null && _goneSeats.remove(seat) != null) unawaited(_reconcileSeats());
+  }
 
   // Video-only: empty seats are host-approval-gated (same request_pk_seat/
   // approve_pk_seat_request flow PK battles use), so viewers can't just
@@ -207,6 +237,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               });
             }
           },
+          // A guest on a seat leaving (or dropping) frees their seat on this screen now, not when
+          // the server sweeps it. Agora only reports people who were publishing.
+          onUserOffline: (connection, remoteUid, reason) => _hideGoneSeat(remoteUid),
+          onUserJoined: (connection, remoteUid, elapsed) => _showBackSeat(remoteUid),
           onError: (err, msg) {
             if (mounted) setState(() => _error = agoraErrorMessage(err, msg));
           },
@@ -389,18 +423,29 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     if (!mounted) return;
     final snap = await fetchSeatSnapshot(widget.stream.id);
     if (snap == null || !mounted) return;
+    final occupants = Map<int, AppUser>.of(snap.occupants);
+    // hidden-because-gone seats stay hidden only while the same guest is still on them
+    _goneSeats.removeWhere((seat, id) => occupants[seat]?.id != id);
+    for (final seat in _goneSeats.keys) {
+      occupants.remove(seat);
+    }
     setState(() {
       for (final seat in _seatOccupants.keys) {
-        if (!snap.occupants.containsKey(seat)) _speaking.unbindSeat(seat);
+        if (!occupants.containsKey(seat)) {
+          _speaking.unbindSeat(seat);
+          _bumpSeat(seat);
+        }
       }
       _seatOccupants
         ..clear()
-        ..addAll(snap.occupants);
+        ..addAll(occupants);
       _mutedSeats
         ..clear()
         ..addAll(snap.muted);
       for (final e in snap.agoraUids.entries) {
-        _speaking.bindSeat(e.key, e.value);
+        if (occupants.containsKey(e.key) || _goneSeats.containsKey(e.key)) {
+          _speaking.bindSeat(e.key, e.value);
+        }
       }
       if (snap.locked != null) _lockedSeats = snap.locked!;
       if (snap.seatCount != null) _seatCount = snap.seatCount!;
@@ -481,17 +526,15 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
             final seat = payload.newRecord['seat_number'] as int;
             final occupantId = payload.newRecord['occupant_id'] as String;
             _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
-            final profileRow = await supabase
-                .from('profiles')
-                .select()
-                .eq('id', occupantId)
-                .maybeSingle();
-            if (mounted && profileRow != null) {
-              setState(() {
-                _seatOccupants[seat] = AppUser.fromRow(profileRow);
-                _mutedSeats.remove(seat);
-              });
-            }
+            final gen = _bumpSeat(seat);
+            _goneSeats.remove(seat);
+            final profileRow = await ProfileCache.instance.get(occupantId);
+            // the seat changed hands (or emptied) while the profile was on its way
+            if (!mounted || profileRow == null || _seatGen[seat] != gen) return;
+            setState(() {
+              _seatOccupants[seat] = AppUser.fromRow(profileRow);
+              _mutedSeats.remove(seat);
+            });
           },
         )
         .onPostgresChanges(
@@ -536,7 +579,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           callback: (payload) {
             if (payload.oldRecord['live_stream_id'] != widget.stream.id) return;
             final seat = payload.oldRecord['seat_number'] as int?;
-            if (seat != null) _speaking.unbindSeat(seat);
+            if (seat != null) {
+              _speaking.unbindSeat(seat);
+              _bumpSeat(seat);
+              _goneSeats.remove(seat);
+            }
             if (mounted && seat != null) {
               setState(() {
                 _seatOccupants.remove(seat);
@@ -674,11 +721,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   Future<void> _appendChatRow(Map<String, dynamic> row) async {
     final senderId = row['sender_id'] as String;
-    final profileRow = await supabase
-        .from('profiles')
-        .select()
-        .eq('id', senderId)
-        .maybeSingle();
+    final profileRow = await ProfileCache.instance.get(senderId);
     final sender = profileRow != null
         ? AppUser.fromRow(profileRow)
         : AppUser(id: senderId, name: 'Someone', username: '@user');
@@ -1033,7 +1076,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         Icons.wallpaper_rounded,
         'Room skin',
         const Color(0xFF2DD4BF),
-        () => _soon('Room skins'),
+        () {
+          if (widget.audioOnly) {
+            showRoomSkinSheet(context);
+          } else {
+            _snack('Room skins are for audio rooms');
+          }
+        },
       ),
       ToolSpec(
         Icons.ios_share_rounded,
@@ -1107,15 +1156,38 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     if (choice.sendToAll) {
       // Send All always sends exactly one copy per recipient regardless of
       // the quantity picker — quantity × every seated guest could add up to
-      // a very large, surprising coin spend in one tap otherwise.
-      for (final recipient in _giftRecipients()) {
-        await _sendGift(choice.gift, recipient);
-      }
+      // a very large, surprising coin spend in one tap otherwise. It is one server
+      // action (send_gift_to_all): charged up front, one chat line "sent <gift> to All".
+      await _sendGiftToAll(choice.gift);
       return;
     }
     final recipient = choice.recipient;
     if (recipient == null) return;
     await _sendGift(choice.gift, recipient, quantity: choice.quantity);
+  }
+
+  Future<void> _sendGiftToAll(Gift gift) async {
+    final wallet = context.read<WalletController>();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await wallet.sendGiftToAll(
+        gift,
+        liveStreamId: widget.stream.id,
+        fallbackRecipients: _giftRecipients(),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      return;
+    }
+    if (!mounted) return;
+    _effects.enqueue(
+      RoomEffect.gift(
+        gift: gift,
+        senderName: 'You',
+        senderId: supabase.auth.currentUser?.id,
+        toAll: true,
+      ),
+    );
   }
 
   // No local chat echo here anymore — send_gift now inserts a real kind
@@ -1650,8 +1722,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       // The camera stage keeps its size when the keyboard opens (resizing a live video
-      // surface on every keyboard frame is slow and can crash some phones); the chat
-      // bar is lifted above the keyboard by hand below instead.
+      // surface on every keyboard frame is slow and can crash some phones).
       resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
@@ -1691,7 +1762,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                           style: const TextStyle(color: Colors.white70),
                         ),
                       )
-                    : const CircularProgressIndicator(
+                    : CircularProgressIndicator(
                         color: AppColors.primaryBright,
                       ),
               ),
@@ -1703,146 +1774,150 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           // gift animation, for everyone in the room
           Positioned.fill(child: RoomEffectLayer(controller: _effects)),
 
-          SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                // ── top bar
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  top: 6,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ConnectionBanner(reconnecting: _reconnecting, failure: _connectionFailure),
-                      Row(
-                        children: [
-                          _hostChip(),
-                          const Spacer(),
-                          _circle(
-                            '$_viewers',
-                            onTap: () =>
-                                showViewerListSheet(context, widget.stream.id),
-                          ),
-                          const SizedBox(width: 8),
-                          _circle(
-                            null,
-                            icon: Icons.close_rounded,
-                            iconColor: AppColors.danger,
-                            onTap: _end,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          ValueListenableBuilder<Duration>(
-                            valueListenable: _elapsed,
-                            builder: (_, elapsed, _) =>
-                                _miniPill(Icons.schedule_rounded, _fmt(elapsed)),
-                          ),
-                          const SizedBox(width: 8),
-                          _miniPill(
-                            Icons.diamond_rounded,
-                            compactCount(diamonds),
-                            tint: AppColors.diamond,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ── Lucky Box (left, under the time / diamonds pills) — a real
-                //    video live only; counts down to the host's reward
-                if (!widget.audioOnly && isRealId(widget.stream.id))
+          // The keyboard moves nothing here: only the chat and the input bar are painted higher
+          // (KeyboardStable / KeyboardLift); the rail and the seat strip stay behind the keyboard.
+          KeyboardStable(
+            child: SafeArea(
+              bottom: false,
+              child: Stack(
+                children: [
+                  // ── top bar
                   Positioned(
                     left: 12,
-                    top: 100,
-                    child: LuckyBoxBadge(streamId: widget.stream.id),
-                  ),
-
-                // ── beauty (top-right, below the top bar) — video only
-                if (!widget.audioOnly)
-                  Positioned(
                     right: 12,
-                    top: 58,
-                    child: GestureDetector(
-                      onTap: _openBeautyPanel,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                    top: 6,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ConnectionBanner(reconnecting: _reconnecting, failure: _connectionFailure),
+                        Row(
                           children: [
-                            Icon(
-                              _beautyOn
-                                  ? Icons.auto_awesome_rounded
-                                  : Icons.auto_awesome_outlined,
-                              size: 14,
-                              color: Colors.white,
+                            _hostChip(),
+                            const Spacer(),
+                            _circle(
+                              '$_viewers',
+                              onTap: () =>
+                                  showViewerListSheet(context, widget.stream.id),
                             ),
-                            const SizedBox(width: 5),
-                            const Text(
-                              'Beauty',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                                color: Colors.white,
-                              ),
+                            const SizedBox(width: 8),
+                            _circle(
+                              null,
+                              icon: Icons.close_rounded,
+                              iconColor: AppColors.danger,
+                              onTap: _end,
                             ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ValueListenableBuilder<Duration>(
+                              valueListenable: _elapsed,
+                              builder: (_, elapsed, _) =>
+                                  _miniPill(Icons.schedule_rounded, _fmt(elapsed)),
+                            ),
+                            const SizedBox(width: 8),
+                            _miniPill(
+                              Icons.diamond_rounded,
+                              compactCount(diamonds),
+                              tint: AppColors.diamond,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
 
-                // ── bottom stack: warning + chat + right rail + bar
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: MediaQuery.viewInsetsOf(context).bottom,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [if (_chat.isNotEmpty) _chatList()],
-                            ),
+                  // ── Lucky Box (left, under the time / diamonds pills) — a real
+                  //    video live only; counts down to the host's reward
+                  if (!widget.audioOnly && isRealId(widget.stream.id))
+                    Positioned(
+                      left: 12,
+                      top: 100,
+                      child: LuckyBoxBadge(streamId: widget.stream.id),
+                    ),
+
+                  // ── beauty (top-right, below the top bar) — video only
+                  if (!widget.audioOnly)
+                    Positioned(
+                      right: 12,
+                      top: 58,
+                      child: GestureDetector(
+                        onTap: _openBeautyPanel,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
                           ),
-                          _rightRail(),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (!widget.audioOnly) ...[
-                        CompactSeatStrip(
-                          seatCount: _seatCount,
-                          occupants: _seatOccupants,
-                          lockedSeats: _lockedSeats,
-                          mutedSeats: _mutedSeats,
-                          speakingSeats: _speakingSeats,
-                          onSeatTap: _seatMenu,
+                          decoration: BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _beautyOn
+                                    ? Icons.auto_awesome_rounded
+                                    : Icons.auto_awesome_outlined,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 5),
+                              const Text(
+                                'Beauty',
+                                style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                      ),
+                    ),
+
+                  // ── bottom stack: warning + chat + right rail + bar
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [if (_chat.isNotEmpty) KeyboardLift(child: _chatList())],
+                              ),
+                            ),
+                            _rightRail(),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (!widget.audioOnly) ...[
+                          CompactSeatStrip(
+                            seatCount: _seatCount,
+                            occupants: _seatOccupants,
+                            lockedSeats: _lockedSeats,
+                            mutedSeats: _mutedSeats,
+                            speakingSeats: _speakingSeats,
+                            onSeatTap: _seatMenu,
+                          ),
+                          const SizedBox(height: 6),
+                        ],
                         const SizedBox(height: 6),
+                        KeyboardLift(child: _bottomBar()),
                       ],
-                      const SizedBox(height: 6),
-                      _bottomBar(),
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -2096,7 +2171,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         12,
         8,
         12,
-        8 + MediaQuery.of(context).padding.bottom,
+        8 + MediaQuery.viewPaddingOf(context).bottom,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,

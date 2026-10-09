@@ -83,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen> {
           // stretch the clip to fill the whole screen (no letterbox bars)
           child: ready
               ? VideoPlayer(c)
-              : const Center(
+              : Center(
                   child: CircularProgressIndicator(
                       color: AppColors.primaryBright),
                 ),

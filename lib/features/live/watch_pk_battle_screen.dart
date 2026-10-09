@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
+import '../../core/utils/fire_and_forget.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ids.dart';
 import '../../core/utils/share_links.dart';
@@ -419,19 +420,15 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
     if (_isReal) {
       WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
-      unawaited(
-        supabase.rpc(
+      fireAndForget(supabase.rpc(
           'leave_live_stream',
           params: {'p_stream_id': widget.stream.id},
-        ),
-      );
+        ));
       if (_mySeat != null) {
-        unawaited(
-          supabase.rpc(
+        fireAndForget(supabase.rpc(
             'release_seat',
             params: {'p_stream_id': widget.stream.id},
-          ),
-        );
+          ));
       }
     }
     super.dispose();
@@ -828,7 +825,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
           "Still nothing from the host — they may have ended, "
           "or there's a connection issue.";
     } else if (_isReal && _remoteUid == null) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(color: AppColors.primaryBright),
       );
     } else if (_isReal && battle == null) {
@@ -1005,7 +1002,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
                   ),
                   GestureDetector(
                     onTap: _send,
-                    child: const Icon(
+                    child: Icon(
                       Icons.send_rounded,
                       color: AppColors.primaryBright,
                       size: 20,

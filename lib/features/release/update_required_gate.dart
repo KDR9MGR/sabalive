@@ -60,7 +60,7 @@ class UpdateRequiredScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.system_update_rounded, size: 64, color: AppColors.primaryBright),
+                Icon(Icons.system_update_rounded, size: 64, color: AppColors.primaryBright),
                 const SizedBox(height: 20),
                 const Text(
                   'Update required',
