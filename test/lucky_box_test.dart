@@ -6,9 +6,10 @@ import 'package:sabalive/features/live/widgets/lucky_box_badge.dart';
 class _FakeRepo extends Fake implements LuckyBoxRepository {
   _FakeRepo({this.startedAt, this.failConfig = false});
   LuckyBoxConfig config0 =
-      const LuckyBoxConfig(durationMinutes: 40, rewardDiamonds: 3000);
+      const LuckyBoxConfig(durationMinutes: 40, rewardDiamonds: 3000, cooldownHours: 24);
   DateTime? startedAt;
   int? reward;
+  LuckyBoxStatus? status0;
   bool failConfig;
   int rewardChecks = 0;
 
@@ -20,6 +21,9 @@ class _FakeRepo extends Fake implements LuckyBoxRepository {
 
   @override
   Future<DateTime?> streamStartedAt(String streamId) async => startedAt;
+
+  @override
+  Future<LuckyBoxStatus?> status(String streamId) async => status0;
 
   @override
   Future<int?> rewardGranted(String streamId) async {
@@ -214,6 +218,88 @@ void main() {
       await t.pump(const Duration(seconds: 15));
       await t.pump();
       expect(find.byIcon(Icons.card_giftcard_rounded), findsOneWidget);
+      expect(find.text('30:00'), findsOneWidget);
+    });
+  });
+
+  group('the cooldown', () {
+    late DateTime clock;
+    Widget host(_FakeRepo repo, {bool viewer = false}) => MaterialApp(
+          home: Scaffold(
+            body: LuckyBoxBadge(streamId: 's1', forViewer: viewer, repo: repo, now: () => clock),
+          ),
+        );
+
+    test('LuckyBoxStatus reads the server answer, with or without a rest period', () {
+      final s = LuckyBoxStatus.fromJson({'paid': false, 'rest_until': '2026-10-11T08:00:00+00:00', 'opens_at': 'x'});
+      expect(s.paid, isFalse);
+      expect(s.restUntil, DateTime.utc(2026, 10, 11, 8));
+      final t = LuckyBoxStatus.fromJson({'paid': true, 'rest_until': null});
+      expect(t.paid, isTrue);
+      expect(t.restUntil, isNull);
+    });
+
+    test('the wait is written as hours and minutes', () {
+      expect(luckyBoxRestLabel(const Duration(hours: 23, minutes: 12)), '23h 12m');
+      expect(luckyBoxRestLabel(const Duration(hours: 5)), '5h');
+      expect(luckyBoxRestLabel(const Duration(minutes: 45)), '45m');
+      expect(luckyBoxRestLabel(const Duration(seconds: 20)), '1m');
+      expect(luckyBoxRestLabel(Duration.zero), 'now');
+      expect(luckyBoxRestLabel(const Duration(minutes: -3)), 'now');
+    });
+
+    testWidgets('a resting host sees a grey box and when a new live can earn, not a countdown to nothing', (t) async {
+      clock = start.add(const Duration(minutes: 10));
+      final repo = _FakeRepo(startedAt: start)
+        ..status0 = LuckyBoxStatus(restUntil: clock.add(const Duration(hours: 23, minutes: 12)));
+      await t.pumpWidget(host(repo));
+      await t.pump();
+      expect(find.text('Next in 23h 12m'), findsOneWidget);
+      expect(find.text('30:00'), findsNothing);
+      await t.tap(find.byIcon(Icons.card_giftcard_rounded));
+      await t.pumpAndSettle();
+      expect(find.textContaining('last 24 hours'), findsOneWidget);
+      expect(find.textContaining('40 minutes'), findsOneWidget);
+    });
+
+    testWidgets('once the rest is over the host is told to start a new live', (t) async {
+      clock = start.add(const Duration(minutes: 10));
+      final repo = _FakeRepo(startedAt: start)..status0 = LuckyBoxStatus(restUntil: clock.subtract(const Duration(minutes: 1)));
+      await t.pumpWidget(host(repo));
+      await t.pump();
+      expect(find.text('New live'), findsOneWidget);
+    });
+
+    testWidgets('a viewer is shown no box at all while the host is resting', (t) async {
+      clock = start.add(const Duration(minutes: 10));
+      final repo = _FakeRepo(startedAt: start)..status0 = LuckyBoxStatus(restUntil: clock.add(const Duration(hours: 20)));
+      await t.pumpWidget(host(repo, viewer: true));
+      await t.pump();
+      expect(find.byIcon(Icons.card_giftcard_rounded), findsNothing);
+    });
+
+    testWidgets('a live that already paid shows the opened box, even though the host is resting for the next one', (t) async {
+      clock = start.add(const Duration(minutes: 50));
+      final repo = _FakeRepo(startedAt: start)
+        ..reward = 3000
+        ..status0 = LuckyBoxStatus(paid: true, restUntil: clock.add(const Duration(hours: 23)));
+      await t.pumpWidget(host(repo));
+      await t.pump();
+      expect(find.text('+3,000'), findsOneWidget);
+    });
+
+    testWidgets('a viewer sees Opened as soon as the server says it was paid, before the timer would', (t) async {
+      clock = start.add(const Duration(minutes: 30));
+      final repo = _FakeRepo(startedAt: start)..status0 = const LuckyBoxStatus(paid: true);
+      await t.pumpWidget(host(repo, viewer: true));
+      await t.pump();
+      expect(find.text('Opened'), findsOneWidget);
+    });
+
+    testWidgets('an older database with no status function behaves exactly as before', (t) async {
+      clock = start.add(const Duration(minutes: 10));
+      await t.pumpWidget(host(_FakeRepo(startedAt: start))); // status0 null
+      await t.pump();
       expect(find.text('30:00'), findsOneWidget);
     });
   });

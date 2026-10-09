@@ -1,7 +1,7 @@
 -- Exercises the 20261009* features on STAGING as real (fake) users with the real grants, then rolls everything back.
 -- Run through scripts/staging/verify_new_features.sh. Safe: one transaction that ends in ROLLBACK.
 --
--- It checks: send to All (balance, rows, one "to All" line, who is skipped), instant leave (seat freed + notice),
+-- It checks: send to All (balance, rows, one "to All" line, who is skipped), instant leave (seat freed + notice), the Lucky Box cooldown,
 -- the effect speed / sound columns, the Lucky Box pull back (Master only, once), app_config in Realtime, and that
 -- the new functions are executable by signed-in users and NOT by anonymous callers.
 begin;
@@ -146,6 +146,7 @@ declare
   v_view uuid := (select viewer_id from who);
   v_master uuid := (select master_id from who);
   sid uuid := (select v from ids where k = 'stream');
+  rid2 uuid;
   win uuid;
 begin
   if sid is null then return; end if;
@@ -154,6 +155,17 @@ begin
   insert into res(step, ok, info) values ('4 the Lucky Box paid the host', win is not null, null);
   if win is null then return; end if;
   insert into ids values ('win', win);
+  -- the 24 h cooldown: the host drops, restarts, and the new live that reaches 40 minutes is NOT paid again
+  update public.live_streams set status = 'ended', ended_at = now() where id = sid;
+  insert into public.live_streams (host_id, title, status, mode, started_at, last_heartbeat_at)
+    values (v_host, 'zz-smoke-test restart', 'live', 'video', now() - interval '1 hour', now())
+    returning id into rid2;
+  perform public.grant_lucky_box_rewards();
+  insert into res(step, ok, info)
+    select '4 a restarted live is not paid again (cooldown)', count(*) = 1, 'rewards for this host: ' || count(*)
+      from public.wallet_ledger where profile_id = v_host and note = 'lucky_box';
+  insert into res(step, ok, info)
+    select '4 the status says the host is resting', (public.lucky_box_status(rid2) ->> 'rest_until') is not null, public.lucky_box_status(rid2)::text;
   if v_master is null then
     insert into res(step, ok, info) values ('4 a Master account exists to test the pull back', false, 'run scripts/staging/bootstrap.sh');
     return;

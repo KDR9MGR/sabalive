@@ -58,6 +58,7 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
   LuckyBoxConfig? _config;
   DateTime? _startedAt;
   int? _reward;
+  LuckyBoxStatus? _status;
   bool _failed = false;
 
   DateTime _now() => (widget.now ?? DateTime.now)().toUtc();
@@ -93,11 +94,13 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
       final started = await _repo.streamStartedAt(widget.streamId);
       final config = await _repo.config();
       final reward = widget.forViewer ? null : await _repo.rewardGranted(widget.streamId);
+      final status = await _repo.status(widget.streamId);
       if (!mounted) return;
       setState(() {
         _startedAt = started;
         _config = config;
         _reward = reward;
+        _status = status;
         _failed = started == null;
       });
     } catch (_) {
@@ -110,7 +113,13 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
   Future<void> _loadConfig() async {
     try {
       final c = await _repo.config();
-      if (mounted) setState(() => _config = c);
+      final s = await _repo.status(widget.streamId);
+      if (mounted) {
+        setState(() {
+          _config = c;
+          _status = s ?? _status;
+        });
+      }
     } catch (_) {/* keep showing the last known settings */}
   }
 
@@ -158,6 +167,68 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
     );
   }
 
+  /// The host's box while it is resting: grey, with how long until a NEW live can earn again.
+  Widget _restingBox(LuckyBoxConfig c, DateTime restUntil) {
+    final left = restUntil.difference(_now());
+    final label = left <= Duration.zero ? 'New live' : 'Next in ${luckyBoxRestLabel(left)}';
+    return GestureDetector(
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: AppColors.bgElevated,
+          title: const Text('Lucky Box'),
+          content: Text(
+            left <= Duration.zero
+                ? 'The rest is over. Start a new live and stay on for ${c.durationMinutes} minutes without a '
+                    'break to earn the next box.'
+                : 'You already earned a Lucky Box in the last ${c.cooldownHours} hours, so this live will not '
+                    'open one. Start a new live in ${luckyBoxRestLabel(left)} (and stay on for '
+                    '${c.durationMinutes} minutes) to earn the next one.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          ],
+        ),
+      ),
+      behavior: HitTestBehavior.opaque,
+      child: Semantics(
+        label: 'Lucky Box resting, $label',
+        excludeSemantics: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.card_giftcard_rounded, color: Colors.white54, size: 26),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = _config;
@@ -165,12 +236,21 @@ class _LuckyBoxBadgeState extends State<LuckyBoxBadge> {
     if (_failed || config == null || started == null) {
       return const SizedBox.shrink();
     }
+    // A host paid within the cooldown: this live's box will not open. A viewer is shown nothing to wait for;
+    // the host is shown that the box is resting and when a new live can earn again.
+    final rest = _status?.restUntil;
+    final paidHere = _reward != null || (_status?.paid ?? false);
+    if (rest != null && !paidHere) {
+      if (widget.forViewer) return const SizedBox.shrink();
+      return _restingBox(config, rest);
+    }
     final p = luckyBoxProgress(
       startedAt: started,
       duration: config.duration,
       now: _now(),
       rewardPaid: _reward,
       pastDeadlineMeansOpened: widget.forViewer,
+      paidWithoutAmount: _status?.paid ?? false,
     );
     final opened = p.phase == LuckyBoxPhase.opened;
     final label = switch (p.phase) {
