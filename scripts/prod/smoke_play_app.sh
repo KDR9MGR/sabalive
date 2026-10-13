@@ -15,8 +15,14 @@ command -v jq >/dev/null || { echo "jq not found (brew install jq)"; exit 2; }
 sb() { supabase ${SUPABASE_WORKDIR:+--workdir "$SUPABASE_WORKDIR"} "$@"; }   # SUPABASE_WORKDIR targets another project
 
 echo "Play-app smoke test  ($(date -u +%Y-%m-%d\ %H:%M:%S) UTC)  project: $(cat "${SUPABASE_WORKDIR:-.}/supabase/.temp/project-ref" 2>/dev/null || echo unknown)"
-OUT=$(sb db query --linked -o json -f "$PWD/scripts/prod/smoke_play_app.sql" 2>/dev/null)
-ROWS=$(echo "$OUT" | jq -c '.rows' 2>/dev/null)
+# the CLI goes through Supabase's management API, which now and then times out for one call: try up to 3 times (the test rolls back,
+# so running it again is harmless)
+for attempt in 1 2 3; do
+  OUT=$(sb db query --linked -o json -f "$PWD/scripts/prod/smoke_play_app.sql" 2>/dev/null)
+  ROWS=$(echo "$OUT" | jq -c '.rows' 2>/dev/null)
+  [ -n "$ROWS" ] && [ "$ROWS" != "null" ] && [ "$ROWS" != "[]" ] && break
+  [ "$attempt" -lt 3 ] && sleep 8
+done
 if [ -z "$ROWS" ] || [ "$ROWS" = "null" ] || [ "$ROWS" = "[]" ]; then
   echo "  FAIL  no result from the database (is it up? run scripts/prod/healthcheck.sh)"
   exit 1

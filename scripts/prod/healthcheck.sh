@@ -55,7 +55,7 @@ AUTH=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$URL/auth/v1/health" -H "ap
 
 echo
 echo "2. The database"
-Q=$(sb db query --linked -o json "select
+HEALTH_SQL="select
     (select count(*) from pg_stat_activity)::int as connections,
     current_setting('max_connections')::int as max_connections,
     (select count(*) from pg_stat_activity where state = 'active' and backend_type = 'client backend' and pid <> pg_backend_pid())::int as active,
@@ -67,7 +67,15 @@ Q=$(sb db query --linked -o json "select
     (select count(*) from cron.job_run_details where status = 'succeeded' and start_time > now() - interval '15 minutes')::int as cron_ok_15m,
     (select pg_size_pretty(pg_database_size(current_database()))) as db_size,
     (select count(*) from live_streams where status = 'live')::int as lives_now,
-    (select coalesce(extract(epoch from now() - max(joined_at))/60, 99999) from live_stream_viewers)::int as minutes_since_last_join" 2>/dev/null | jq -c '.rows[0]')
+    (select coalesce(extract(epoch from now() - max(joined_at))/60, 99999) from live_stream_viewers)::int as minutes_since_last_join"
+# The CLI goes through Supabase's management API and now and then a call just times out (seen twice on 2026-10-13, minutes before it
+# worked again). One timeout must not stop a release run, so it is tried up to 3 times; a database that is really down still fails.
+Q=""
+for attempt in 1 2 3; do
+  Q=$(sb db query --linked -o json "$HEALTH_SQL" 2>/dev/null | jq -c '.rows[0]')
+  [ -n "$Q" ] && [ "$Q" != "null" ] && break
+  [ "$attempt" -lt 3 ] && sleep 8
+done
 if [ -z "$Q" ] || [ "$Q" = "null" ]; then
   fail "could not query the database through the CLI (it times out when the database is down)"
 else
