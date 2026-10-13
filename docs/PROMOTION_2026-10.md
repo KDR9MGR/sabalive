@@ -109,3 +109,21 @@ files pass there, `rollback_chain_test.sql` runs every down script, the wallet l
 | G6 | **LIGHT THE GAMES** (the only step players can see), only when ALL of these hold: store / legal review is done; the rollout has reached enough users; the list is curated (panel -> Games: hide what you have not tried); limits are set (panel -> Games -> Limits: largest bet, daily loss / win; the defaults have NO daily cap); keys are on production (G3); Tulasi's account expiry (2026-11-22) is renewed; then in this order: (1) switch the Tulasi dashboard callback URL to production (staging loses it: it is one per merchant), (2) press Sync Game List and check "success" and 44 rows, (3) play one small round with a staff account on production and check the balance and the Games page, (4) flip Release controls -> Games ON | owner's separate go | Release controls -> Games OFF (instant, every phone); callback URL back to staging |
 | G7 | Watch: Games page (every balance call, the two watch reports), `healthcheck.sh`, connections (60 max: each game session holds none, balance calls are short) | - | - |
 Things that stay manual by design: pressing Sync Game List after Tulasi-side changes; renewing the Tulasi account; deciding which games are shown.
+
+## Run sheet for the database (2026-10-13)
+Verified locally: the 14 pending migrations do not redefine each other's functions or triggers (only the games chain does: `140000` replaces `game_sync_list` / `start_game_session`), so they can be applied in groups. `20261007100000` and
+`20261007120000` are only recorded: their 4 functions and 4 policies are in production's backup snapshot. The script stops at the first failure (`|| break`); each run does backup-age check, health + smoke before and after, and prints the down script on a FAIL.
+Run from `sabalive/`. `--any-hour` (outside 21:00-04:00 UTC) is meant for ADDITIVE files only; the permission layer refuses it when I run it, so the owner runs these blocks in a terminal (or adds a Bash permission rule for `scripts/prod/promote_step.sh`).
+```
+# A. record-only + additive: any off-peak hour (peak = 14:00-20:00 UTC); needs a backup < 6 h old
+for v in 20261007100000 20261007120000; do PROMOTE_CONFIRM=$v scripts/prod/promote_step.sh $v --apply --record-only --any-hour || break; done
+for v in 20261009110000 20261009120000 20261009140000 20261012110000; do PROMOTE_CONFIRM=$v scripts/prod/promote_step.sh $v --apply --any-hour || break; done
+# B. function bodies / triggers: quiet window 21:00-04:00 UTC (02:30-09:30 IST), no override; fresh backup first (about 12 minutes)
+scripts/prod/backup.sh
+for v in 20261012100000 20261009090000 20261009100000 20261010090000; do PROMOTE_CONFIRM=$v scripts/prod/promote_step.sh $v --apply || break; done
+# C. its own night (adds a trigger on live_chat_messages)
+PROMOTE_CONFIRM=20261010100000 scripts/prod/promote_step.sh 20261010100000 --apply
+# D. games, in order (100000 swaps the wallet_ledger kind check: quiet window)
+for v in 20261013100000 20261013110000 20261013120000 20261013130000 20261013140000; do PROMOTE_CONFIRM=$v scripts/prod/promote_step.sh $v --apply || break; done
+```
+After each block: `scripts/prod/healthcheck.sh`, then watch lives and joins for 15 minutes.
