@@ -23,6 +23,16 @@ const MAX_BODY = 512 * 1024;
 const json = (status: number, code: number, msg: string) =>
   new Response(JSON.stringify({ code, msg, data: "" }), { status, headers: { "Content-Type": "application/json" } });
 
+// When the keys cannot be used the answer is 500 "not configured" (all the platform needs to know). The header x-config says WHY for
+// whoever is setting it up: only facts about the secrets (empty / length / has a PEM header / number of lines) and the key library's
+// own message, never any of the key itself.
+const shape = (s: string) => `len=${s.length} pem=${s.includes("-----BEGIN")} lines=${s.trim().split(/\r?\n/).length} escaped_n=${s.includes("\\n")}`;
+const notConfigured = (why: string) =>
+  new Response(JSON.stringify({ code: 0, msg: "not configured", data: "" }), {
+    status: 500,
+    headers: { "Content-Type": "application/json", "x-config": why.replace(/[^\x20-\x7e]/g, " ").slice(0, 220) },
+  });
+
 let keys: { privateKey: any; platformPublicKey: any } | null = null;
 function getKeys() {
   if (!keys) keys = { privateKey: loadPrivateKey(PRIVATE_KEY), platformPublicKey: loadPublicKey(PLATFORM_KEY) };
@@ -58,7 +68,7 @@ const setImage = async (id: number, kind: "image" | "banner", from: string, to: 
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, 0, "method not allowed");
-  if (!PRIVATE_KEY || !PLATFORM_KEY) return json(500, 0, "not configured");
+  if (!PRIVATE_KEY || !PLATFORM_KEY) return notConfigured(`secret empty: private=${!PRIVATE_KEY} public=${!PLATFORM_KEY}`);
   const declared = Number(req.headers.get("content-length") ?? "0");
   if (declared > MAX_BODY) return json(413, 0, "too large");
   const body = await req.text();
@@ -69,7 +79,7 @@ Deno.serve(async (req) => {
     k = getKeys();
   } catch (e) {
     console.error(`tulasi: ${(e as Error).message}`);
-    return json(500, 0, "not configured");
+    return notConfigured(`${(e as Error).message} | private ${shape(PRIVATE_KEY)} | public ${shape(PLATFORM_KEY)}`);
   }
   const reply = await handle(routeOf(new URL(req.url).pathname), body, {
     privateKey: k.privateKey,
