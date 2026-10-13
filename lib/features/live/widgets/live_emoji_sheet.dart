@@ -5,9 +5,10 @@ import '../../../data/live_emojis_repository.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
 
-/// The emoji / GIF picker for live chat (audio rooms, video lives, the host's
+/// The emote picker for live chat (audio rooms, video lives, the host's
 /// own screen). Its contents come from the admin panel, so adding, editing or
-/// removing an entry there changes what everyone sees here.
+/// removing an entry there changes what everyone sees here. A picked emote plays over the
+/// sender's picture circle in the room (see emote_overlay.dart).
 Future<LiveEmoji?> showLiveEmojiSheet(BuildContext context) {
   return showModalBottomSheet<LiveEmoji>(
     context: context,
@@ -43,7 +44,7 @@ class _LiveEmojiSheet extends StatelessWidget {
                 height: 120,
                 child: Center(
                   child: Text(
-                    'No emojis available right now',
+                    'No emotes available right now',
                     style: TextStyle(color: AppColors.textMuted),
                   ),
                 ),
@@ -58,7 +59,7 @@ class _LiveEmojiSheet extends StatelessWidget {
                 children: [
                   if (gifs.isNotEmpty)
                     TabBar(
-                      tabs: [Tab(text: tr('Emoji')), Tab(text: tr('GIFs'))],
+                      tabs: [Tab(text: tr('Emotes')), Tab(text: tr('GIFs'))],
                     ),
                   Flexible(
                     child: gifs.isEmpty

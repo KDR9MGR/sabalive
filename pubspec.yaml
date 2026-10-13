@@ -43,6 +43,7 @@ dependencies:
   # gift / entry-effect sounds (already in the build through flutter_svga; now declared) and the file cache
   audioplayers: ^6.7.1
   path_provider: ^2.1.5
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   flutter_test:

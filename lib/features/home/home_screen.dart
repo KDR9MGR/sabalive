@@ -14,6 +14,7 @@ import '../../router/app_nav.dart';
 import '../../state/live_streams_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
+import '../games/games_strip.dart';
 import '../live/widgets/live_card.dart';
 import '../../core/i18n/text.dart';
 
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(child: _header(context)),
               SliverToBoxAdapter(child: _promoBannerCarousel()),
               const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              const SliverToBoxAdapter(child: GamesStrip()),
               SliverToBoxAdapter(
                 child: ChipRow(
                   items: _cats,

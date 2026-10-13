@@ -30,6 +30,7 @@ class KeyboardStable extends StatelessWidget {
     final mq = MediaQuery.of(context);
     return _LiftScope(
       lift: keyboardLiftFor(mq, restInset: restInset),
+      open: mq.viewInsets.bottom > 0,
       child: MediaQuery(
         data: mq.copyWith(padding: mq.viewPadding, viewInsets: EdgeInsets.zero),
         child: child,
@@ -39,12 +40,38 @@ class KeyboardStable extends StatelessWidget {
 }
 
 class _LiftScope extends InheritedWidget {
-  const _LiftScope({required this.lift, required super.child});
+  const _LiftScope({required this.lift, required this.open, required super.child});
 
   final double lift;
+  final bool open;
 
   @override
-  bool updateShouldNotify(_LiftScope old) => old.lift != lift;
+  bool updateShouldNotify(_LiftScope old) => old.lift != lift || old.open != open;
+}
+
+/// Whether the keyboard is up, for a widget inside a [KeyboardStable]. False outside one.
+bool keyboardIsOpen(BuildContext context) =>
+    context.dependOnInheritedWidgetOfExactType<_LiftScope>()?.open ?? false;
+
+/// While the keyboard is up (someone is typing), fades [child] out and stops it taking touches, so that only the
+/// input box is left over the live and the host is not covered. It stays in the layout, so nothing moves.
+class KeyboardHide extends StatelessWidget {
+  const KeyboardHide({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final hidden = keyboardIsOpen(context);
+    return IgnorePointer(
+      ignoring: hidden,
+      child: AnimatedOpacity(
+        opacity: hidden ? 0 : 1,
+        duration: const Duration(milliseconds: 160),
+        child: child,
+      ),
+    );
+  }
 }
 
 /// Paints [child] above the keyboard (inside a [KeyboardStable]) without moving anything else.

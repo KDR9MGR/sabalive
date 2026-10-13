@@ -96,8 +96,11 @@ class WalletController extends ChangeNotifier {
 
   /// Wallet & Earnings' Transaction History excludes these same kinds, so
   /// the list never contradicts [adminCoins] sitting above it.
-  static const _nonAdminKinds = {'purchase', 'transfer_in', 'transfer_out'};
-  static const _nonAdminKindsFilter = '(purchase,transfer_in,transfer_out)';
+  ///
+  /// The game bets and wins (`game_bet`, `game_win`) are left out too: a round every 15 seconds would push everything
+  /// else out of the 50 rows this list shows. The balance above still includes them (it is the wallet itself).
+  static const _nonAdminKinds = {'purchase', 'transfer_in', 'transfer_out', 'game_bet', 'game_win'};
+  static const _nonAdminKindsFilter = '(purchase,transfer_in,transfer_out,game_bet,game_win)';
 
   Future<void> _bindWallet(String uid) async {
     _loading = true;

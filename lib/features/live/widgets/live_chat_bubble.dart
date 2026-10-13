@@ -5,6 +5,7 @@ import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
+import 'mentions.dart';
 
 /// One line of live-room chat. Shared by the host's screen and the video /
 /// audio viewer screens so they all look the same.
@@ -22,11 +23,15 @@ class LiveChatLineBubble extends StatelessWidget {
     required this.line,
     this.backgroundAlpha = 0.32,
     this.pinnedAlpha = 0.35,
+    this.myName,
   });
 
   final LiveChatLine line;
   final double backgroundAlpha;
   final double pinnedAlpha;
+
+  /// The viewer's own name: a line that tags them (@name) is marked as meant for them.
+  final String? myName;
 
   @override
   Widget build(BuildContext context) {
@@ -36,13 +41,17 @@ class LiveChatLineBubble extends StatelessWidget {
       return _StickerBubble(line: line, backgroundAlpha: backgroundAlpha);
     }
 
+    final forMe = !line.gift && myName != null && mentionsName(line.text, myName!);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: line.pinned
             ? AppColors.primary.withValues(alpha: pinnedAlpha)
-            : Colors.black.withValues(alpha: backgroundAlpha),
+            : forMe
+                ? AppColors.primary.withValues(alpha: 0.5)
+                : Colors.black.withValues(alpha: backgroundAlpha),
         borderRadius: BorderRadius.circular(14),
+        border: forMe ? Border.all(color: AppColors.gold.withValues(alpha: 0.8)) : null,
       ),
       child: RichText(
         text: TextSpan(
@@ -67,13 +76,19 @@ class LiveChatLineBubble extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            TextSpan(
-              text: line.text,
-              style: TextStyle(
-                color: line.gift ? AppColors.gold : Colors.white,
-                fontWeight: line.gift ? FontWeight.w600 : FontWeight.w400,
+            for (final part in line.gift ? [MentionPart(line.text, false)] : parseMentions(line.text))
+              TextSpan(
+                // a tagged name keeps its spaces on screen (it is glued together inside the message)
+                text: part.isMention ? part.text.replaceAll('\u00A0', ' ') : part.text,
+                style: TextStyle(
+                  color: line.gift
+                      ? AppColors.gold
+                      : part.isMention
+                          ? AppColors.gold
+                          : Colors.white,
+                  fontWeight: line.gift || part.isMention ? FontWeight.w600 : FontWeight.w400,
+                ),
               ),
-            ),
           ],
         ),
       ),

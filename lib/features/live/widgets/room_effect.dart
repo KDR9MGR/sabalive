@@ -6,6 +6,7 @@ import 'package:flutter/material.dart' hide Text;
 import '../../../core/media/effect_file_cache.dart';
 import '../../../core/media/effect_sound.dart';
 import '../../../core/widgets/remote_media.dart';
+import 'join_banner.dart';
 import '../../../data/models.dart';
 import '../../../data/store_repository.dart';
 import '../../../core/i18n/text.dart';
@@ -31,7 +32,6 @@ class RoomEffect {
     this.senderId,
     this.count = 1,
     this.fillScreen = false,
-    this.level = false,
     this.toAll = false,
     this.speed,
     this.soundUrl,
@@ -74,24 +74,6 @@ class RoomEffect {
     soundUrl: item.soundUrl,
   );
 
-  /// The level image a user earned (Wealth / Charm level, set in the panel),
-  /// played full-screen when they join.
-  factory RoomEffect.level({
-    required String url,
-    required String senderName,
-    String? senderId,
-  }) => RoomEffect._(
-    kind: RoomEffectKind.entry,
-    id: 'level:$url',
-    name: 'level',
-    emoji: '⭐',
-    mediaUrl: url,
-    senderName: senderName,
-    senderId: senderId,
-    fillScreen: true,
-    level: true,
-  );
-
   final RoomEffectKind kind;
   final String id;
   final String name;
@@ -105,9 +87,6 @@ class RoomEffect {
   /// switch): its artwork covers the whole screen. Other artwork is shown whole,
   /// as large as fits the screen.
   final bool fillScreen;
-
-  /// A level-image arrival rather than an entry effect / vehicle.
-  final bool level;
 
   /// The gift went to everyone in the room ("Send to All"), not one person.
   final bool toAll;
@@ -123,7 +102,6 @@ class RoomEffect {
     RoomEffectKind.gift when toAll => '$senderName sent $name to All',
     RoomEffectKind.gift when count > 1 => '$senderName sent $name x$count',
     RoomEffectKind.gift => '$senderName sent $name',
-    RoomEffectKind.entry when level => '$senderName joined',
     RoomEffectKind.entry => '$senderName entered with $name',
   };
 
@@ -149,7 +127,17 @@ class RoomEffectController extends ChangeNotifier {
     this.catchUpAt = 3,
     this.retryDelay = const Duration(milliseconds: 1200),
     void Function(String url)? prefetch,
-  }) : _prefetch = prefetch ?? _defaultPrefetch;
+    JoinBannerController? banners,
+    this.levelImageFor,
+  })  : _prefetch = prefetch ?? _defaultPrefetch,
+        banners = banners ?? JoinBannerController();
+
+  /// The level join banners: a lane of their own beside the gift / entry effect queue.
+  final JoinBannerController banners;
+
+  /// The banner picture for a person at a Charm level (the panel's Levels table). When it gives one, that is the
+  /// banner; otherwise the picture the join row carried (the highest level they have reached in either track).
+  final Future<String?> Function(int charmLevel)? levelImageFor;
 
   /// More than this waiting and the oldest is dropped — a busy room would
   /// otherwise fall minutes behind.
@@ -194,6 +182,7 @@ class RoomEffectController extends ChangeNotifier {
   Timer? _guard;
   bool _disposed = false;
   bool _ownEntryPlayed = false;
+  bool _ownBannerPlayed = false;
 
   RoomEffect? get current => _current;
 
@@ -252,13 +241,24 @@ class RoomEffectController extends ChangeNotifier {
 
   /// Plays this user's own entry effect / vehicle at once, from what they have equipped, without waiting
   /// for their join row to come back over Realtime (it can arrive before the room is listening, and
-  /// Realtime never replays). The join row for the same entry is then ignored for the items.
+  /// Realtime never replays). The join row for the same entry is then ignored for the items, and if the row got
+  /// there first (it is claimed the moment it is seen, before its items load) this plays nothing: one entry, once.
   void playOwnEntry(List<StoreItem> items, {String senderName = 'You', String? senderId}) {
-    if (_disposed || items.isEmpty) return;
+    if (_disposed || items.isEmpty || _ownEntryPlayed) return;
     _ownEntryPlayed = true;
     for (final item in items) {
       enqueue(RoomEffect.entry(item: item, senderName: senderName, senderId: senderId));
     }
+  }
+
+  /// Shows this user's own level banner at once, without waiting for their join row to come back over Realtime
+  /// (it can arrive before the room is listening, and the catch-up read depends on the phone's clock). The join row
+  /// for the same entry is then ignored for the banner, so it plays once (and if the row got there first, this
+  /// plays nothing).
+  void playOwnBanner({required String imageUrl, required String name, required AppUser who}) {
+    if (_disposed || imageUrl.isEmpty || _ownBannerPlayed) return;
+    _ownBannerPlayed = true;
+    banners.add(JoinBanner(imageUrl: imageUrl, name: name, who: who));
   }
 
   Future<List<StoreItem>> _loadWithRetry(
@@ -289,6 +289,7 @@ class RoomEffectController extends ChangeNotifier {
     required Future<List<StoreItem>> Function(List<String> ids) loadItems,
     bool history = false,
     DateTime? now,
+    AppUser? sender,
   }) async {
     if (row['kind'] != 'system') return false;
     final ids = row['entry_item_ids'];
@@ -297,7 +298,9 @@ class RoomEffectController extends ChangeNotifier {
     final alreadyPlayed = _ownEntryPlayed && senderId != null && senderId == meId;
     final hasItems = ids is List && ids.isNotEmpty && !alreadyPlayed;
     final levelImage = (row['level_image_url'] as String?)?.trim();
-    final hasLevel = levelImage != null && levelImage.isNotEmpty;
+    // my own banner was already shown from my own levels (playOwnBanner)
+    final bannerDone = _ownBannerPlayed && senderId != null && senderId == meId;
+    final hasLevel = levelImage != null && levelImage.isNotEmpty && !bannerDone;
     if (!hasItems && !hasLevel) return false;
     if (history) {
       if (senderId == null || senderId != meId) return false;
@@ -309,6 +312,13 @@ class RoomEffectController extends ChangeNotifier {
     }
     final rowId = row['id'];
     if (rowId is int && !_seenEntryRows.add(rowId)) return false;
+    // My own entry is claimed NOW, before anything is awaited: this row loads its items and looks the banner up over
+    // the network, and my own local play (playOwnEntry / playOwnBanner) finishes at about the same time. Without
+    // the claim both ran and the entry showed twice.
+    if (senderId != null && senderId == meId) {
+      if (hasItems) _ownEntryPlayed = true;
+      if (hasLevel) _ownBannerPlayed = true;
+    }
     final List<StoreItem> items;
     try {
       items = hasItems
@@ -318,11 +328,18 @@ class RoomEffectController extends ChangeNotifier {
       return false;
     }
     if (_disposed) return false;
-    // the level image first, then the vehicle / entry effect
+    // the level's join banner (a strip, in its own lane) plays at once; the vehicle / entry effect queues
     if (hasLevel) {
-      enqueue(
-        RoomEffect.level(url: levelImage, senderName: senderName, senderId: senderId),
-      );
+      var image = levelImage;
+      final lookup = levelImageFor;
+      if (lookup != null && sender != null) {
+        try {
+          final charm = await lookup(sender.charmLevel);
+          if (charm != null && charm.isNotEmpty) image = charm;
+        } catch (_) {}
+        if (_disposed) return false;
+      }
+      banners.add(JoinBanner(imageUrl: image, name: senderName, who: sender));
     }
     for (final item in items) {
       enqueue(
@@ -341,6 +358,7 @@ class RoomEffectController extends ChangeNotifier {
     required Gift? Function(String giftId) giftById,
     required Future<List<StoreItem>> Function(List<String> ids) loadItems,
     bool history = false,
+    AppUser? sender,
   }) async {
     if (!history) {
       onChatRow(row, meId: meId, senderName: senderName, giftById: giftById);
@@ -351,6 +369,7 @@ class RoomEffectController extends ChangeNotifier {
       senderName: senderName,
       loadItems: loadItems,
       history: history,
+      sender: sender,
     );
   }
 
@@ -392,6 +411,7 @@ class RoomEffectController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _guard?.cancel();
+    banners.dispose();
     super.dispose();
   }
 }
@@ -405,22 +425,29 @@ class RoomEffectLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        final effect = controller.current;
-        if (effect == null) return const SizedBox.shrink();
-        final id = controller.playId;
-        return IgnorePointer(
-          child: _RoomEffectView(
-            key: ValueKey(id),
-            effect: effect,
-            speed: controller.currentSpeed,
-            onPlaying: (expected) => controller.reportDuration(id, expected),
-            onFinished: () => controller.finish(id),
-          ),
-        );
-      },
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ListenableBuilder(
+          listenable: controller,
+          builder: (context, _) {
+            final effect = controller.current;
+            if (effect == null) return const SizedBox.shrink();
+            final id = controller.playId;
+            return IgnorePointer(
+              child: _RoomEffectView(
+                key: ValueKey(id),
+                effect: effect,
+                speed: controller.currentSpeed,
+                onPlaying: (expected) => controller.reportDuration(id, expected),
+                onFinished: () => controller.finish(id),
+              ),
+            );
+          },
+        ),
+        // arrivals: a strip near the lower middle, never full screen, in its own lane
+        JoinBannerLayer(controller: controller.banners),
+      ],
     );
   }
 }

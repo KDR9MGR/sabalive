@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 
 import '../../../config/supabase_client.dart';
+import '../../../data/level_banner_images.dart';
+import '../../../data/models.dart';
 import '../../../data/store_repository.dart';
 import 'room_effect.dart';
 
@@ -16,6 +18,7 @@ Future<void> catchUpOwnEntry(
   String streamId,
   RoomEffectController effects, {
   required String? meId,
+  AppUser? me,
   StoreRepository? repo,
 }) async {
   try {
@@ -39,6 +42,7 @@ Future<void> catchUpOwnEntry(
           giftById: (_) => null,
           loadItems: store.itemsByIds,
           history: true,
+          sender: me,
         ),
       );
     }
@@ -52,7 +56,9 @@ Future<void> catchUpOwnEntry(
 Future<void> playMyEntry(
   RoomEffectController effects, {
   required String? meId,
+  AppUser? me,
   StoreRepository? repo,
+  LevelBannerImages? images,
 }) async {
   if (meId == null) return;
   try {
@@ -60,6 +66,16 @@ Future<void> playMyEntry(
     effects.playOwnEntry(entryItemsFrom(owned), senderId: meId);
   } catch (e) {
     debugPrint('own entry failed: $e');
+  }
+  // my own level banner, from my own levels: everyone else gets it from my join row over Realtime. A ghost joins
+  // invisibly (no join row, no banner).
+  if (me == null || me.isGhost) return;
+  try {
+    final image = await (images ?? LevelBannerImages.instance)
+        .bannerFor(wealthLevel: me.wealthLevel, charmLevel: me.charmLevel);
+    if (image != null) effects.playOwnBanner(imageUrl: image, name: me.name, who: me);
+  } catch (e) {
+    debugPrint('own banner failed: $e');
   }
 }
 

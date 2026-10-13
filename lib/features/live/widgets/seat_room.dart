@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide Text;
 
@@ -8,8 +9,10 @@ import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../state/remote_config_controller.dart';
+import 'emote_overlay.dart';
 import 'seat_speaking.dart';
 import 'speaking_waves.dart';
+import 'wave_colors.dart';
 import '../../../core/i18n/text.dart';
 
 /// One seat circle — empty/locked/occupied/muted — shared by the full
@@ -25,7 +28,9 @@ class SeatCircle extends StatelessWidget {
     this.isHost = false,
     this.speaking = false,
     this.diamonds,
-    this.size = 58,
+    this.size = 56,
+    this.slot,
+    this.emotes,
     this.onTap,
     this.showLabel = true,
   });
@@ -47,11 +52,47 @@ class SeatCircle extends StatelessWidget {
   /// under the seat swaps between their name and this count every 7 seconds.
   final int? diamonds;
   final double size;
+
+  /// The square the seat's picture (and frame) is centred in, when the layout wants every seat of a row to take the
+  /// same room so their names line up (the audio room's grid). A frame is drawn INSIDE it, so it can never spill over
+  /// the next seat or label. Null = just as big as the seat needs.
+  final double? slot;
+
+  /// The emotes people are sending right now: one sent by this seat's holder plays over their picture circle.
+  final EmoteController? emotes;
   final VoidCallback? onTap;
   final bool showLabel;
 
+  /// How much bigger the host's own seat is drawn than a guest's, so the host stands out in the room.
+  static const double hostExtra = 10;
+
+  /// How far (each side) the host's frame may reach past its slot: the artwork is see-through at its edge, and the host
+  /// is meant to stand out. Small enough that it stays inside the gap above a seat's name.
+  static const double hostFrameOverhang = 4;
+
+  /// The size of the box a seat's avatar takes, frame included: [plain] without a frame, [plain] x
+  /// [AppAvatar.frameScale] with one, but never more than the [slot] it sits in (the host may reach
+  /// [hostFrameOverhang] past it).
+  static double footprintOf({required double plain, required bool framed, double? slot, bool isHost = false}) {
+    if (!framed) return plain;
+    final wanted = plain * AppAvatar.frameScale;
+    if (slot == null) return wanted;
+    final cap = slot + (isHost ? hostFrameOverhang * 2 : 0);
+    return wanted > cap ? cap : wanted;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // the host's seat is a little bigger than the others
+    final plain = isHost && occupant != null ? size + hostExtra : size;
+    final frame = occupant?.frameUrl;
+    final framed = occupant != null && AppAvatar.showsFrame(plain * AppAvatar.frameScale, frame);
+    final footprint = footprintOf(plain: plain, framed: framed, slot: slot, isHost: isHost);
+    // what the layout reserves for the seat's picture: the slot when there is one
+    final reserve = slot ?? footprint;
+    // the frame fills the footprint and the picture sits inside it; badges sit on the picture's edge
+    final picture = framed ? footprint / AppAvatar.frameScale : plain;
+    final inset = (footprint - picture) / 2;
     return GestureDetector(
       onTap: onTap,
       // Without this, a tap only registers on the small icon glyph inside
@@ -63,73 +104,108 @@ class SeatCircle extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              if (occupant case final occupant?)
-                // the ring of waves around the avatar is the "this person is talking" cue
-                SpeakingWaves(
-                  // feature_flags.speaking_waves can switch the ring off from the panel
-                  active: speaking && RemoteConfigController.instance.flag('speaking_waves'),
-                  diameter: size,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: AppColors.primaryGradient,
-                    ),
-                    child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, frameUrl: occupant.frameUrl, size: size - 4),
-                  ),
-                )
-              else
-                Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.06),
-                    border: Border.all(
-                        color: locked
-                            ? AppColors.gold.withValues(alpha: 0.7)
-                            : Colors.white.withValues(alpha: 0.18)),
-                  ),
-                  child: Icon(
-                      locked ? Icons.lock_rounded : Icons.event_seat_rounded,
-                      color: locked ? AppColors.gold : Colors.white54,
-                      size: size * 0.38),
+          SizedBox(
+            width: reserve,
+            height: reserve,
+            // the host's frame may reach a little past the slot
+            child: OverflowBox(
+              maxWidth: footprint > reserve ? footprint : reserve,
+              maxHeight: footprint > reserve ? footprint : reserve,
+              child: SizedBox(
+                width: footprint,
+                height: footprint,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    if (occupant case final occupant?)
+                      // the ring of waves around the avatar is the "this person is talking" cue
+                      SpeakingWaves(
+                        // feature_flags.speaking_waves can switch the ring off from the panel
+                        active: speaking && RemoteConfigController.instance.flag('speaking_waves'),
+                        diameter: footprint,
+                        // around the frame, in the host's green or a colour of their own; shorter bars with a
+                        // frame, so the ring does not reach into the next seat
+                        amplitude: framed ? 0.1 : 0.2,
+                        color: waveColorFor(occupant.id, isHost: isHost),
+                        child: framed
+                            ? AppAvatar(
+                                name: occupant.name,
+                                imageUrl: occupant.avatarUrl,
+                                frameUrl: occupant.frameUrl,
+                                size: footprint,
+                              )
+                            : Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: AppColors.primaryGradient,
+                                ),
+                                child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, size: footprint - 4),
+                              ),
+                      )
+                    else
+                      Container(
+                        width: plain,
+                        height: plain,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.06),
+                          border: Border.all(
+                              color: locked
+                                  ? AppColors.gold.withValues(alpha: 0.7)
+                                  : Colors.white.withValues(alpha: 0.18)),
+                        ),
+                        child: Icon(
+                            locked ? Icons.lock_rounded : Icons.event_seat_rounded,
+                            color: locked ? AppColors.gold : Colors.white54,
+                            size: plain * 0.38),
+                      ),
+                    if (occupant != null && emotes != null)
+                      Positioned.fill(
+                        child: Padding(
+                          padding: EdgeInsets.all(inset),
+                          child: ListenableBuilder(
+                            listenable: emotes!,
+                            builder: (context, _) {
+                              final e = emotes!.of(occupant!.id);
+                              if (e == null) return const SizedBox.shrink();
+                              return EmoteOverlay(key: ValueKey(e.id), emote: e, hold: emotes!.hold);
+                            },
+                          ),
+                        ),
+                      ),
+                    if (occupant != null && muted)
+                      Positioned(
+                        right: inset - 2,
+                        bottom: inset - 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
+                          child: const Icon(Icons.mic_off_rounded, color: Colors.white, size: 11),
+                        ),
+                      ),
+                    if (occupant != null && isHost)
+                      Positioned(
+                        left: inset - 2,
+                        top: inset - 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(color: AppColors.gold, shape: BoxShape.circle),
+                          child: const Icon(Icons.star_rounded, color: Colors.white, size: 11),
+                        ),
+                      ),
+                  ],
                 ),
-              if (occupant != null && muted)
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: const BoxDecoration(
-                        color: AppColors.danger, shape: BoxShape.circle),
-                    child: const Icon(Icons.mic_off_rounded,
-                        color: Colors.white, size: 11),
-                  ),
-                ),
-              if (occupant != null && isHost)
-                Positioned(
-                  left: -2,
-                  top: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: const BoxDecoration(
-                        color: AppColors.gold, shape: BoxShape.circle),
-                    child: const Icon(Icons.star_rounded,
-                        color: Colors.white, size: 11),
-                  ),
-                ),
-            ],
+              ),
+            ),
           ),
           if (showLabel) ...[
             const SizedBox(height: 4),
             SeatLabel(
               name: occupant?.name ?? (locked ? 'Locked' : 'Seat $seat'),
               diamonds: occupant == null ? null : diamonds,
-              width: size,
+              width: reserve,
               bright: occupant != null,
             ),
           ],
@@ -139,7 +215,101 @@ class SeatCircle extends StatelessWidget {
   }
 }
 
-/// Voice-room stage: a 5-per-row grid of numbered seats, one of which the
+/// The audio room's seat counts: 4 seats to a row, from one row (4) to four rows (16).
+const int kMinAudioSeats = 4;
+const int kMaxAudioSeats = 16;
+const int kSeatStep = 4;
+const int kSeatsPerRow = 4;
+
+/// The seat count after the host taps Add (more) or Remove (fewer): always a full row of 4, so seats are added and
+/// removed four at a time (4, 8, 12, 16) whatever the room started with. A room an older app made with another count
+/// (5, 10, 25...) snaps to the next row, and one above 16 can only shrink, to 16 first.
+/// Returns [current] when there is nowhere to go.
+int nextSeatCount(int current, {required bool more}) {
+  if (more) {
+    if (current >= kMaxAudioSeats) return current;
+    return ((current ~/ kSeatStep) + 1) * kSeatStep;
+  }
+  if (current <= kMinAudioSeats) return current;
+  final down = ((current - 1) ~/ kSeatStep) * kSeatStep;
+  return down.clamp(kMinAudioSeats, kMaxAudioSeats);
+}
+
+/// The audio room's seats, four to a row. Every seat reserves the same square for its picture and frame (as wide as a
+/// cell lets it, leaving a line for the name), so a frame stays inside its own cell and the names line up. Shared by the
+/// host's stage ([SeatRoom]) and the viewer's room, so both always lay seats out the same way.
+class SeatGrid extends StatelessWidget {
+  const SeatGrid({
+    super.key,
+    required this.seatCount,
+    required this.occupants,
+    required this.hostId,
+    required this.onSeatTap,
+    this.lockedSeats = const {},
+    this.mutedSeats = const {},
+    this.speakingSeats = const {},
+    this.diamonds = const {},
+    this.emotes,
+  });
+
+  final int seatCount;
+  final Map<int, AppUser> occupants;
+  final String hostId;
+  final Set<int> lockedSeats;
+  final Set<int> mutedSeats;
+  final Set<int> speakingSeats;
+
+  /// Diamonds earned in this stream today, by user id.
+  final Map<String, int> diamonds;
+  final EmoteController? emotes;
+  final void Function(int seat) onSeatTap;
+
+  static const double gap = 4;
+  static const double aspect = 0.8;
+
+  /// Under a seat's picture: the gap and one line for the name.
+  static const double labelRoom = 20;
+
+  /// The square a seat's picture (and frame) gets, for a grid [width] wide.
+  static double slotFor(double width) {
+    final cell = (width - gap * (kSeatsPerRow - 1)) / kSeatsPerRow;
+    return math.min(math.min(cell, 56 * AppAvatar.frameScale), cell / aspect - labelRoom);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final slot = slotFor(box.maxWidth);
+      return GridView.count(
+        crossAxisCount: kSeatsPerRow,
+        shrinkWrap: true,
+        // the host's frame and the speaking rings may reach a little past a seat: don't cut them
+        clipBehavior: Clip.none,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 18,
+        crossAxisSpacing: gap,
+        childAspectRatio: aspect,
+        children: [
+          for (var i = 1; i <= seatCount; i++)
+            SeatCircle(
+              seat: i,
+              occupant: occupants[i],
+              locked: lockedSeats.contains(i),
+              muted: mutedSeats.contains(i),
+              speaking: speakingSeats.contains(i),
+              diamonds: occupants[i] == null ? null : (diamonds[occupants[i]!.id] ?? 0),
+              isHost: occupants[i]?.id == hostId,
+              slot: slot,
+              emotes: emotes,
+              onTap: () => onSeatTap(i),
+            ),
+        ],
+      );
+    });
+  }
+}
+
+/// Voice-room stage: a 4-per-row grid of numbered seats, one of which the
 /// host occupies like anyone else (marked with [SeatCircle]'s host badge)
 /// rather than getting a separate avatar above the grid. Shared by the
 /// host's own broadcast screen (seats are editable — add/remove/lock) and
@@ -159,8 +329,12 @@ class SeatRoom extends StatelessWidget {
     this.speakingSeats = const {},
     this.diamonds = const {},
     this.skinUrl,
+    this.emotes,
   });
   final String hostId;
+
+  /// Emotes people are sending: one plays over its sender's seat.
+  final EmoteController? emotes;
   /// The host's equipped room skin (admin-uploaded SVGA / MP4 / image), drawn
   /// behind the seats. Null shows the default purple gradient.
   final String? skinUrl;
@@ -222,34 +396,24 @@ class SeatRoom extends StatelessWidget {
                     style: const TextStyle(color: Colors.white70)),
               )
             else ...[
-              GridView.count(
-                crossAxisCount: 5,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 4,
-                childAspectRatio: 0.72,
-                children: [
-                  for (var i = 1; i <= seatCount; i++)
-                    SeatCircle(
-                      seat: i,
-                      occupant: occupants[i],
-                      locked: lockedSeats.contains(i),
-                      muted: mutedSeats.contains(i),
-                      speaking: speakingSeats.contains(i),
-                      diamonds: occupants[i] == null ? null : (diamonds[occupants[i]!.id] ?? 0),
-                      isHost: occupants[i]?.id == hostId,
-                      onTap: () => onSeatTap(i),
-                    ),
-                ],
+              SeatGrid(
+                seatCount: seatCount,
+                occupants: occupants,
+                lockedSeats: lockedSeats,
+                mutedSeats: mutedSeats,
+                speakingSeats: speakingSeats,
+                diamonds: diamonds,
+                hostId: hostId,
+                emotes: emotes,
+                onSeatTap: onSeatTap,
               ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _seatBtn(Icons.remove_rounded, 'Remove 5', onRemoveSeat),
+                  _seatBtn(Icons.remove_rounded, 'Remove 4', onRemoveSeat),
                   const SizedBox(width: 12),
-                  _seatBtn(Icons.add_rounded, 'Add 5', onAddSeat),
+                  _seatBtn(Icons.add_rounded, 'Add 4', onAddSeat),
                 ],
               ),
             ],
@@ -328,6 +492,71 @@ class CompactSeatStrip extends StatelessWidget {
             size: 46,
             showLabel: false,
             onTap: onSeatTap == null ? null : () => onSeatTap!(seat),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The guest seats of a VIDEO live, stacked one above the other down the right-hand edge of the screen (over the
+/// video, out of the way of the host's face and the chat). Empty seats are small and faint; people on a seat show
+/// their avatar, frame and speaking ring. Same nullable-onSeatTap read-only convention as [SeatRoom].
+class SeatColumn extends StatelessWidget {
+  const SeatColumn({
+    super.key,
+    required this.seatCount,
+    required this.occupants,
+    this.lockedSeats = const {},
+    this.mutedSeats = const {},
+    this.speakingSeats = const {},
+    this.hostId,
+    this.onSeatTap,
+    this.maxHeight = 420,
+    this.emotes,
+  });
+
+  /// Emotes people are sending: one plays over its sender's seat.
+  final EmoteController? emotes;
+
+  final int seatCount;
+  final Map<int, AppUser> occupants;
+  final Set<int> lockedSeats;
+  final Set<int> mutedSeats;
+  final Set<int> speakingSeats;
+  final String? hostId;
+  final void Function(int seat)? onSeatTap;
+  final double maxHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 84),
+      child: ListView.separated(
+        shrinkWrap: true,
+        // frames and speaking rings stand outside a seat
+        clipBehavior: Clip.none,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        itemCount: seatCount,
+        separatorBuilder: (_, _) => const SizedBox(height: 14),
+        itemBuilder: (_, i) {
+          final seat = i + 1;
+          final occupant = occupants[seat];
+          return Center(
+            child: SeatCircle(
+              seat: seat,
+              occupant: occupant,
+              locked: lockedSeats.contains(seat),
+              muted: mutedSeats.contains(seat),
+              speaking: speakingSeats.contains(seat),
+              isHost: occupant != null && occupant.id == hostId,
+              size: occupant == null ? 36 : 44,
+              // a frame is kept inside the column's width (84 less the padding)
+              slot: (occupant?.frameUrl ?? '').isEmpty ? null : 64,
+              emotes: emotes,
+              showLabel: false,
+              onTap: onSeatTap == null ? null : () => onSeatTap!(seat),
+            ),
           );
         },
       ),

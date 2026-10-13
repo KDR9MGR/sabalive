@@ -86,6 +86,40 @@ void main() {
     expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue);
   });
 
+  testWidgets('KeyboardHide hides what it holds while the keyboard is up, and gives it back when it closes', (tester) async {
+    addTearDown(tester.view.reset);
+    Widget app() => MaterialApp(
+          home: Scaffold(
+            resizeToAvoidBottomInset: false,
+            body: KeyboardStable(
+              child: Column(
+                children: const [
+                  KeyboardHide(child: SizedBox(key: Key('chat'), height: 100, width: 100)),
+                  SizedBox(key: Key('stage'), height: 100, width: 100),
+                ],
+              ),
+            ),
+          ),
+        );
+    double opacityOf(String key) => tester.widget<AnimatedOpacity>(
+        find.ancestor(of: find.byKey(Key(key)), matching: find.byType(AnimatedOpacity))).opacity;
+
+    setBars(tester, keyboard: 0);
+    await tester.pumpWidget(app());
+    expect(opacityOf('chat'), 1);
+
+    setBars(tester, keyboard: 300);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(opacityOf('chat'), 0, reason: 'only the input box is left over the live');
+    expect(tester.widget<IgnorePointer>(find.ancestor(of: find.byKey(const Key('chat')), matching: find.byType(IgnorePointer)).first).ignoring, isTrue);
+    expect(tester.getRect(find.byKey(const Key('chat'))).height, 100, reason: 'it stays in the layout, nothing moves');
+
+    setBars(tester, keyboard: 0);
+    await tester.pump();
+    expect(opacityOf('chat'), 1);
+  });
+
   test('keyboardLiftFor is the keyboard minus the system bar, never negative', () {
     MediaQueryData mq(double keyboard, double bar) => MediaQueryData(
           viewInsets: EdgeInsets.only(bottom: keyboard),

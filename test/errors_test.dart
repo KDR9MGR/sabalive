@@ -53,6 +53,32 @@ void main() {
     });
   });
 
+  group('a server that is older than the app', () {
+    test('a missing function or table reads as "not available yet", never as raw database text', () {
+      const missingFn = PostgrestException(
+        message: 'Could not find the function public.set_room_admin(p_user_id) in the schema cache',
+        code: 'PGRST202',
+      );
+      const missingTable = PostgrestException(message: 'Could not find the table public.live_room_admins', code: 'PGRST205');
+      expect(isMissingOnServer(missingFn), isTrue);
+      expect(isMissingOnServer(missingTable), isTrue);
+      expect(friendlyError(missingFn), "This isn't available yet. The server still needs its latest update.");
+      expect(friendlyError(missingTable), friendlyError(missingFn));
+    });
+
+    test('Postgres undefined function / table codes count too', () {
+      expect(isMissingOnServer(const PostgrestException(message: 'function x does not exist', code: '42883')), isTrue);
+      expect(isMissingOnServer(const PostgrestException(message: 'relation x does not exist', code: '42P01')), isTrue);
+    });
+
+    test('an ordinary refusal is not mistaken for it, and other errors are not either', () {
+      const refused = PostgrestException(message: 'Only the host can do this', code: 'P0001');
+      expect(isMissingOnServer(refused), isFalse);
+      expect(friendlyError(refused), 'Only the host can do this');
+      expect(isMissingOnServer(Exception('boom')), isFalse);
+    });
+  });
+
   group('googleNativeSignInUnavailable', () {
     test('the plugin not answering, or Google refusing the build, means try the browser sign-in', () {
       expect(googleNativeSignInUnavailable(PlatformException(code: 'channel-error')), isTrue);

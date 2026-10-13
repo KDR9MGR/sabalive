@@ -60,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _photo(context, user),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,6 +169,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _photo(BuildContext context, AppUser user) {
+    // the avatar's footprint includes its frame, a little bigger when there is one so the picture stays near 76
+    final footprint = AppAvatar.showsFrame(106, user.frameUrl) ? 106.0 : 92.0;
+    final inset = (footprint - AppAvatar.pictureSize(footprint, user.frameUrl)) / 2;
     return GestureDetector(
       onTap: _uploadingPhoto
           ? null
@@ -179,23 +182,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          AppAvatar(name: user.name, imageUrl: user.avatarUrl, frameUrl: user.frameUrl, size: 92, ring: true),
+          AppAvatar(name: user.name, imageUrl: user.avatarUrl, frameUrl: user.frameUrl, size: footprint, ring: true),
           if (_uploadingPhoto)
             Positioned.fill(
-              child: Container(
-                decoration: const BoxDecoration(
-                    shape: BoxShape.circle, color: Colors.black54),
-                alignment: Alignment.center,
-                child: const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              // over the picture only, not the frame around it
+              child: Padding(
+                padding: EdgeInsets.all(inset),
+                child: Container(
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54),
+                  alignment: Alignment.center,
+                  child: const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  ),
                 ),
               ),
             ),
           Positioned(
-            right: -2,
-            bottom: -2,
+            right: inset - 2,
+            bottom: inset - 2,
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(

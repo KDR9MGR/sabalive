@@ -90,12 +90,12 @@ void main() {
   group('AppAvatar frame', () {
     Widget host(Widget child) => MaterialApp(home: Scaffold(body: Center(child: child)));
 
-    testWidgets('draws the frame over the picture, larger than it, without taking taps', (t) async {
+    testWidgets('draws the frame around the picture, inside the avatar\'s own box, without taking taps', (t) async {
       await t.pumpWidget(host(const AppAvatar(name: 'Sam', size: 50, frameUrl: 'https://x.co/ring.svga')));
       final media = t.widget<RemoteMedia>(find.byType(RemoteMedia));
       expect(media.url, 'https://x.co/ring.svga');
-      final box = t.getSize(find.descendant(of: find.byType(OverflowBox), matching: find.byType(SizedBox)).first);
-      expect(box.width, closeTo(50 * AppAvatar.frameScale, 0.01));
+      // the frame fills the footprint; it is not drawn outside it
+      expect(t.getSize(find.byType(RemoteMedia)), const Size(50, 50));
       expect(find.ancestor(of: find.byType(RemoteMedia), matching: find.byType(IgnorePointer)), findsWidgets);
     });
 

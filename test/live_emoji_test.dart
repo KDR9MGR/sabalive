@@ -76,10 +76,10 @@ void main() {
       expect(picked?.id, 'g1');
     });
 
-    testWidgets('an empty catalog says so rather than showing stale emoji', (t) async {
+    testWidgets('an empty catalog says so rather than showing stale emotes', (t) async {
       LiveEmojisRepository.cached = [];
       await _open(t, (_) {});
-      expect(find.text('No emojis available right now'), findsOneWidget);
+      expect(find.text('No emotes available right now'), findsOneWidget);
     });
 
     testWidgets('when the catalog cannot be read at all, the built-in set is offered', (t) async {

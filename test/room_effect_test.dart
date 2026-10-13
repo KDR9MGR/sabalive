@@ -573,8 +573,7 @@ void main() {
         loadItems: (ids) async => [car],
       );
       expect(level, isTrue);
-      c.finish(c.playId);
-      expect(c.current?.caption, 'Sam joined');
+      expect(c.banners.current?.name, 'Sam', reason: 'the level banner still plays');
       c.finish(c.playId);
       expect(c.current, isNull, reason: 'the car was not queued again');
       c.dispose();

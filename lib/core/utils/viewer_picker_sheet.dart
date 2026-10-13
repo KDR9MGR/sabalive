@@ -12,6 +12,10 @@ Future<AppUser?> pickViewer(
   BuildContext context, {
   required String streamId,
   required String hostId,
+  String title = 'Remove a viewer',
+  String subtitle = "They leave now and can't rejoin this live.",
+  IconData actionIcon = Icons.person_remove_alt_1_rounded,
+  Color actionColor = AppColors.danger,
 }) {
   return showModalBottomSheet<AppUser>(
     context: context,
@@ -20,14 +24,32 @@ Future<AppUser?> pickViewer(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) => _ViewerPicker(streamId: streamId, hostId: hostId),
+    builder: (_) => _ViewerPicker(
+      streamId: streamId,
+      hostId: hostId,
+      title: title,
+      subtitle: subtitle,
+      actionIcon: actionIcon,
+      actionColor: actionColor,
+    ),
   );
 }
 
 class _ViewerPicker extends StatelessWidget {
-  const _ViewerPicker({required this.streamId, required this.hostId});
+  const _ViewerPicker({
+    required this.streamId,
+    required this.hostId,
+    required this.title,
+    required this.subtitle,
+    required this.actionIcon,
+    required this.actionColor,
+  });
   final String streamId;
   final String hostId;
+  final String title;
+  final String subtitle;
+  final IconData actionIcon;
+  final Color actionColor;
 
   @override
   Widget build(BuildContext context) {
@@ -37,18 +59,18 @@ class _ViewerPicker extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Remove a viewer',
-              style: TextStyle(
+            Text(
+              title,
+              style: const TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              "They leave now and can't rejoin this live.",
-              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+            Text(
+              subtitle,
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
             const SizedBox(height: 12),
             SizedBox(
@@ -98,10 +120,7 @@ class _ViewerPicker extends StatelessWidget {
                             color: AppColors.textMuted,
                           ),
                         ),
-                        trailing: const Icon(
-                          Icons.person_remove_alt_1_rounded,
-                          color: AppColors.danger,
-                        ),
+                        trailing: Icon(actionIcon, color: actionColor),
                       );
                     },
                   );

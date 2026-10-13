@@ -12,9 +12,9 @@ import '../../../core/i18n/text.dart';
 /// minute, so a panel change shows up without a restart), then shows
 /// "Opening…" until the server pays out, then the diamonds won.
 ///
-/// The host sees their own reward. A viewer ([forViewer]) sees the same box and
-/// countdown, and "Opened" when the time is up; the reward is the host's, so a
-/// viewer's wallet and the amount are never looked up.
+/// Only the host's own screen shows it. The viewer mode ([forViewer]: the same box and countdown, "Opened" when the
+/// time is up, no reward lookup) is kept but no screen uses it: the Lucky Box is the host's, so it is hidden from
+/// viewers.
 ///
 /// Shows nothing while the settings can't be read — it's a bonus, never an
 /// error — and keeps trying in the background, so it appears once the network does.

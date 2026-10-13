@@ -15,11 +15,20 @@ import 'bag_screen.dart';
 import 'widgets/store_art.dart';
 import '../../core/i18n/text.dart';
 
-/// Real cosmetics store — frames, VIP tiers, entry effects, vehicles, room skins.
+/// Real cosmetics store — frames, Lucky IDs, entry effects, room skins. (Vehicles are no longer sold here: the
+/// Garage tab was removed; ones people already own still show in the Bag and play on entry.)
 /// A "purchase" grants N days of access (extended if you already own an
 /// unexpired copy), not real recurring billing — see the migration's own
 /// note. Prices/items are my own placeholder catalog, retunable via SQL
 /// on store_items without a code change.
+/// The Store's tabs, in order. No Garage: vehicles are not sold here any more.
+const storeTabs = [
+  (StoreCategory.frame, 'Frame'),
+  (StoreCategory.vip, 'Lucky ID'),
+  (StoreCategory.entryEffect, 'Entry'),
+  (StoreCategory.roomSkin, 'Room Skin'),
+];
+
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
 
@@ -35,13 +44,7 @@ class _StoreScreenState extends State<StoreScreen> {
   final _luckyRepo = LuckyIdsRepository();
   ({List<LuckyId> forSale, LuckyId? mine})? _lucky;
 
-  static const _categories = [
-    (StoreCategory.frame, 'Frame'),
-    (StoreCategory.vip, 'Lucky ID'),
-    (StoreCategory.entryEffect, 'Entry'),
-    (StoreCategory.vehicle, 'Garage'),
-    (StoreCategory.roomSkin, 'Room Skin'),
-  ];
+  static const _categories = storeTabs;
 
   @override
   void initState() {
@@ -86,11 +89,35 @@ class _StoreScreenState extends State<StoreScreen> {
     try {
       await _repo.purchase(item.id);
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('${item.name} purchased!')));
+      // A purchase is not put on by itself (only a Lucky ID tier is): offer to do it right here, so the buyer is never
+      // left wondering where it went. It is also in My Bag.
+      final equippable = item.category != StoreCategory.vip;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('${item.name} purchased!'),
+          duration: const Duration(seconds: 6),
+          action: equippable
+              ? SnackBarAction(label: tr('Put on'), onPressed: () => _putOn(item))
+              : null,
+        ),
+      );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _busyIds.remove(item.id));
+    }
+  }
+
+  /// Equips what was just bought (the snackbar's "Put on").
+  Future<void> _putOn(StoreItem item) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final auth = context.read<AuthController>();
+    try {
+      await _repo.setEquipped(item.id, true);
+      if (item.category == StoreCategory.frame) await auth.reloadProfile(); // shows on your own profile now
+      messenger.showSnackBar(SnackBar(content: Text('${item.name} is now equipped')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 

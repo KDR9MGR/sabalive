@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// verbose `PostgrestException(message: ..., code: ...)` toString().
 String friendlyError(Object error) => switch (error) {
       AuthException(:final message) => _authMessage(message),
+      PostgrestException() when isMissingOnServer(error) =>
+        "This isn't available yet. The server still needs its latest update.",
       PostgrestException(:final message) => message,
       FunctionException() => _functionMessage(error),
       PlatformException() => _platformMessage(error),
@@ -25,6 +27,15 @@ String _functionMessage(FunctionException e) {
   }
   if (details is String && details.trim().isNotEmpty) return details;
   return e.reasonPhrase ?? 'The request failed (${e.status}).';
+}
+
+/// True when the database has no such function or table (yet): PostgREST's PGRST202 / PGRST205 or Postgres's
+/// 42883 / 42P01. It means the app is newer than the server's last update, not that the person did anything wrong.
+bool isMissingOnServer(Object error) {
+  if (error is! PostgrestException) return false;
+  return const {'PGRST202', 'PGRST205', '42883', '42P01'}.contains(error.code) ||
+      error.message.contains('Could not find the function') ||
+      error.message.contains('Could not find the table');
 }
 
 /// SQLSTATEs the database raises for the ban system. (BN003, "can't message

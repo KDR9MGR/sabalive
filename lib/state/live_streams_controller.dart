@@ -82,6 +82,9 @@ class LiveStreamsController extends ChangeNotifier {
           'title': title,
           'category': category,
           'mode': mode.name,
+          // an audio room opens with two full rows of 4 seats (the host can go from 4 to 16); 8 is valid on every
+          // database, old or updated. Video lives keep the default.
+          if (mode == LiveMode.audio) 'seat_count': 8,
         })
         .select()
         .single();

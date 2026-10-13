@@ -74,35 +74,51 @@ class AuthScaffold extends StatelessWidget {
   }
 }
 
+/// The social sign-in buttons: one full-width banner per provider, stacked, each with the provider's mark and its
+/// name ("Google", "Apple"). [onTap] receives the provider name.
 class SocialRow extends StatelessWidget {
   const SocialRow({super.key, required this.onTap});
   final void Function(String provider) onTap;
 
   @override
   Widget build(BuildContext context) {
-    Widget btn(String label, IconData icon, Color color) => Expanded(
-          child: GestureDetector(
+    Widget banner(String label, IconData icon, Color color) => Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: ValueKey('social-$label'),
+            borderRadius: BorderRadius.circular(14),
             onTap: () => onTap(label),
             child: Container(
-              height: 50,
-              margin: const EdgeInsets.symmetric(horizontal: 5),
+              height: 52,
+              width: double.infinity,
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppColors.stroke),
               ),
-              child: Icon(icon, color: color),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: color, size: 28),
+                  const SizedBox(width: 8),
+                  Text(label,
+                      style: const TextStyle(
+                          fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white)),
+                ],
+              ),
             ),
           ),
         );
 
-    // Facebook isn't in the row — no provider configured on Supabase for it
+    // Facebook isn't here — no provider configured on Supabase for it
     // and no product need yet. Add it back (with the provider configured)
     // if that changes.
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        btn('Google', Icons.g_mobiledata_rounded, const Color(0xFFEA4335)),
-        btn('Apple', Icons.apple_rounded, Colors.white),
+        banner('Google', Icons.g_mobiledata_rounded, const Color(0xFFEA4335)),
+        const SizedBox(height: 12),
+        banner('Apple', Icons.apple_rounded, Colors.white),
       ],
     );
   }

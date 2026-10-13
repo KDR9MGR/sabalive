@@ -8,8 +8,13 @@ import '../widgets/app_avatar.dart';
 import '../i18n/text.dart';
 
 /// Who's watching a stream right now — public to any viewer, not just the
-/// host. Tapping someone opens their profile.
-Future<void> showViewerListSheet(BuildContext context, String streamId) {
+/// host. Tapping someone opens their profile, or [onUserTap] when the screen has more to offer (report, and for the
+/// host and room admins kick / ban / ban text).
+Future<void> showViewerListSheet(
+  BuildContext context,
+  String streamId, {
+  void Function(AppUser user)? onUserTap,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: AppColors.bgElevated,
@@ -17,13 +22,14 @@ Future<void> showViewerListSheet(BuildContext context, String streamId) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) => _ViewerListSheet(streamId: streamId),
+    builder: (_) => _ViewerListSheet(streamId: streamId, onUserTap: onUserTap),
   );
 }
 
 class _ViewerListSheet extends StatefulWidget {
-  const _ViewerListSheet({required this.streamId});
+  const _ViewerListSheet({required this.streamId, this.onUserTap});
   final String streamId;
+  final void Function(AppUser user)? onUserTap;
 
   @override
   State<_ViewerListSheet> createState() => _ViewerListSheetState();
@@ -66,8 +72,15 @@ class _ViewerListSheetState extends State<_ViewerListSheet> {
                       final u = viewers[i];
                       return ListTile(
                         onTap: () {
+                          final onTap = widget.onUserTap;
+                          // the sheet is about to close: use the screen's own context for what opens next
+                          final outer = Navigator.of(context).context;
                           Navigator.pop(context);
-                          AppNav.userProfile(context, u);
+                          if (onTap != null) {
+                            onTap(u);
+                          } else {
+                            AppNav.userProfile(outer, u);
+                          }
                         },
                         leading: AppAvatar(name: u.name, imageUrl: u.avatarUrl, frameUrl: u.frameUrl, size: 42),
                         title: Text(u.name,

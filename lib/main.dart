@@ -17,6 +17,7 @@ import 'state/remote_config_controller.dart';
 import 'state/theme_config_controller.dart';
 import 'theme/app_colors.dart';
 import 'services/push_notifications_service.dart';
+import 'services/screen_protection.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,8 @@ void main() async {
   await I18n.load();
   // the colours and font the panel last set, so the very first frame already wears them
   await ThemeConfigController.restore();
+  // screenshots / screen recording stay blocked from the first screen if the panel last switched that on
+  await ScreenProtection.restore();
   SystemChrome.setSystemUIOverlayStyle(
     SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -52,6 +55,10 @@ void main() async {
   // Release controls (minimum app version, server-side switches). Never awaited: the launch must not
   // wait on it, and it fails open if the server cannot be reached.
   unawaited(RemoteConfigController.instance.start());
+  // the panel's switch: follows every change of the server-side settings (launch, resume)
+  RemoteConfigController.instance.addListener(() {
+    unawaited(ScreenProtection.set(RemoteConfigController.instance.flag('screen_protection', defaultValue: false)));
+  });
   await PushNotificationsService.instance.initializeApp();
   runApp(const SabaLiveApp());
   DeepLinkService(rootNavigatorKey).start();

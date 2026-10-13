@@ -65,7 +65,7 @@ Future<void> showUserSafetyMenu(
     case 'block':
       await _block(context, user, social);
     case 'report':
-      await _report(context, user, social);
+      await reportUser(context, user, social);
   }
 }
 
@@ -82,7 +82,14 @@ Future<void> _block(BuildContext context, AppUser user, SocialRepository repo) a
   }
 }
 
-Future<void> _report(BuildContext context, AppUser user, SocialRepository repo) async {
+/// Asks for a reason and files a report about [user] (it lands in the panel's reports list). [note] says where it
+/// happened (a live room, say).
+Future<void> reportUser(
+  BuildContext context,
+  AppUser user,
+  SocialRepository repo, {
+  String? note,
+}) async {
   final reason = await showModalBottomSheet<String>(
     context: context,
     backgroundColor: AppColors.bgElevated,
@@ -114,7 +121,7 @@ Future<void> _report(BuildContext context, AppUser user, SocialRepository repo) 
   if (reason == null || !context.mounted) return;
   final messenger = ScaffoldMessenger.of(context);
   try {
-    await repo.report(targetType: 'user', targetId: user.id, reason: reason);
+    await repo.report(targetType: 'user', targetId: user.id, reason: reason, note: note);
     messenger.showSnackBar(
       const SnackBar(content: Text('Report submitted — thank you')),
     );

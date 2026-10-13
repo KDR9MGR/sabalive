@@ -18,8 +18,10 @@ import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/keyboard_lift.dart';
 import '../../data/live_emojis_repository.dart';
+import '../../data/level_banner_images.dart';
 import '../../data/models.dart';
 import '../../data/profile_cache.dart';
+import '../../state/room_moderation.dart';
 import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_errors.dart';
@@ -32,8 +34,13 @@ import '../../state/live_streams_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../messages/messages_screen.dart';
+import 'widgets/chat_composer.dart';
+import 'widgets/room_admins_sheet.dart';
+import 'widgets/emote_overlay.dart';
 import 'widgets/room_effect.dart';
 import 'widgets/room_skin_sheet.dart';
+import 'widgets/user_actions_sheet.dart';
+import 'widgets/wave_colors.dart';
 import 'widgets/gift_sheet.dart';
 import 'widgets/live_emoji_sheet.dart';
 import 'widgets/live_chat_bubble.dart';
@@ -79,6 +86,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   String? _connectionFailure;
 
   final _input = TextEditingController();
+  final FocusNode _chatFocus = FocusNode();
+  // who may moderate this live (the host, and the host's room admins) and whose chat is off
+  late final RoomModeration _mod = RoomModeration(
+    streamId: widget.stream.id,
+    hostId: widget.stream.host.id,
+    myId: supabase.auth.currentUser?.id,
+  );
   Timer? _ticker;
   // a notifier, so the once-a-second tick repaints just the clock pill, not the whole screen
   final _elapsed = ValueNotifier<Duration>(Duration.zero);
@@ -119,7 +133,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   /// Bumped whenever a seat changes hands, so a profile lookup that finishes late cannot paint the
   /// previous occupant over the current one.
   final Map<int, int> _seatGen = {};
-  int _bumpSeat(int seat) => _seatGen[seat] = (_seatGen[seat] ?? 0) + 1;
+  /// Counts seats that changed hands (a Realtime insert or delete): lets a seat read that was already in flight
+  /// notice it is out of date (see _reconcileSeats).
+  int _seatChanges = 0;
+  int _bumpSeat(int seat) {
+    _seatChanges++;
+    return _seatGen[seat] = (_seatGen[seat] ?? 0) + 1;
+  }
 
   /// Seats whose guest's Agora connection ended (they quit or dropped) -> that guest's id. Hidden at
   /// once instead of waiting for the server to sweep the seat; shown again if they reconnect.
@@ -173,6 +193,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _subscribeChat();
     _loadSeatLockState();
     _subscribeViewerCount();
+    _mod.addListener(() {
+      if (mounted) setState(() {});
+    });
+    unawaited(_mod.start());
     _subscribeSeats();
     if (!widget.audioOnly) _subscribeSeatRequests();
     if (widget.audioOnly) {
@@ -229,6 +253,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               iAmHost: true,
               meMuted: _micMuted,
             );
+            // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
+            if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
             if (mounted &&
                 (!SeatSpeaking.same(next, _speakingSeats) || hostNow != _hostSpeaking)) {
               setState(() {
@@ -419,10 +445,17 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     );
   }
 
-  Future<void> _reconcileSeats() async {
+  Future<void> _reconcileSeats({bool retry = true}) async {
     if (!mounted) return;
+    final changesBefore = _seatChanges;
     final snap = await fetchSeatSnapshot(widget.stream.id);
     if (snap == null || !mounted) return;
+    // A seat changed hands while this read was on its way, so it may already be out of date: applying it would
+    // make that seat flicker out and back in. Skip it and look again shortly (the periodic read is the net).
+    if (_seatChanges != changesBefore) {
+      if (retry) Timer(const Duration(milliseconds: 1200), () => unawaited(_reconcileSeats(retry: false)));
+      return;
+    }
     final occupants = Map<int, AppUser>.of(snap.occupants);
     // hidden-because-gone seats stay hidden only while the same guest is still on them
     _goneSeats.removeWhere((seat, id) => occupants[seat]?.id != id);
@@ -715,7 +748,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     }
   }
 
-  final _effects = RoomEffectController();
+  final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage);
+  final _emotes = EmoteController();
   final _room = RoomChatState();
   String? _skinUrl;
 
@@ -733,12 +767,21 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         row,
         meId: supabase.auth.currentUser?.id,
         senderName: sender.name,
+        sender: sender,
         giftById: context.read<WalletController>().giftById,
         loadItems: StoreRepository().itemsByIds,
       ),
     );
     // someone the user blocked: no chat line
     if (BlocksController.instance.isBlocked(senderId)) return;
+    // an emote from someone with a picture circle on this screen (a seat; in a video live also the host's own
+    // name pill) plays over it instead of being a chat line
+    if (_emotes.handleRow(
+      row,
+      hasCircle: (id) => (!widget.audioOnly && id == widget.stream.host.id) || _seatOccupants.values.any((u) => u.id == id),
+    )) {
+      return;
+    }
     setState(() {
       _chat.add(
         LiveChatLine(
@@ -809,7 +852,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _elapsed.dispose();
     _heartbeat?.cancel();
     _input.dispose();
+    _chatFocus.dispose();
+    _mod.dispose();
     _effects.dispose();
+    _emotes.dispose();
     _chatChannel?.unsubscribe();
     _viewerChannel?.unsubscribe();
     _seatSyncTimer?.cancel();
@@ -1112,6 +1158,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         AppColors.goldDeep,
         _editNotice,
       ),
+      // audio and video lives: the host picks up to 5 room admins who share the moderation tools
+      if (_mod.serverHasModeration)
+        ToolSpec(
+          Icons.shield_rounded,
+          'Room admins',
+          AppColors.gold,
+          () => showRoomAdminsSheet(context, moderation: _mod, streamId: widget.stream.id),
+        ),
       ToolSpec(
         Icons.speaker_notes_off_rounded,
         'Clear chat',
@@ -1353,7 +1407,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   }
 
   Future<void> _changeSeatCount(int delta) async {
-    final next = (_seatCount + delta).clamp(5, 25);
+    final previous = _seatCount;
+    final next = nextSeatCount(previous, more: delta > 0);
+    if (next == previous) return;
     setState(() => _seatCount = next);
     try {
       await supabase.rpc(
@@ -1361,7 +1417,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         params: {'p_stream_id': widget.stream.id, 'p_count': next},
       );
     } catch (e) {
-      if (mounted) _snack(friendlyError(e));
+      // the server refused (an older server only takes multiples of 5): show the seats that really exist
+      if (mounted) {
+        setState(() => _seatCount = previous);
+        _snack(friendlyError(e));
+      }
     }
   }
 
@@ -1409,6 +1469,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               onTap: () => Navigator.pop(context, 'lock'),
             ),
             if (canModerate) ...[
+              ListTile(
+                leading: const Icon(Icons.more_horiz_rounded),
+                title: const Text('More: profile, report, ban text'),
+                onTap: () => Navigator.pop(context, 'user'),
+              ),
               ListTile(
                 leading: Icon(
                   muted ? Icons.mic_rounded : Icons.mic_off_rounded,
@@ -1472,7 +1537,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       ),
     );
     if (!mounted) return;
-    if (choice == 'sit') {
+    if (choice == 'user' && occupant != null) {
+      await _openUser(occupant);
+    } else if (choice == 'sit') {
       try {
         await supabase.rpc(
           'claim_seat',
@@ -1738,9 +1805,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               mutedSeats: _mutedSeats,
               speakingSeats: _speakingSeats,
               diamonds: _diamonds.all,
+              emotes: _emotes,
               onSeatTap: _seatMenu,
-              onAddSeat: _seatCount >= 25 ? null : () => _changeSeatCount(5),
-              onRemoveSeat: _seatCount <= 5 ? null : () => _changeSeatCount(-5),
+              onAddSeat: _seatCount >= kMaxAudioSeats ? null : () => _changeSeatCount(kSeatStep),
+              onRemoveSeat: _seatCount <= kMinAudioSeats ? null : () => _changeSeatCount(-kSeatStep),
             )
           else if (_engine != null)
             AgoraVideoView(
@@ -1797,7 +1865,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                             _circle(
                               '$_viewers',
                               onTap: () =>
-                                  showViewerListSheet(context, widget.stream.id),
+                                  showViewerListSheet(context, widget.stream.id, onUserTap: _openUser),
                             ),
                             const SizedBox(width: 8),
                             _circle(
@@ -1891,31 +1959,42 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [if (_chat.isNotEmpty) KeyboardLift(child: _chatList())],
+                              // while the host types, only the input box stays over the picture
+                              child: KeyboardHide(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [if (_chat.isNotEmpty) KeyboardLift(child: _chatList())],
+                                ),
                               ),
                             ),
-                            _rightRail(),
+                            KeyboardHide(child: _rightRail()),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        if (!widget.audioOnly) ...[
-                          CompactSeatStrip(
-                            seatCount: _seatCount,
-                            occupants: _seatOccupants,
-                            lockedSeats: _lockedSeats,
-                            mutedSeats: _mutedSeats,
-                            speakingSeats: _speakingSeats,
-                            onSeatTap: _seatMenu,
-                          ),
-                          const SizedBox(height: 6),
-                        ],
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 14),
                         KeyboardLift(child: _bottomBar()),
                       ],
                     ),
                   ),
+                  // a video live's guest seats, one above the other down the right-hand edge (out of the host's
+                  // face); they step aside while the host types
+                  if (!widget.audioOnly)
+                    Positioned(
+                      right: 0,
+                      top: 110,
+                      child: KeyboardHide(
+                        child: SeatColumn(
+                          seatCount: _seatCount,
+                          occupants: _seatOccupants,
+                          lockedSeats: _lockedSeats,
+                          mutedSeats: _mutedSeats,
+                          speakingSeats: _speakingSeats,
+                          hostId: widget.stream.host.id,
+                          emotes: _emotes,
+                          onSeatTap: _seatMenu,
+                          maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1940,14 +2019,21 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SpeakingWaves(
-            active: _hostSpeaking,
-            diameter: 24,
-            child: AppAvatar(
-              name: widget.stream.host.name,
-              imageUrl: widget.stream.host.avatarUrl,
-              frameUrl: widget.stream.host.frameUrl,
-              size: 24,
+          // in a video live the host's emote plays over their picture circle here (in an audio room it plays on their seat)
+          EmoteOnAvatar(
+            controller: widget.audioOnly ? null : _emotes,
+            userId: widget.stream.host.id,
+            size: 24,
+            child: SpeakingWaves(
+              active: _hostSpeaking,
+              diameter: 24,
+              color: kHostWaveColor,
+              child: AppAvatar(
+                name: widget.stream.host.name,
+                imageUrl: widget.stream.host.avatarUrl,
+                frameUrl: widget.stream.host.frameUrl,
+                size: 24,
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -2073,10 +2159,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: GestureDetector(
-                      onTap: isRealId(line.user.id)
-                          ? () => AppNav.userProfile(context, line.user)
-                          : null,
-                      child: LiveChatLineBubble(key: ObjectKey(line), line: line, backgroundAlpha: 0.36, pinnedAlpha: 0.5),
+                      onTap: isRealId(line.user.id) ? () => _openUser(line.user) : null,
+                      child: LiveChatLineBubble(
+                        key: ObjectKey(line),
+                        line: line,
+                        backgroundAlpha: 0.36,
+                        pinnedAlpha: 0.5,
+                        myName: widget.stream.host.name,
+                      ),
                     ),
                   ),
                 );
@@ -2166,66 +2256,54 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   }
 
   Widget _bottomBar() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        12,
-        8,
-        12,
-        8 + MediaQuery.viewPaddingOf(context).bottom,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8 + MediaQuery.viewPaddingOf(context).bottom, top: 8),
+      child: LiveChatComposer(
+        controller: _input,
+        focusNode: _chatFocus,
+        onSend: _sendChat,
+        hint: 'Say something',
+        myId: supabase.auth.currentUser?.id,
+        people: _mentionPeople,
+        leading: [
           _iconCircle(Icons.more_horiz_rounded, _openTools, size: 34),
-          const SizedBox(width: 6),
           _iconCircle(Icons.emoji_emotions_outlined, _openQuickEmoji, size: 34),
-          const SizedBox(width: 6),
           _iconCircle(Icons.card_giftcard_rounded, _pickGift, size: 34),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 42),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(21),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: TextField(
-                controller: _input,
-                style: const TextStyle(fontSize: 13, color: Colors.white),
-                minLines: 1,
-                maxLines: 4,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: tr('Say something'),
-                  hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _sendChat,
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: const BoxDecoration(
-                gradient: AppColors.liveGradient,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 19,
-              ),
-            ),
-          ),
         ],
       ),
+    );
+  }
+
+  /// Who "@" can tag: whoever is on a seat and people who chatted recently.
+  List<AppUser> _mentionPeople() {
+    final byId = <String, AppUser>{};
+    for (final u in _seatOccupants.values) {
+      byId[u.id] = u;
+    }
+    for (final line in _chat.reversed.take(40)) {
+      if (!line.system && !line.gift) byId.putIfAbsent(line.user.id, () => line.user);
+    }
+    return byId.values.toList();
+  }
+
+  int? _seatOf(String userId) {
+    for (final e in _seatOccupants.entries) {
+      if (e.value.id == userId) return e.key;
+    }
+    return null;
+  }
+
+  /// A tap on someone's name (chat, viewer list): profile, report, and the host's moderation tools.
+  Future<void> _openUser(AppUser user) async {
+    final seat = _seatOf(user.id);
+    await showUserActionsSheet(
+      context,
+      user: user,
+      streamId: widget.stream.id,
+      moderation: _mod,
+      allowAdmins: true,
+      seat: seat,
+      seatMuted: seat != null && _mutedSeats.contains(seat),
     );
   }
 }

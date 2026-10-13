@@ -62,6 +62,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
+  /// The big picture. Its footprint includes the frame (a little bigger when there is one), so the frame is never
+  /// cut off or laid over the name.
+  Widget _photo() {
+    final footprint = AppAvatar.showsFrame(110, _user.frameUrl) ? 110.0 : 96.0;
+    return AppAvatar(name: _user.name, imageUrl: _user.avatarUrl, frameUrl: _user.frameUrl, size: footprint, ring: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = context.watch<AuthController>().user;
@@ -91,7 +98,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              Center(child: AppAvatar(name: _user.name, imageUrl: _user.avatarUrl, frameUrl: _user.frameUrl, size: 96, ring: true)),
+              Center(child: _photo()),
               const SizedBox(height: 12),
               Center(
                 child: Row(

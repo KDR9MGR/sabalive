@@ -12,6 +12,44 @@ class SeatSpeaking {
   final Map<int, int> _seatByUid = {};
   int? _hostUid;
 
+  /// How loud (Agora's 0-255 scale) another person must be to light their seat. Lower than the threshold for this
+  /// device's own microphone: a voice that comes in over the network, through the phone's speaker and room, reads
+  /// much quieter than the one into the microphone, and with the old single threshold only the local voice ever
+  /// crossed it.
+  static const int remoteThreshold = 10;
+  static const int localThreshold = 25;
+
+  /// People who were speaking in the last report but whose seat (or host status) this device does not know: their
+  /// uid has not reached it yet. The screens read this to refresh the seats once, instead of showing no wave.
+  final Set<int> unmapped = {};
+  DateTime? _lastRefresh;
+  final Map<int, ({int tries, DateTime since})> _tries = {};
+
+  /// True when somebody spoke whose seat is unknown and it has been at least [every] since this last said so.
+  /// The caller then re-reads the seats (their Agora uids). Never more often than [every], and a uid that is still
+  /// unknown after [maxTries] re-reads is left alone for a minute (it may simply not be a seat holder: there is
+  /// nothing to find), so a voice that can never be matched does not keep the seats being re-read.
+  bool needsSeatRefresh({DateTime? now, Duration every = const Duration(seconds: 4), int maxTries = 3}) {
+    if (unmapped.isEmpty) return false;
+    final t = now ?? DateTime.now();
+    final last = _lastRefresh;
+    if (last != null && t.difference(last) < every) return false;
+    var any = false;
+    for (final u in unmapped) {
+      final e = _tries[u];
+      if (e == null || t.difference(e.since) > const Duration(minutes: 1)) {
+        _tries[u] = (tries: 1, since: t);
+        any = true;
+      } else if (e.tries < maxTries) {
+        _tries[u] = (tries: e.tries + 1, since: e.since);
+        any = true;
+      }
+    }
+    if (!any) return false;
+    _lastRefresh = t;
+    return true;
+  }
+
   /// Agora uids are unsigned 32-bit numbers. Depending on the layer that reports them they
   /// can arrive as a negative number for the large ones, so every uid is compared in its
   /// unsigned form and a match can never be missed because of the sign.
@@ -39,7 +77,7 @@ class SeatSpeaking {
     required String hostId,
     required int? mySeat,
     required bool meMuted,
-    int threshold = 25,
+    int? threshold,
   }) {
     int? hostSeat() {
       for (final e in occupants.entries) {
@@ -49,15 +87,19 @@ class SeatSpeaking {
     }
 
     final out = <int>{};
+    unmapped.clear();
     for (final s in speakers) {
-      if ((s.volume ?? 0) < threshold) continue;
       final uid = s.uid ?? 0;
+      if ((s.volume ?? 0) < (threshold ?? (uid == 0 ? localThreshold : remoteThreshold))) continue;
       int? seat;
       if (uid == 0) {
         seat = meMuted ? null : mySeat;
       } else {
         final u = _u(uid);
         seat = _seatByUid[u] ?? (u == _hostUid ? hostSeat() : null);
+        if (seat == null && u != _hostUid) unmapped.add(u);
+        // the host's uid itself not being known yet counts as unmapped too
+        if (seat == null && _hostUid == null) unmapped.add(u);
       }
       if (seat != null) out.add(seat);
     }
@@ -71,11 +113,11 @@ class SeatSpeaking {
     List<AudioVolumeInfo> speakers, {
     required bool iAmHost,
     required bool meMuted,
-    int threshold = 25,
+    int? threshold,
   }) {
     for (final s in speakers) {
-      if ((s.volume ?? 0) < threshold) continue;
       final uid = s.uid ?? 0;
+      if ((s.volume ?? 0) < (threshold ?? (uid == 0 ? localThreshold : remoteThreshold))) continue;
       if (uid == 0) {
         if (iAmHost && !meMuted) return true;
       } else if (_hostUid != null && _u(uid) == _hostUid) {

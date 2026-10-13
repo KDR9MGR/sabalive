@@ -65,7 +65,7 @@ class _LiveMinimizedBubbleState extends State<LiveMinimizedBubble> {
                 child: AppAvatar(
                   name: widget.host.name,
                   imageUrl: widget.host.avatarUrl,
-                  frameUrl: widget.host.frameUrl,
+                  // a round bubble: just the picture (a frame would be cut by the circle)
                   size: 62,
                 ),
               ),

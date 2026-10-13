@@ -717,3 +717,56 @@
 728	O anfitrião ganha {0} diamantes por ficar ao vivo {1} minutos sem interrupção. A caixa abre quando o tempo acaba.
 729	Você já ganhou uma Caixa da Sorte nas últimas {0} horas, então esta live não vai abrir uma. Comece uma nova live em {1} (e fique ao vivo por {2} minutos) para ganhar a próxima.
 730	O descanso acabou. Comece uma nova live e fique ao vivo por {0} minutos sem interrupção para ganhar a próxima caixa.
+731	Adicionar 4
+732	Remover 4
+733	Adicionar administrador da sala
+734	Adicionar administrador
+735	Administradores podem expulsar, banir, banir texto e gerenciar assentos em todas as suas lives.
+736	Administradores podem expulsar, banir, banir texto e gerenciar assentos em todas as suas lives. Eles não podem encerrar sua live nem adicionar administradores.
+737	Permitir texto
+738	Banir desta live
+739	Banir texto
+740	Banir {0}?
+741	Expulsar
+742	Expulsar da live
+743	Expulsar {0}?
+744	Tornar administrador da sala
+745	Mais: perfil, denunciar, banir texto
+746	Silenciar microfone
+747	Ativar microfone
+748	Ainda não há administradores da sala.
+749	Usar
+750	Remover do assento
+751	Remover administrador da sala
+752	Administrador da sala
+753	Administradores da sala
+754	O anfitrião baniu você desta live.
+755	O anfitrião desativou o seu chat
+756	Eles saem da live agora e não poderão voltar a ela.
+757	Eles saem da live agora, mas podem voltar.
+758	Você não está mais em um assento
+759	Você tem 5 administradores
+760	{0} pode conversar de novo
+761	{0} não é mais administrador da sala
+762	{0} agora é administrador da sala
+763	{0} agora está em uso
+764	{0} foi banido desta live
+765	{0} foi expulso
+766	{0} foi removido do assento
+767	O chat de {0} está desativado
+768	Isso ainda não está disponível. O servidor ainda precisa da atualização mais recente.
+769	Emotes
+770	Nenhum emote disponível agora
+771	Antes de jogar
+772	Estes jogos são fornecidos por um provedor de jogos terceirizado.
+773	As apostas são pagas com suas moedas SABALIVE, e os ganhos voltam em moedas.
+774	Os resultados são definidos pelo sistema do provedor de jogos, que pode ajustar os resultados. Não há garantia de que sejam puramente aleatórios.
+775	Os jogos são para maiores de 18 anos. Jogue apenas com o que você pode perder.
+776	Tenho 18 anos ou mais e entendo
+777	Não foi possível abrir o jogo
+778	Nenhum jogo disponível no momento
+779	Adicione sua data de nascimento ao perfil para jogar
+780	Os jogos são para maiores de 18 anos
+781	Os jogos não estão disponíveis agora
+782	Esta conta não pode jogar
+783	Entre para jogar

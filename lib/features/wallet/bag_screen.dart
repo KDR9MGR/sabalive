@@ -14,26 +14,55 @@ import '../../core/i18n/text.dart';
 /// What you currently own (non-expired) and what's equipped — real data
 /// from user_items, not mock.
 class BagScreen extends StatefulWidget {
-  const BagScreen({super.key});
+  const BagScreen({super.key, this.repo, this.storePage});
+
+  /// Injectable for tests.
+  final StoreRepository? repo;
+  final Widget Function()? storePage;
 
   @override
   State<BagScreen> createState() => _BagScreenState();
 }
 
-class _BagScreenState extends State<BagScreen> {
-  final _repo = StoreRepository();
+class _BagScreenState extends State<BagScreen> with WidgetsBindingObserver {
+  late final StoreRepository _repo = widget.repo ?? StoreRepository();
   List<OwnedItem>? _items;
   final _busyIds = <String>{};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
+  }
+
   Future<void> _load() async {
-    final items = await _repo.myItems();
-    if (mounted) setState(() => _items = items);
+    try {
+      final items = await _repo.myItems();
+      if (mounted) setState(() => _items = items);
+    } catch (e) {
+      // keep what is showing; an empty spinner forever helps nobody
+      if (mounted && _items == null) setState(() => _items = const []);
+    }
+  }
+
+  /// Opens the Store (or the Profile frames page) over the Bag and reads the Bag again when it closes: something bought
+  /// there must be in the list when the user comes back to put it on. (Without this the Bag opened before the purchase
+  /// kept showing its old list, so a bought frame looked as if it had never arrived.)
+  Future<void> _openThenReload(Widget page) async {
+    await AppNav.open(context, page);
+    if (mounted) await _load();
   }
 
   Future<void> _toggle(OwnedItem owned) async {
@@ -64,11 +93,11 @@ class _BagScreenState extends State<BagScreen> {
           IconButton(
             tooltip: tr('Profile frames'),
             icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () => AppNav.open(context, const FramesScreen()),
+            onPressed: () => _openThenReload(const FramesScreen()),
           ),
           IconButton(
             icon: const Icon(Icons.storefront_outlined),
-            onPressed: () => AppNav.open(context, const StoreScreen()),
+            onPressed: () => _openThenReload(widget.storePage?.call() ?? const StoreScreen()),
           ),
         ],
       ),
@@ -88,18 +117,22 @@ class _BagScreenState extends State<BagScreen> {
                             style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
                         const SizedBox(height: 16),
                         TextButton(
-                          onPressed: () => AppNav.open(context, const StoreScreen()),
+                          onPressed: () => _openThenReload(const StoreScreen()),
                           child: const Text('Go to Store'),
                         ),
                       ],
                     ),
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, i) => _tile(items[i]),
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(20),
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) => _tile(items[i]),
+                  ),
                 ),
     );
   }

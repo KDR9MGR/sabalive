@@ -32,6 +32,8 @@ class SpeakingWaves extends StatefulWidget {
     required this.child,
     this.color = Colors.white,
     this.bars = 48,
+    this.frameScale = 1,
+    this.amplitude = 0.2,
   });
 
   final bool active;
@@ -39,6 +41,14 @@ class SpeakingWaves extends StatefulWidget {
   final Widget child;
   final Color color;
   final int bars;
+
+  /// How much bigger than [diameter] the thing inside is drawn (an avatar frame is [AppAvatar.frameScale] times the
+  /// picture): the ring then stands outside that, so the frame never covers it.
+  final double frameScale;
+
+  /// How tall the tallest bar is, as a fraction of the ring's diameter. A shorter ring (a seat whose frame already
+  /// fills its cell) does not reach into the next seat.
+  final double amplitude;
 
   @override
   State<SpeakingWaves> createState() => _SpeakingWavesState();
@@ -92,9 +102,10 @@ class _SpeakingWavesState extends State<SpeakingWaves> with TickerProviderStateM
         painter: _WavesPainter(
           flow: _flow,
           level: _level,
-          diameter: widget.diameter,
+          diameter: widget.diameter * widget.frameScale,
           color: widget.color,
           bars: widget.bars,
+          amplitude: widget.amplitude,
         ),
         child: widget.child,
       ),
@@ -109,6 +120,7 @@ class _WavesPainter extends CustomPainter {
     required this.diameter,
     required this.color,
     required this.bars,
+    this.amplitude = 0.2,
   }) : super(repaint: Listenable.merge([flow, level]));
 
   final Animation<double> flow;
@@ -116,6 +128,7 @@ class _WavesPainter extends CustomPainter {
   final double diameter;
   final Color color;
   final int bars;
+  final double amplitude;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -123,7 +136,7 @@ class _WavesPainter extends CustomPainter {
     if (grow <= 0) return;
     final center = size.center(Offset.zero);
     final inner = diameter / 2 + diameter * 0.03;
-    final tallest = math.max(4.0, diameter * 0.2);
+    final tallest = math.max(4.0, diameter * amplitude);
     const shortest = 1.1; // a dot: the ring is visible even between the peaks
     final t = flow.value;
 
@@ -147,5 +160,5 @@ class _WavesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WavesPainter old) =>
-      old.diameter != diameter || old.color != color || old.bars != bars;
+      old.diameter != diameter || old.color != color || old.bars != bars || old.amplitude != amplitude;
 }

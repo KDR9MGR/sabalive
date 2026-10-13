@@ -22,11 +22,12 @@ import '../../core/widgets/keyboard_lift.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/mock_data.dart';
 import '../../data/live_emojis_repository.dart';
+import '../../data/level_banner_images.dart';
 import '../../data/models.dart';
 import '../../data/profile_cache.dart';
 import '../../data/store_repository.dart';
 import '../../data/stream_end_watcher.dart';
-import '../../data/viewer_ban_watcher.dart';
+import '../../state/room_moderation.dart';
 import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
 import '../../services/agora_errors.dart';
@@ -38,10 +39,11 @@ import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/entry_catch_up.dart';
+import 'widgets/emote_overlay.dart';
 import 'widgets/room_effect.dart';
 import 'live_access_exit.dart';
+import 'widgets/chat_composer.dart';
 import 'widgets/gift_sheet.dart';
-import 'widgets/lucky_box_badge.dart';
 import 'widgets/live_emoji_sheet.dart';
 import 'widgets/ghost_watch_bar.dart';
 import 'widgets/live_chat_bubble.dart';
@@ -52,6 +54,8 @@ import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
 import 'widgets/speaking_waves.dart';
 import 'widgets/tool_grid.dart';
+import 'widgets/user_actions_sheet.dart';
+import 'widgets/wave_colors.dart';
 import '../../core/i18n/text.dart';
 
 class WatchLiveScreen extends StatefulWidget {
@@ -68,13 +72,26 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   void Function()? _stopEndWatch;
   bool _hostEndedHandled = false;
   bool _accessDeniedHandled = false;
-  void Function()? _stopKickWatch;
+  // who may moderate this live, whose chat is off, and the signals that tell this phone it was kicked / banned
+  late final RoomModeration _mod = RoomModeration(
+    streamId: widget.stream.id,
+    hostId: widget.stream.host.id,
+    myId: supabase.auth.currentUser?.id,
+    listen: _isReal,
+    onRemoved: (reason) => _leaveDenied(
+      reason == RemovalReason.banned
+          ? 'The host banned you from this live.'
+          : 'The host removed you from this live.',
+    ),
+  );
+  final FocusNode _chatFocus = FocusNode();
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
   final _room = RoomChatState();
   final _rand = math.Random();
   final List<_Heart> _hearts = [];
-  final _effects = RoomEffectController();
+  final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage);
+  final _emotes = EmoteController();
   int _likes = 0;
 
   RtcEngine? _engine;
@@ -159,14 +176,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       _logViewerJoin();
       _subscribeSeats();
       _stopEndWatch = watchStreamEnd(widget.stream.id, _onHostEnded);
-      final me = supabase.auth.currentUser?.id;
-      if (me != null) {
-        _stopKickWatch = watchViewerRemoval(
-          widget.stream.id,
-          me,
-          () => _leaveDenied('The host removed you from this live.'),
-        );
-      }
+      _mod.addListener(() {
+        if (mounted) setState(() {});
+      });
+      unawaited(_mod.start());
       _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
         // These used to be pure fire-and-forget with no error handling at
         // all — a silently-failed heartbeat_seat looks identical to a real
@@ -202,7 +215,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     );
   }
 
-  int _bumpSeat(int seat) => _seatGen[seat] = (_seatGen[seat] ?? 0) + 1;
+  /// Counts seats that changed hands (a Realtime insert or delete): lets a seat read that was already in flight
+  /// notice it is out of date (see _reconcileSeats).
+  int _seatChanges = 0;
+  int _bumpSeat(int seat) {
+    _seatChanges++;
+    return _seatGen[seat] = (_seatGen[seat] ?? 0) + 1;
+  }
 
   /// Let go of a seat that is in my name but that I did not just get approved for. Safe to repeat.
   void _dropLeftoverSeat() {
@@ -234,10 +253,17 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         .catchError((e) => debugPrint('heartbeat_seat failed: $e'));
   }
 
-  Future<void> _reconcileSeats() async {
+  Future<void> _reconcileSeats({bool retry = true}) async {
     if (!_isReal || !mounted) return;
+    final changesBefore = _seatChanges;
     final snap = await fetchSeatSnapshot(widget.stream.id);
     if (snap == null || !mounted) return;
+    // A seat changed hands while this read was on its way, so it may already be out of date: applying it would
+    // make that seat flicker out and back in. Skip it and look again shortly (the periodic read is the net).
+    if (_seatChanges != changesBefore) {
+      if (retry) Timer(const Duration(milliseconds: 1200), () => unawaited(_reconcileSeats(retry: false)));
+      return;
+    }
     var mine = snap.seatOf(supabase.auth.currentUser?.id);
     final occupants = Map<int, AppUser>.of(snap.occupants);
     // a seat in my name that was there when I arrived is a leftover; once the database no longer
@@ -562,7 +588,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       return;
     }
     if (occupant != null) {
-      messenger.showSnackBar(SnackBar(content: Text('Seat $seat is taken')));
+      await _openUser(occupant); // profile and report
       return;
     }
     if (_lockedSeats.contains(seat)) {
@@ -626,7 +652,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       );
       // my own vehicle / entry effect plays now, from what I have equipped (see playMyEntry)
       if (mounted && !_ghost) {
-        unawaited(playMyEntry(_effects, meId: supabase.auth.currentUser?.id));
+        unawaited(playMyEntry(_effects, meId: supabase.auth.currentUser?.id, me: context.read<AuthController>().user));
       }
     } catch (e) {
       // Banned from live, or removed by the host: this must stop the join (the
@@ -669,6 +695,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               iAmHost: false,
               meMuted: _myMuted,
             );
+            // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
+            if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
             if (mounted &&
                 (!SeatSpeaking.same(next, _speakingSeats) || hostNow != _hostSpeaking)) {
               setState(() {
@@ -785,12 +813,20 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 payload.newRecord,
                 meId: context.read<AuthController>().user?.id,
                 senderName: sender.name,
+                sender: sender,
                 giftById: wallet.giftById,
                 loadItems: StoreRepository().itemsByIds,
               ),
             );
             // someone the user blocked: no chat line
             if (BlocksController.instance.isBlocked(senderId)) return;
+            // an emote from the host or someone on a seat plays over their picture circle, not as a chat line
+            if (_emotes.handleRow(
+              payload.newRecord,
+              hasCircle: (id) => id == widget.stream.host.id || _seatOccupants.values.any((u) => u.id == id),
+            )) {
+              return;
+            }
             setState(
               () => _chat.add(
                 _chatLineFromRow(payload.newRecord, {sender.id: sender}),
@@ -800,7 +836,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         )
         .subscribe((status, [error]) {
           if (status == RealtimeSubscribeStatus.subscribed) {
-            unawaited(catchUpOwnEntry(widget.stream.id, _effects, meId: meId));
+            unawaited(catchUpOwnEntry(widget.stream.id, _effects, meId: meId, me: context.read<AuthController>().user));
           }
         });
   }
@@ -881,11 +917,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _showCloseDialog) _session.backHandler = null;
     _stopEndWatch?.call();
-    _stopKickWatch?.call();
+    _mod.dispose();
+    _chatFocus.dispose();
     _waitTimer?.cancel();
     _heartbeat?.cancel();
     _msgController.dispose();
     _effects.dispose();
+    _emotes.dispose();
     _chatChannel?.unsubscribe();
     _seatSyncTimer?.cancel();
     _seatsChannel?.unsubscribe();
@@ -1183,7 +1221,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           KeyboardStable(
             // the system bar is counted twice under the input bar (SafeArea and the spacer), so it rests that much higher
             restInset: 2 * MediaQuery.viewPaddingOf(context).bottom,
-            child: SafeArea(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+              SafeArea(
               child: Column(
                 children: [
                   _topBar(context, following, session),
@@ -1191,36 +1232,41 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Expanded(child: KeyboardLift(child: _chatColumn())),
-                      _sideRail(),
+                      // while someone types, only the input box stays over the video
+                      Expanded(child: KeyboardHide(child: KeyboardLift(child: _chatColumn()))),
+                      KeyboardHide(child: _sideRail()),
                     ],
                   ),
-                  if (_isReal) ...[
-                    const SizedBox(height: 8),
-                    CompactSeatStrip(
-                      seatCount: _seatCount,
-                      occupants: _seatOccupants,
-                      lockedSeats: _lockedSeats,
-                      mutedSeats: _mutedSeats,
-                      speakingSeats: _speakingSeats,
-                      onSeatTap: _seatTap,
-                    ),
-                  ],
                   const SizedBox(height: 10),
                   KeyboardLift(child: _inputBar()),
                   SizedBox(height: MediaQuery.viewPaddingOf(context).bottom + 6),
                 ],
               ),
             ),
-          ),
-          // the Lucky Box: a gift box with the panel's countdown, under the top bar (video lives only;
-          // the reward is the host's, so viewers just see the box and when it opens)
-          if (_isReal)
-            Positioned(
-              left: 12,
-              top: MediaQuery.viewPaddingOf(context).top + 64,
-              child: LuckyBoxBadge(streamId: widget.stream.id, forViewer: true),
+              // the guest seats, one above the other down the right-hand edge (out of the host's face);
+              // they step aside while someone types
+              if (_isReal)
+                Positioned(
+                  right: 0,
+                  top: MediaQuery.viewPaddingOf(context).top + 110,
+                  child: KeyboardHide(
+                    child: SeatColumn(
+                      seatCount: _seatCount,
+                      occupants: _seatOccupants,
+                      lockedSeats: _lockedSeats,
+                      mutedSeats: _mutedSeats,
+                      speakingSeats: _speakingSeats,
+                      hostId: widget.stream.host.id,
+                      emotes: _emotes,
+                      onSeatTap: _seatTap,
+                      maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                    ),
+                  ),
+                ),
+              ],
             ),
+          ),
+          // (no Lucky Box here: it is the host's reward, so only the host's own screen shows it)
           // floating hearts
           Positioned(
             right: 6,
@@ -1305,14 +1351,21 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          SpeakingWaves(
-                            active: _hostSpeaking,
-                            diameter: 32,
-                            child: AppAvatar(
-                              name: widget.stream.host.name,
-                              imageUrl: widget.stream.host.avatarUrl,
-                              frameUrl: widget.stream.host.frameUrl,
-                              size: 32,
+                          // the host's emote plays over their picture circle here (they are the camera, not a seat)
+                          EmoteOnAvatar(
+                            controller: _emotes,
+                            userId: widget.stream.host.id,
+                            size: 32,
+                            child: SpeakingWaves(
+                              active: _hostSpeaking,
+                              diameter: 32,
+                              color: kHostWaveColor,
+                              child: AppAvatar(
+                                name: widget.stream.host.name,
+                                imageUrl: widget.stream.host.avatarUrl,
+                                frameUrl: widget.stream.host.frameUrl,
+                                size: 32,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1334,6 +1387,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                                 onTap: () => showViewerListSheet(
                                   context,
                                   widget.stream.id,
+                                  onUserTap: _openUser,
                                 ),
                                 child: Text(
                                   '${compactCount(_viewerCount)} watching · '
@@ -1430,10 +1484,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: GestureDetector(
-                  onTap: isRealId(line.user.id)
-                      ? () => AppNav.userProfile(context, line.user)
-                      : null,
-                  child: LiveChatLineBubble(key: ObjectKey(line), line: line),
+                  onTap: isRealId(line.user.id) ? () => _openUser(line.user) : null,
+                  child: LiveChatLineBubble(key: ObjectKey(line), line: line, myName: _myName),
                 ),
               );
             },
@@ -1507,62 +1559,56 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   // which drifted from the host screen after that one got its own updates.
   Widget _inputBar() {
     if (_ghost) return const GhostWatchBar();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _barIcon(Icons.more_horiz_rounded, _moreActions),
-          const SizedBox(width: 6),
-          _barIcon(Icons.emoji_emotions_outlined, _openQuickEmoji),
-          const SizedBox(width: 6),
-          _barIcon(Icons.card_giftcard_rounded, _openGifts),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 42),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(21),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: TextField(
-                controller: _msgController,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                cursorColor: AppColors.primaryBright,
-                minLines: 1,
-                maxLines: 4,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: tr('Say something nice…'),
-                  hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _send,
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: const BoxDecoration(
-                gradient: AppColors.liveGradient,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 19,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return LiveChatComposer(
+      controller: _msgController,
+      focusNode: _chatFocus,
+      onSend: _send,
+      chatOff: _mod.chatOff,
+      myId: supabase.auth.currentUser?.id,
+      people: _mentionPeople,
+      leading: [
+        _barIcon(Icons.more_horiz_rounded, _moreActions),
+        _barIcon(Icons.emoji_emotions_outlined, _openQuickEmoji),
+        _barIcon(Icons.card_giftcard_rounded, _openGifts),
+      ],
+    );
+  }
+
+  String? get _myName => context.read<AuthController>().user?.name;
+
+  /// Who "@" can tag: the host, whoever is on a seat, and people who chatted recently.
+  List<AppUser> _mentionPeople() {
+    final byId = <String, AppUser>{widget.stream.host.id: widget.stream.host};
+    for (final u in _seatOccupants.values) {
+      byId[u.id] = u;
+    }
+    for (final line in _chat.reversed.take(40)) {
+      if (!line.system && !line.gift) byId.putIfAbsent(line.user.id, () => line.user);
+    }
+    return byId.values.toList();
+  }
+
+  int? _seatOf(String userId) {
+    for (final e in _seatOccupants.entries) {
+      if (e.value.id == userId) return e.key;
+    }
+    return null;
+  }
+
+  /// A tap on someone's name: their profile and report (anyone); a viewer is never offered the host's tools.
+  Future<void> _openUser(AppUser user) async {
+    if (_ghost) {
+      AppNav.userProfile(context, user);
+      return;
+    }
+    final seat = _seatOf(user.id);
+    await showUserActionsSheet(
+      context,
+      user: user,
+      streamId: widget.stream.id,
+      moderation: _mod,
+      seat: seat,
+      seatMuted: seat != null && _mutedSeats.contains(seat),
     );
   }
 
