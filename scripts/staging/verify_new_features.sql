@@ -246,6 +246,120 @@ insert into res(step, ok, info)
   select '6 the stale-presence sweep runs every 15 seconds', coalesce(bool_and(schedule = '15 seconds' and active), false), string_agg(schedule, ',')
     from cron.job where jobname = 'finalize-stale-presence';
 
+-- 7. moderation as real roles: the host picks an admin, the admin text-bans and kicks a viewer, protections hold,
+--    the seat count steps of 4, and anonymous callers are refused. (A fresh room: inside one transaction the clock
+--    does not move, so a person cannot join, leave and join the same room again.)
+with r as (
+  insert into public.live_streams (host_id, title, status, mode, last_heartbeat_at)
+  values ((select host_id from who), 'zz-smoke-test moderation room', 'live', 'audio', now())
+  returning id)
+insert into ids select 'modroom', id from r;
+
+set local role authenticated;
+do $$
+declare
+  v_host uuid := (select host_id from who);
+  v_view uuid := (select viewer_id from who);
+  v_guest uuid := (select guest_id from who);
+  rid uuid := (select v from ids where k = 'modroom');
+begin
+  if rid is null or v_guest is null or v_guest in (v_host, v_view) then
+    insert into res(step, ok, info) values ('7 moderation needs a host, a viewer and a third person on staging', false, 'run scripts/staging/bootstrap.sh');
+    return;
+  end if;
+
+  -- the host makes the third person a room admin
+  perform set_config('request.jwt.claim.sub', v_host::text, true);
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_host), true);
+  begin
+    perform public.set_room_admin(v_guest, true);
+    insert into res(step, ok, info)
+      select '7 the host makes someone a room admin', count(*) = 1, null from public.live_room_admins where host_id = v_host and admin_id = v_guest;
+  exception when others then insert into res(step, ok, info) values ('7 the host makes someone a room admin', false, sqlerrm); end;
+
+  -- the viewer is in the room
+  perform set_config('request.jwt.claim.sub', v_view::text, true);
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_view), true);
+  perform public.join_live_stream(rid);
+
+  -- the admin turns the viewer's chat off
+  perform set_config('request.jwt.claim.sub', v_guest::text, true);
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_guest), true);
+  begin
+    perform public.mute_chat(rid, v_view, true);
+    insert into res(step, ok, info) values ('7 a room admin turns a viewer''s chat off', true, null);
+  exception when others then insert into res(step, ok, info) values ('7 a room admin turns a viewer''s chat off', false, sqlerrm); end;
+
+  -- the viewer cannot send text any more, through the same insert the app uses
+  perform set_config('request.jwt.claim.sub', v_view::text, true);
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_view), true);
+  begin
+    insert into public.live_chat_messages (live_stream_id, sender_id, body, kind) values (rid, v_view, 'hello', 'text');
+    insert into res(step, ok, info) values ('7 a text-banned person cannot chat', false, 'the message went through');
+  exception when others then
+    insert into res(step, ok, info) values ('7 a text-banned person cannot chat', sqlerrm like 'The host has turned your chat off%', sqlerrm);
+  end;
+
+  -- the admin kicks them out of the room
+  perform set_config('request.jwt.claim.sub', v_guest::text, true);
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_guest), true);
+  begin
+    perform public.kick_viewer(rid, v_view);
+    insert into res(step, ok, info)
+      select '7 a room admin kicks a viewer out of the room', count(*) = 0, 'open rows: ' || count(*)
+        from public.live_stream_viewers where live_stream_id = rid and viewer_id = v_view and left_at is null;
+  exception when others then insert into res(step, ok, info) values ('7 a room admin kicks a viewer out of the room', false, sqlerrm); end;
+
+  -- an admin cannot act on the host
+  begin
+    perform public.kick_viewer(rid, v_host);
+    insert into res(step, ok, info) values ('7 an admin cannot kick the host', false, 'it worked');
+  exception when others then
+    insert into res(step, ok, info) values ('7 an admin cannot kick the host', sqlerrm like '%do that to the host%', sqlerrm);
+  end;
+
+  -- the host: 4 seats is allowed now
+  perform set_config('request.jwt.claim.sub', v_host::text, true);
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_host), true);
+  begin
+    perform public.set_seat_count(rid, 4);
+    insert into res(step, ok, info)
+      select '7 an audio room can have 4 seats', seat_count = 4, 'seat_count ' || seat_count from public.live_streams where id = rid;
+  exception when others then insert into res(step, ok, info) values ('7 an audio room can have 4 seats', false, sqlerrm); end;
+end
+$$;
+set local role anon;
+do $$
+begin
+  perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claims', '{}', true);
+  begin
+    perform public.kick_viewer(gen_random_uuid(), gen_random_uuid());
+    insert into res(step, ok, info) values ('7 anonymous callers cannot kick', false, 'it ran');
+  exception when insufficient_privilege then insert into res(step, ok, info) values ('7 anonymous callers cannot kick', true, null);
+  when others then insert into res(step, ok, info) values ('7 anonymous callers cannot kick', false, sqlerrm); end;
+  begin
+    perform public.mute_chat(gen_random_uuid(), gen_random_uuid(), true);
+    insert into res(step, ok, info) values ('7 anonymous callers cannot ban text', false, 'it ran');
+  exception when insufficient_privilege then insert into res(step, ok, info) values ('7 anonymous callers cannot ban text', true, null);
+  when others then insert into res(step, ok, info) values ('7 anonymous callers cannot ban text', false, sqlerrm); end;
+  begin
+    perform public.set_room_admin(gen_random_uuid(), true);
+    insert into res(step, ok, info) values ('7 anonymous callers cannot make admins', false, 'it ran');
+  exception when insufficient_privilege then insert into res(step, ok, info) values ('7 anonymous callers cannot make admins', true, null);
+  when others then insert into res(step, ok, info) values ('7 anonymous callers cannot make admins', false, sqlerrm); end;
+end
+$$;
+reset role;
+
+insert into res(step, ok, info)
+  select '7 the kick left a signal for the kicked person', count(*) = 1, 'kick rows: ' || count(*)
+    from public.live_stream_kicks where live_stream_id = (select v from ids where k = 'modroom');
+insert into res(step, ok, info)
+  select '7 the kick, admin and text-ban tables are announced by Realtime', count(*) = 3, 'in publication: ' || count(*)
+    from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public'
+     and tablename in ('live_room_admins', 'live_stream_kicks', 'live_chat_mutes');
+
 select n, step, ok, info from res order by n;
 
 rollback;

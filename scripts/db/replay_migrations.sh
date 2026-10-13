@@ -5,6 +5,8 @@
 #   scripts/db/replay_migrations.sh                 # prints ALL_OK, or the first migration that fails
 #   scripts/db/replay_migrations.sh my_test.sql     # then runs my_test.sql against the result and
 #                                                   # shows its output (use it to test a new migration)
+#   REPLAY_SKIP="2026100700000 ..." scripts/db/replay_migrations.sh   # leave those versions out: rehearses PRODUCTION's state (it lacks
+#                                                   # migrations that staging has), to prove a migration needs nothing that is not there yet
 #
 # It builds a brand-new cluster in a temp folder, uses port $PORT (default 54872) and deletes
 # everything when it finishes. It never touches Supabase.
@@ -36,6 +38,7 @@ P -d t -q -f scripts/db/stub.sql 2>&1 | grep -v "WARNING\|HINT\|NOTICE" || true
 
 COUNT=0
 for f in $(ls supabase/migrations/*.sql | sort); do
+  case " ${REPLAY_SKIP:-} " in *" $(basename "$f" | cut -d_ -f1) "*) continue;; esac
   if ! out=$(grep -vi "^create extension" "$f" | P -d t -q -v ON_ERROR_STOP=1 2>&1); then
     echo "FAIL $(basename "$f")"; echo "$out" | head -8; exit 1
   fi

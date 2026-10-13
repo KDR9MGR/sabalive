@@ -1,0 +1,63 @@
+-- Down script for supabase/migrations/20261012110000_more_live_emotes.sql
+-- Applied BY HAND only. Removes the emotes that file added (matched on emoji AND label, so one an admin renamed or
+-- made differently by hand is left alone). The original 10 are not touched.
+begin;
+set local lock_timeout = '5s';
+delete from public.live_emojis
+ where kind = 'emoji'
+   and (label, emoji) in (
+    ('Grin', '😀'),
+    ('Beam', '😁'),
+    ('Roll', '🤣'),
+    ('Blush', '😊'),
+    ('Adore', '🥰'),
+    ('Kiss', '😘'),
+    ('Yum', '😋'),
+    ('Starstruck', '🤩'),
+    ('Celebrate', '🥳'),
+    ('Hug', '🤗'),
+    ('Think', '🤔'),
+    ('Sleepy', '😴'),
+    ('Cry', '😭'),
+    ('Sad', '😢'),
+    ('Angry', '😡'),
+    ('Mind blown', '🤯'),
+    ('Shock', '😱'),
+    ('Please', '🥺'),
+    ('Angel', '😇'),
+    ('Devil', '😈'),
+    ('Shy', '🙈'),
+    ('Shh', '🤫'),
+    ('Cold', '🥶'),
+    ('Rich', '🤑'),
+    ('Silly', '😜'),
+    ('Like', '👍'),
+    ('Dislike', '👎'),
+    ('Hooray', '🙌'),
+    ('Wave', '👋'),
+    ('Peace', '✌️'),
+    ('Deal', '🤝'),
+    ('Strong', '💪'),
+    ('Luck', '🤞'),
+    ('OK', '👌'),
+    ('Call me', '🤙'),
+    ('Hearts', '💕'),
+    ('Sparkle heart', '💖'),
+    ('Broken heart', '💔'),
+    ('Rose', '🌹'),
+    ('Star', '⭐'),
+    ('Sparkles', '✨'),
+    ('Diamond', '💎'),
+    ('Crown', '👑'),
+    ('Cake', '🎂'),
+    ('Gift', '🎁'),
+    ('Cheers', '🍻'),
+    ('Rocket', '🚀'),
+    ('Rainbow', '🌈'),
+    ('Dance', '💃'),
+    ('Groove', '🕺'),
+    ('Mic drop', '🎤'),
+    ('Trophy', '🏆'),
+    ('Music', '🎶')
+   );
+commit;
