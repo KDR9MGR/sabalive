@@ -31,7 +31,7 @@ WORK="${STAGING_WORKDIR:-$HOME/.sabalive-staging-workdir}"
 [ "$(cat "$WORK/supabase/.temp/project-ref" 2>/dev/null)" = "$STAGING_REF" ] || { echo "Run scripts/staging/db_push.sh --apply first (it links the staging folder)."; exit 2; }
 export SUPABASE_DB_PASSWORD="$STAGING_DB_PASSWORD"
 
-sql() { supabase db query --linked --workdir "$WORK" -o json "$1" 2>/dev/null | jq -c '.rows'; }
+sql() { supabase db query --linked --workdir "$WORK" -o json "$1" 2>/dev/null | jq -c 'if type=="array" then . else .rows end'; }
 echo "Bootstrapping STAGING $STAGING_REF  (production $PROD_REF is not touched)"
 
 # ---- 1. the push trigger must call staging, never production

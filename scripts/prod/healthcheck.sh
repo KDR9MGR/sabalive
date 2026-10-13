@@ -72,7 +72,7 @@ HEALTH_SQL="select
 # worked again). One timeout must not stop a release run, so it is tried up to 3 times; a database that is really down still fails.
 Q=""
 for attempt in 1 2 3; do
-  Q=$(sb db query --linked -o json "$HEALTH_SQL" 2>/dev/null | jq -c '.rows[0]')
+  Q=$(sb db query --linked -o json "$HEALTH_SQL" 2>/dev/null | jq -c '(if type=="array" then . else .rows end)[0]')
   [ -n "$Q" ] && [ "$Q" != "null" ] && break
   [ "$attempt" -lt 3 ] && sleep 8
 done

@@ -19,7 +19,7 @@ echo "Play-app smoke test  ($(date -u +%Y-%m-%d\ %H:%M:%S) UTC)  project: $(cat 
 # so running it again is harmless)
 for attempt in 1 2 3; do
   OUT=$(sb db query --linked -o json -f "$PWD/scripts/prod/smoke_play_app.sql" 2>/dev/null)
-  ROWS=$(echo "$OUT" | jq -c '.rows' 2>/dev/null)
+  ROWS=$(echo "$OUT" | jq -c 'if type=="array" then . else .rows end' 2>/dev/null)
   [ -n "$ROWS" ] && [ "$ROWS" != "null" ] && [ "$ROWS" != "[]" ] && break
   [ "$attempt" -lt 3 ] && sleep 8
 done
@@ -36,7 +36,7 @@ done
 FAILED=$(echo "$ROWS" | jq '[.[] | select(.ok != true)] | length')
 
 # prove the rollback left nothing behind
-LEFT=$(sb db query --linked -o json "select count(*) as n from public.live_streams where title like 'zz-smoke-test%'" 2>/dev/null | jq -r '.rows[0].n // "?"')
+LEFT=$(sb db query --linked -o json "select count(*) as n from public.live_streams where title like 'zz-smoke-test%'" 2>/dev/null | jq -r '(if type=="array" then . else .rows end)[0].n // "?"')
 if [ "$LEFT" = "0" ]; then echo "  PASS  nothing left behind in production"
 else echo "  FAIL  $LEFT leftover test row(s) in live_streams (title starts with zz-smoke-test): delete them"; FAILED=$((FAILED + 1)); fi
 

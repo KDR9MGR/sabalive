@@ -37,7 +37,7 @@ mkdir -p "$OUT/data" "$OUT/schema"
 echo "Backing up the linked project to $OUT"
 
 # run SQL, print only the rows array (stderr, with the CLI's progress and update notices, is dropped)
-rows() { sb db query --linked -o json "$1" 2>/dev/null | jq -c '.rows'; }
+rows() { sb db query --linked -o json "$1" 2>/dev/null | jq -c 'if type=="array" then . else .rows end'; }
 
 PROJECT=$(cat "${SUPABASE_WORKDIR:-.}/supabase/.temp/project-ref" 2>/dev/null || echo "unknown")
 echo "Project ref: $PROJECT"

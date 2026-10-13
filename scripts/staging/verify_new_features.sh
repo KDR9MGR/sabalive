@@ -13,13 +13,13 @@ if [ "$REF" = "$PROD" ] || [ "$REF" = "unknown" ]; then echo "The staging link i
 
 echo "New-feature check on STAGING ($REF)  $(date -u +%Y-%m-%d\ %H:%M:%S) UTC"
 OUT=$(supabase --workdir "$WORKDIR" db query --linked -o json -f "$PWD/scripts/staging/verify_new_features.sql" 2>/dev/null)
-ROWS=$(echo "$OUT" | jq -c '.rows' 2>/dev/null)
+ROWS=$(echo "$OUT" | jq -c 'if type=="array" then . else .rows end' 2>/dev/null)
 if [ -z "$ROWS" ] || [ "$ROWS" = "null" ] || [ "$ROWS" = "[]" ]; then echo "  FAIL  no result from the database"; exit 1; fi
 echo "$ROWS" | jq -r '.[] | [.ok, .step, (.info // "")] | @tsv' | while IFS=$'\t' read -r ok step info; do
   if [ "$ok" = "true" ]; then printf '  PASS  %s\n' "$step"; else printf '  FAIL  %s%s\n' "$step" "${info:+  <- $info}"; fi
 done
 FAILED=$(echo "$ROWS" | jq '[.[] | select(.ok != true)] | length')
-LEFT=$(supabase --workdir "$WORKDIR" db query --linked -o json "select count(*) as n from public.live_streams where title like 'zz-smoke-test%'" 2>/dev/null | jq -r '.rows[0].n // "?"')
+LEFT=$(supabase --workdir "$WORKDIR" db query --linked -o json "select count(*) as n from public.live_streams where title like 'zz-smoke-test%'" 2>/dev/null | jq -r '(if type=="array" then . else .rows end)[0].n // "?"')
 if [ "$LEFT" = "0" ]; then echo "  PASS  nothing left behind"; else echo "  FAIL  $LEFT leftover test row(s)"; FAILED=$((FAILED + 1)); fi
 echo
 if [ "$FAILED" -eq 0 ]; then echo "RESULT: ALL PASSED"; else echo "RESULT: $FAILED FAILED"; exit 1; fi
