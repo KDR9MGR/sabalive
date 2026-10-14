@@ -100,6 +100,14 @@ class _LiveChatComposerState extends State<LiveChatComposer> {
     widget.focusNode?.requestFocus();
   }
 
+  /// Sends what is typed and puts the keyboard away, so the live is back in full view after each message. The keyboard's own
+  /// send key and the round send button both come here. An empty box is left alone (nothing was sent, so the keyboard stays).
+  void _submit() {
+    final hadText = widget.controller.text.trim().isNotEmpty;
+    widget.onSend();
+    if (hadText) (widget.focusNode ?? FocusManager.instance.primaryFocus)?.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -115,7 +123,7 @@ class _LiveChatComposerState extends State<LiveChatComposer> {
               Expanded(child: _pill()),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: widget.chatOff ? null : widget.onSend,
+                onTap: widget.chatOff ? null : _submit,
                 child: Opacity(
                   opacity: widget.chatOff ? 0.4 : 1,
                   child: Container(
@@ -155,7 +163,7 @@ class _LiveChatComposerState extends State<LiveChatComposer> {
               maxLines: 1,
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.send,
-              onSubmitted: (_) => widget.onSend(),
+              onSubmitted: (_) => _submit(),
               inputFormatters: [LengthLimitingTextInputFormatter(kLiveChatMaxChars)],
               decoration: InputDecoration(
                 isDense: true,

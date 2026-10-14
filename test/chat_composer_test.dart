@@ -94,9 +94,41 @@ void main() {
     await t.tap(find.byIcon(Icons.send_rounded));
     await t.pump();
     expect(sent, 1);
+    // sending closed the keyboard, so type again to bring it back before using the keyboard's own send key
+    await t.enterText(find.byType(TextField), 'hello again');
     await t.testTextInput.receiveAction(TextInputAction.send);
     await t.pump();
     expect(sent, 2);
+  });
+
+  testWidgets('tapping send sends once and puts the keyboard away', (t) async {
+    await t.pumpWidget(host());
+    await t.enterText(find.byType(TextField), 'hello');
+    await t.pump();
+    expect(focus.hasFocus, isTrue, reason: 'typing keeps the keyboard up');
+    await t.tap(find.byIcon(Icons.send_rounded));
+    await t.pump();
+    expect(sent, 1);
+    expect(focus.hasFocus, isFalse, reason: 'sending closes the keyboard');
+  });
+
+  testWidgets('the keyboard send key also sends and puts the keyboard away', (t) async {
+    await t.pumpWidget(host());
+    await t.enterText(find.byType(TextField), 'hello');
+    await t.testTextInput.receiveAction(TextInputAction.send);
+    await t.pump();
+    expect(sent, 1, reason: 'one send, not two');
+    expect(focus.hasFocus, isFalse);
+  });
+
+  testWidgets('send on an empty box does not close the keyboard', (t) async {
+    await t.pumpWidget(host());
+    await t.showKeyboard(find.byType(TextField));
+    await t.pump();
+    expect(focus.hasFocus, isTrue);
+    await t.tap(find.byIcon(Icons.send_rounded));
+    await t.pump();
+    expect(focus.hasFocus, isTrue, reason: 'nothing was sent, so the keyboard stays');
   });
 
   testWidgets('a person whose chat the host turned off cannot type or send, and is told why', (t) async {
