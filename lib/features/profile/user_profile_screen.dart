@@ -62,10 +62,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  /// The big picture. Its footprint includes the frame (a little bigger when there is one), so the frame is never
-  /// cut off or laid over the name.
+  /// The big picture. Its footprint includes the frame (bigger when there is one, so the picture stays near 78), so the
+  /// frame is never cut off or laid over the name.
   Widget _photo() {
-    final footprint = AppAvatar.showsFrame(110, _user.frameUrl) ? 110.0 : 96.0;
+    final footprint = AppAvatar.showsFrame(136, _user.frameUrl) ? 136.0 : 96.0;
     return AppAvatar(name: _user.name, imageUrl: _user.avatarUrl, frameUrl: _user.frameUrl, size: footprint, ring: true);
   }
 

@@ -40,6 +40,13 @@ void main() {
     expect(picture.width, closeTo(60 / AppAvatar.frameScale, 0.01));
   });
 
+  test('the picture is no bigger than the opening of the platform\'s frames, so it never hides the ring', () {
+    // measured on a live frame: a 413 x 413 canvas whose ring opens 55-57% of it. At 71% (frameScale 1.4) the picture
+    // covered the whole ring and only the wings showed.
+    expect(1 / AppAvatar.frameScale, inInclusiveRange(0.55, 0.60));
+    expect(AppAvatar.pictureSize(136, _frame), inInclusiveRange(75, 82), reason: 'the profile picture stays big');
+  });
+
   test('which avatars get a frame: only ones big enough for it to read', () {
     expect(AppAvatar.showsFrame(kFrameMinSize, _frame), isTrue);
     expect(AppAvatar.showsFrame(kFrameMinSize - 1, _frame), isFalse);
@@ -84,7 +91,8 @@ void main() {
       expect(SeatCircle.footprintOf(plain: 56, framed: true, slot: 70), 70, reason: 'capped to the slot');
       expect(SeatCircle.footprintOf(plain: 66, framed: true, slot: 70, isHost: true), 70 + SeatCircle.hostFrameOverhang * 2,
           reason: 'the host may overhang');
-      expect(SeatCircle.footprintOf(plain: 40, framed: true, slot: 76), closeTo(56, 0.01), reason: 'a small seat is not stretched to the slot');
+      expect(SeatCircle.footprintOf(plain: 40, framed: true, slot: 96), closeTo(40 * AppAvatar.frameScale, 0.01),
+          reason: 'a small seat is not stretched to the slot');
     });
 
     Future<void> pumpRoom(WidgetTester t, {required double width, required Map<int, AppUser> occupants, int seats = 8}) async {

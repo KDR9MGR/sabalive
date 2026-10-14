@@ -169,8 +169,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _photo(BuildContext context, AppUser user) {
-    // the avatar's footprint includes its frame, a little bigger when there is one so the picture stays near 76
-    final footprint = AppAvatar.showsFrame(106, user.frameUrl) ? 106.0 : 92.0;
+    // the avatar's footprint includes its frame, bigger when there is one so the picture stays near 78
+    final footprint = AppAvatar.showsFrame(136, user.frameUrl) ? 136.0 : 92.0;
     final inset = (footprint - AppAvatar.pictureSize(footprint, user.frameUrl)) / 2;
     return GestureDetector(
       onTap: _uploadingPhoto

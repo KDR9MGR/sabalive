@@ -47,7 +47,13 @@ Future<void> showUserActionsSheet(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 14),
-            AppAvatar(name: user.name, imageUrl: user.avatarUrl, frameUrl: user.frameUrl, size: 54),
+            // bigger when there is a frame, so the picture stays near 41 (a frame needs a box of at least kFrameMinSize)
+            AppAvatar(
+              name: user.name,
+              imageUrl: user.avatarUrl,
+              frameUrl: user.frameUrl,
+              size: AppAvatar.showsFrame(72, user.frameUrl) ? 72 : 54,
+            ),
             const SizedBox(height: 8),
             Text(user.name, style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700, fontSize: 15)),
             if (moderation.isAdmin(user.id))

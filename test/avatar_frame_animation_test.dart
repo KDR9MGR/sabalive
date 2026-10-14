@@ -14,19 +14,19 @@ void main() {
     return t.widget<RemoteMedia>(find.byType(RemoteMedia));
   }
 
-  testWidgets('a mid-sized avatar (list row) shows its frame as a still', (t) async {
-    expect((await frameFor(t, kFrameMinSize)).animate, isFalse);
-    expect((await frameFor(t, 44)).animate, isFalse);
+  testWidgets('a small avatar (list row, chat chip, name pill) shows its plain picture, no frame', (t) async {
+    // the picture sits at 57% of a framed box, so below kFrameMinSize it would be a speck inside a smudge of frame
+    for (final size in [kFrameMinSize - 1, 44.0, 32.0]) {
+      await t.pumpWidget(MaterialApp(
+        home: Center(child: AppAvatar(name: 'Sam', size: size, frameUrl: 'https://example.test/frame.png')),
+      ));
+      expect(find.byType(RemoteMedia), findsNothing, reason: 'size $size');
+    }
   });
 
-  testWidgets('a tiny avatar (chat chip, name pill) shows no frame at all', (t) async {
-    await t.pumpWidget(const MaterialApp(
-      home: Center(child: AppAvatar(name: 'Sam', size: 32, frameUrl: 'https://example.test/frame.png')),
-    ));
-    expect(find.byType(RemoteMedia), findsNothing);
-  });
-
-  testWidgets('a large avatar (seat, profile) still plays its frame', (t) async {
+  testWidgets('every avatar that does show a frame plays it', (t) async {
+    expect(kFrameMinSize, lessThanOrEqualTo(kAnimatedFrameMinSize), reason: 'no frame is drawn as a mere still');
+    expect((await frameFor(t, kFrameMinSize)).animate, isTrue);
     expect((await frameFor(t, kAnimatedFrameMinSize)).animate, isTrue);
     expect((await frameFor(t, 72)).animate, isTrue);
   });

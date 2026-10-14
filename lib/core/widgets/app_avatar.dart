@@ -6,12 +6,14 @@ import 'remote_media.dart';
 import '../i18n/text.dart';
 import '../../state/remote_config_controller.dart';
 
-/// Avatars smaller than this show their frame as a still picture instead of playing it.
+/// Avatars smaller than this show their frame as a still picture instead of playing it. (Equal to [kFrameMinSize]: a frame is
+/// only drawn where it can be seen, and what is drawn plays.)
 const double kAnimatedFrameMinSize = 48;
 
-/// Avatars smaller than this show no frame at all: at that size a frame is a smudge that crowds whatever is
-/// beside it (the host's name pill, a chat chip, a list row).
-const double kFrameMinSize = 40;
+/// Avatars smaller than this show no frame at all: the picture sits at 57% of the box, so below this it would be under 28 px
+/// and the frame a smudge that crowds whatever is beside it (the host's name pill, a chat chip, a list row). Those show the
+/// plain picture at full size instead.
+const double kFrameMinSize = 48;
 
 /// Shows the user's real uploaded photo when [imageUrl] is set; otherwise
 /// falls back to a deterministic gradient with initials, keeping every user
@@ -44,8 +46,10 @@ class AppAvatar extends StatelessWidget {
   /// whatever its artwork looks like, it can never hide the face. Not drawn below [kFrameMinSize].
   final String? frameUrl;
 
-  /// How much bigger than the picture the frame artwork is: the picture takes 1 / [frameScale] of the footprint.
-  static const frameScale = 1.4;
+  /// How much bigger than the picture the frame artwork is: the picture takes 1 / [frameScale] of the footprint (57%).
+  /// Measured on the platform's frames (a 413 x 413 canvas whose ring opens 55-57% of it): the frame is drawn BEHIND the
+  /// picture, so a bigger picture (it was 71%) covers the ring and leaves only the wings showing.
+  static const frameScale = 1.75;
 
   /// Is a frame drawn on an avatar of this [size] with this [frameUrl]?
   static bool showsFrame(double size, String? frameUrl) =>

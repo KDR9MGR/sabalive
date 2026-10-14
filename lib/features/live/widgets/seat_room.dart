@@ -126,7 +126,7 @@ class SeatCircle extends StatelessWidget {
                         diameter: footprint,
                         // around the frame, in the host's green or a colour of their own; shorter bars with a
                         // frame, so the ring does not reach into the next seat
-                        amplitude: framed ? 0.1 : 0.2,
+                        amplitude: framed ? 0.07 : 0.2,
                         color: waveColorFor(occupant.id, isHost: isHost),
                         child: framed
                             ? AppAvatar(
@@ -531,7 +531,7 @@ class SeatColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 84),
+      constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 96),
       child: ListView.separated(
         shrinkWrap: true,
         // frames and speaking rings stand outside a seat
@@ -551,8 +551,8 @@ class SeatColumn extends StatelessWidget {
               speaking: speakingSeats.contains(seat),
               isHost: occupant != null && occupant.id == hostId,
               size: occupant == null ? 36 : 44,
-              // a frame is kept inside the column's width (84 less the padding)
-              slot: (occupant?.frameUrl ?? '').isEmpty ? null : 64,
+              // a frame is kept inside the column's width (96 less the padding)
+              slot: (occupant?.frameUrl ?? '').isEmpty ? null : 72,
               emotes: emotes,
               showLabel: false,
               onTap: onSeatTap == null ? null : () => onSeatTap!(seat),

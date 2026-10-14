@@ -127,7 +127,7 @@ class _FramesScreenState extends State<FramesScreen> {
         SizedBox(
           height: 140,
           child: Center(
-            child: AppAvatar(name: name, imageUrl: avatar, frameUrl: frame, size: 96),
+            child: AppAvatar(name: name, imageUrl: avatar, frameUrl: frame, size: AppAvatar.showsFrame(128, frame) ? 128 : 96),
           ),
         ),
         Text(
