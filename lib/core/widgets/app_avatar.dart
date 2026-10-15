@@ -83,7 +83,8 @@ class AppAvatar extends StatelessWidget {
                 fit: BoxFit.cover,
               )
             : null,
-        border: ring
+        // a framed picture has the frame for its edge: the gold ring on top of it hid the artwork's own ring
+        border: ring && !framed
             ? Border.all(
                 color: ringColor ?? AppColors.gold,
                 width: pic * 0.05 + 1.2,

@@ -34,6 +34,7 @@ class SpeakingWaves extends StatefulWidget {
     this.bars = 48,
     this.frameScale = 1,
     this.amplitude = 0.2,
+    this.gap = 0.03,
   });
 
   final bool active;
@@ -49,6 +50,11 @@ class SpeakingWaves extends StatefulWidget {
   /// How tall the tallest bar is, as a fraction of the ring's diameter. A shorter ring (a seat whose frame already
   /// fills its cell) does not reach into the next seat.
   final double amplitude;
+
+  /// Where the bars start, as a fraction of the diameter beyond the edge of [child]'s box. A plain picture keeps the
+  /// small default. A framed avatar's artwork stops short of its box (it fills about 83-96% of it), so a NEGATIVE gap starts
+  /// the bars behind the artwork's see-through margin and the ring hugs the frame instead of floating off it.
+  final double gap;
 
   @override
   State<SpeakingWaves> createState() => _SpeakingWavesState();
@@ -106,6 +112,7 @@ class _SpeakingWavesState extends State<SpeakingWaves> with TickerProviderStateM
           color: widget.color,
           bars: widget.bars,
           amplitude: widget.amplitude,
+          gap: widget.gap,
         ),
         child: widget.child,
       ),
@@ -121,6 +128,7 @@ class _WavesPainter extends CustomPainter {
     required this.color,
     required this.bars,
     this.amplitude = 0.2,
+    this.gap = 0.03,
   }) : super(repaint: Listenable.merge([flow, level]));
 
   final Animation<double> flow;
@@ -129,13 +137,14 @@ class _WavesPainter extends CustomPainter {
   final Color color;
   final int bars;
   final double amplitude;
+  final double gap;
 
   @override
   void paint(Canvas canvas, Size size) {
     final grow = Curves.easeOut.transform(level.value);
     if (grow <= 0) return;
     final center = size.center(Offset.zero);
-    final inner = diameter / 2 + diameter * 0.03;
+    final inner = diameter / 2 + diameter * gap;
     final tallest = math.max(4.0, diameter * amplitude);
     const shortest = 1.1; // a dot: the ring is visible even between the peaks
     final t = flow.value;
@@ -160,5 +169,9 @@ class _WavesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WavesPainter old) =>
-      old.diameter != diameter || old.color != color || old.bars != bars || old.amplitude != amplitude;
+      old.diameter != diameter ||
+      old.color != color ||
+      old.bars != bars ||
+      old.amplitude != amplitude ||
+      old.gap != gap;
 }

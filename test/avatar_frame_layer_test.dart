@@ -40,6 +40,24 @@ void main() {
     expect(picture.width, closeTo(60 / AppAvatar.frameScale, 0.01));
   });
 
+  testWidgets('a framed picture has no gold ring on top of its frame; an unframed one keeps it', (t) async {
+    BoxDecoration pictureDecoration() => t
+        .widget<Container>(find.descendant(of: find.byType(AppAvatar), matching: find.byType(Container)).first)
+        .decoration! as BoxDecoration;
+    await t.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Center(child: AppAvatar(name: 'Asha', size: 136, frameUrl: _frame, ring: true))),
+    ));
+    expect(pictureDecoration().border, isNull, reason: 'the frame is the picture\'s edge');
+    await t.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Center(child: AppAvatar(name: 'Asha', size: 92, ring: true))),
+    ));
+    expect(pictureDecoration().border, isNotNull, reason: 'no frame: the ring stays');
+    await t.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Center(child: AppAvatar(name: 'Asha', size: 40, frameUrl: _frame, ring: true))),
+    ));
+    expect(pictureDecoration().border, isNotNull, reason: 'too small for a frame: the picture keeps its ring');
+  });
+
   test('the picture is no bigger than the opening of the platform\'s frames, so it never hides the ring', () {
     // measured on a live frame: a 413 x 413 canvas whose ring opens 55-57% of it. At 71% (frameScale 1.4) the picture
     // covered the whole ring and only the wings showed.
@@ -140,6 +158,18 @@ void main() {
         expect({for (var i = 0; i < 4; i++) circles[i].top.round()}.length, 1);
       });
     }
+
+    testWidgets('the speaking bars of a framed seat start at its frame, not out in the air', (t) async {
+      await pumpRoom(t, width: 412, occupants: {1: _u('host'), 2: _u('b', frame: false)});
+      final framed = t.widget<SpeakingWaves>(find.byType(SpeakingWaves).at(0));
+      final plain = t.widget<SpeakingWaves>(find.byType(SpeakingWaves).at(1));
+      expect(plain.gap, 0.03, reason: 'a plain picture: just outside its edge, as before');
+      // the artwork fills 83-96% of its box, so the bars start just inside the box edge, behind its see-through margin
+      expect(framed.gap, lessThan(0), reason: 'a framed seat starts the bars inside the box');
+      expect(framed.gap, greaterThan(-0.08), reason: 'but not so far in that the artwork hides them');
+      // and they never reach further out than a little past the box (the name sits just under it)
+      expect(0.5 + framed.gap + framed.amplitude, lessThan(0.58));
+    });
 
     testWidgets('names line up across a row whether or not a seat wears a frame', (t) async {
       await pumpRoom(t, width: 360, occupants: {1: _u('host'), 2: _u('b', frame: false), 3: _u('c')});

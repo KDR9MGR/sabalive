@@ -126,7 +126,9 @@ class SeatCircle extends StatelessWidget {
                         diameter: footprint,
                         // around the frame, in the host's green or a colour of their own; shorter bars with a
                         // frame, so the ring does not reach into the next seat
-                        amplitude: framed ? 0.07 : 0.2,
+                        amplitude: framed ? 0.1 : 0.2,
+                        // the artwork stops short of its box (83-96% of it): start the bars inside the box so they touch the frame
+                        gap: framed ? -0.07 : 0.03,
                         color: waveColorFor(occupant.id, isHost: isHost),
                         child: framed
                             ? AppAvatar(
