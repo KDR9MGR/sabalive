@@ -44,7 +44,7 @@ finished bundle only contains the production address.
 3. **Auth settings** (Supabase dashboard, staging project > Authentication): turn "Confirm email" OFF if you want to test
    sign-up in the app (the fake accounts are already confirmed), and add the redirect URL `com.sabalive.in://login-callback/`.
    Google/Apple sign-in on staging needs its own provider setup; email login works without it.
-4. **Panel on Vercel (optional).** A Preview deployment of the `develop` branch can use staging if you set the
+4. **Panel on Vercel (optional).** A Preview deployment of a short-lived branch (there is no long-lived `develop` any more) can use staging if you set the
    `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` values for the **Preview** environment only (never Production) in the Vercel
    project. `vercel.json` routes deep links only on `admin.sabalive.in`, so previews need a host rule first.
 
