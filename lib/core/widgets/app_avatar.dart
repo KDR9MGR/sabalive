@@ -22,6 +22,10 @@ const double kFrameMinSize = 48;
 /// [size] is the avatar's WHOLE footprint, frame included. With a frame the picture is drawn smaller inside it
 /// ([frameScale] times), and the frame fills the footprint: nothing is ever painted outside the box the avatar
 /// was given, so a frame can never spill over a neighbouring seat, label, name or list row.
+///
+/// Layers, bottom to top: the picture, the FRAME over it (as in other live apps and as it was up to build +7: the ring
+/// covers the picture's edge, so the two fit together without a gap), and, where there is one, the speaking ring, which
+/// the seat draws behind all of it.
 class AppAvatar extends StatelessWidget {
   const AppAvatar({
     super.key,
@@ -42,14 +46,13 @@ class AppAvatar extends StatelessWidget {
   final String? imageUrl;
 
   /// The user's equipped avatar frame (see AppUser.frameUrl): animated artwork
-  /// drawn around the picture, filling the avatar's footprint. It sits BEHIND the picture, so
-  /// whatever its artwork looks like, it can never hide the face. Not drawn below [kFrameMinSize].
+  /// drawn over the picture's edge, filling the avatar's footprint. It takes no taps. Not drawn below [kFrameMinSize].
   final String? frameUrl;
 
-  /// How much bigger than the picture the frame artwork is: the picture takes 1 / [frameScale] of the footprint (57%).
-  /// Measured on the platform's frames (a 413 x 413 canvas whose ring opens 55-57% of it): the frame is drawn BEHIND the
-  /// picture, so a bigger picture (it was 71%) covers the ring and leaves only the wings showing.
-  static const frameScale = 1.75;
+  /// How much bigger than the picture the frame artwork is: the picture takes 1 / [frameScale] of the footprint (62.5%).
+  /// Measured on the platform's frames (a 413 x 413 canvas whose ring opens 55-57% of it and is about 67% across on the
+  /// outside): the picture sits under the ring's band, so the ring covers its edge and no gap shows between them.
+  static const frameScale = 1.6;
 
   /// Is a frame drawn on an avatar of this [size] with this [frameUrl]?
   static bool showsFrame(double size, String? frameUrl) =>
@@ -83,7 +86,7 @@ class AppAvatar extends StatelessWidget {
                 fit: BoxFit.cover,
               )
             : null,
-        // a framed picture has the frame for its edge: the gold ring on top of it hid the artwork's own ring
+        // a framed picture has the frame for its edge: a gold ring under the artwork's own ring would only show as a second ring
         border: ring && !framed
             ? Border.all(
                 color: ringColor ?? AppColors.gold,
@@ -114,7 +117,8 @@ class AppAvatar extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // fills the footprint, behind the picture; never takes taps
+                photo,
+                // over the picture, filling the footprint; never takes taps
                 IgnorePointer(
                   child: SizedBox.square(
                     dimension: size,
@@ -131,7 +135,6 @@ class AppAvatar extends StatelessWidget {
                     ),
                   ),
                 ),
-                photo,
               ],
             ),
           );

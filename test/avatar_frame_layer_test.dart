@@ -12,15 +12,17 @@ AppUser _u(String id, {bool frame = true}) =>
     AppUser(id: id, name: id, username: '@$id', frameUrl: frame ? _frame : null);
 
 void main() {
-  testWidgets('the frame is drawn BEHIND the picture, so it can never cover the face', (t) async {
+  testWidgets('the picture is the bottom layer and the frame is drawn OVER it (its ring covers the picture\'s edge)', (t) async {
     await t.pumpWidget(const MaterialApp(
       home: Scaffold(body: Center(child: AppAvatar(name: 'Asha', size: 60, frameUrl: _frame))),
     ));
-    // the avatar's own stack: frame first (bottom), picture last (top)
+    // the avatar's own stack: picture first (bottom), frame last (top), as in build +7 and in other live apps
     final stack = t.widget<Stack>(find.descendant(of: find.byType(AppAvatar), matching: find.byType(Stack)).first);
-    expect(stack.children.first, isA<IgnorePointer>(), reason: 'the frame is the bottom layer');
-    expect(stack.children.last, isA<Container>(), reason: 'the picture is on top');
+    expect(stack.children.first, isA<Container>(), reason: 'the picture is the bottom layer');
+    expect(stack.children.last, isA<IgnorePointer>(), reason: 'the frame is on top of it');
     expect(find.byType(RemoteMedia), findsOneWidget);
+    // and it takes no taps, so whatever sits under the avatar (a seat, a list row) still gets them
+    expect(t.widget<IgnorePointer>(find.descendant(of: find.byType(AppAvatar), matching: find.byType(IgnorePointer)).first).ignoring, isTrue);
   });
 
   testWidgets('without a frame the avatar is just the picture', (t) async {
@@ -58,11 +60,12 @@ void main() {
     expect(pictureDecoration().border, isNotNull, reason: 'too small for a frame: the picture keeps its ring');
   });
 
-  test('the picture is no bigger than the opening of the platform\'s frames, so it never hides the ring', () {
-    // measured on a live frame: a 413 x 413 canvas whose ring opens 55-57% of it. At 71% (frameScale 1.4) the picture
-    // covered the whole ring and only the wings showed.
-    expect(1 / AppAvatar.frameScale, inInclusiveRange(0.55, 0.60));
-    expect(AppAvatar.pictureSize(136, _frame), inInclusiveRange(75, 82), reason: 'the profile picture stays big');
+  test('the picture sits under the ring\'s band: no gap inside the ring, none showing outside it', () {
+    // measured on a live frame: a 413 x 413 canvas whose ring opens 55-57% of it and is about 67% across on the outside. The frame
+    // is drawn OVER the picture, so a picture inside that band is edged by the ring with no gap (a smaller one leaves a gap, a bigger
+    // one shows outside the ring).
+    expect(1 / AppAvatar.frameScale, inInclusiveRange(0.58, 0.66));
+    expect(AppAvatar.pictureSize(136, _frame), inInclusiveRange(80, 90), reason: 'the profile picture stays big');
   });
 
   test('which avatars get a frame: only ones big enough for it to read', () {
