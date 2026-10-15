@@ -2,7 +2,8 @@
 # Build the signed Play bundle (.aab) and check it really is a production build.
 #
 #   scripts/release/build_play_bundle.sh                 # build + verify + save a copy
-#   scripts/release/build_play_bundle.sh --verify-only FILE.aab     # just check an existing bundle
+#   scripts/release/build_play_bundle.sh --apk           # the same, but a release .apk to install on a phone
+#   scripts/release/build_play_bundle.sh --verify-only FILE.aab|FILE.apk     # just check an existing file
 #
 # It does NOT change the version: set `version:` in pubspec.yaml yourself first (the +N must be higher
 # than the last upload). It refuses to build with staging flags in the environment, and after building it
@@ -10,7 +11,9 @@
 #   - the bundle is signed with the release key in signer.sha256 (Gradle quietly falls back to the DEBUG key
 #     when the keystore file is missing, which Play rejects),
 #   - the only Supabase address compiled into the app is the production one (never a staging build).
-# The result is saved as ~/sabalive-releases/sabalive-<version>-release.aab (an existing file is never overwritten).
+# The result is saved as ~/sabalive-releases/sabalive-<version>-release.aab (or .apk; an existing file is never overwritten).
+# The .apk is signed with the same (upload) key as the bundle: a phone that has the app from Google Play (signed by Google's
+# app-signing key) refuses it until that app is uninstalled. Never upload the .apk to Play.
 set -euo pipefail
 cd "$(dirname "$0")/../.."    # sabalive/
 
@@ -31,8 +34,8 @@ verify_bundle() {
 
   local tmp urls
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
-  unzip -q -o "$aab" 'base/lib/*/libapp.so' -d "$tmp" 2>/dev/null || true
-  urls=$(for f in "$tmp"/base/lib/*/libapp.so; do [ -f "$f" ] && strings -a "$f"; done | grep -oE 'https://[a-z0-9]+\.supabase\.co' | sort -u)
+  unzip -q -o "$aab" 'base/lib/*/libapp.so' 'lib/*/libapp.so' -d "$tmp" 2>/dev/null || true   # .aab and .apk keep it in different places
+  urls=$(for f in "$tmp"/base/lib/*/libapp.so "$tmp"/lib/*/libapp.so; do [ -f "$f" ] && strings -a "$f"; done | grep -oE 'https://[a-z0-9]+\.supabase\.co' | sort -u)
   if [ "$urls" = "$PROD_URL" ]; then echo "  PASS  the only Supabase address inside the app is production ($PROD_URL)"
   elif [ -z "$urls" ]; then echo "  FAIL  could not find any Supabase address inside the app (is this an app bundle?)"; ok=1
   else echo "  FAIL  the app contains other Supabase addresses: $(echo $urls | tr '\n' ' ')"; ok=1; fi
@@ -40,7 +43,7 @@ verify_bundle() {
 }
 
 if [ "${1:-}" = "--verify-only" ]; then
-  verify_bundle "${2:?give the .aab to check}" && echo "RESULT: OK" || { echo "RESULT: FAILED"; exit 1; }
+  verify_bundle "${2:?give the .aab or .apk to check}" && echo "RESULT: OK" || { echo "RESULT: FAILED"; exit 1; }
   exit 0
 fi
 
@@ -49,7 +52,8 @@ if [ -n "${SABALIVE_ENV:-}${SUPABASE_URL:-}${SUPABASE_PUBLISHABLE_KEY:-}" ]; the
   echo "Refusing: SABALIVE_ENV / SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY is set in your shell. A Play build must use none."; exit 2
 fi
 VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
-DEST="$DEST_DIR/sabalive-$VERSION-release.aab"
+KIND=aab; [ "${1:-}" = "--apk" ] && KIND=apk
+DEST="$DEST_DIR/sabalive-$VERSION-release.$KIND"
 mkdir -p "$DEST_DIR"
 if [ -e "$DEST" ] && [ "${FORCE:-}" != "1" ]; then
   echo "Refusing: $DEST already exists (that version was built before). Bump the +N in pubspec.yaml, or FORCE=1 to overwrite."; exit 2
@@ -61,9 +65,14 @@ if git diff --quiet && git diff --cached --quiet; then echo "  git: working tree
 # `flutter clean` first: a stale generated plugin file (left behind by `flutter test` / `analyze`, which
 # include dev-only plugins) makes the release compile fail with "package ... does not exist".
 flutter clean >/dev/null
-flutter build appbundle --release
-AAB="build/app/outputs/bundle/release/app-release.aab"
-[ -f "$AAB" ] || { echo "Build produced no bundle"; exit 1; }
+if [ "$KIND" = apk ]; then
+  flutter build apk --release
+  AAB="build/app/outputs/flutter-apk/app-release.apk"
+else
+  flutter build appbundle --release
+  AAB="build/app/outputs/bundle/release/app-release.aab"
+fi
+[ -f "$AAB" ] || { echo "Build produced no $KIND"; exit 1; }
 
 if verify_bundle "$AAB"; then
   cp "$AAB" "$DEST"
