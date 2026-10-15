@@ -2,12 +2,25 @@ import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:android_id/android_id.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Who this phone is, for device bans.
 class DeviceIdentity {
-  const DeviceIdentity({required this.id, required this.platform, this.model});
+  const DeviceIdentity({
+    required this.id,
+    required this.platform,
+    this.model,
+    this.extraIds = const [],
+  });
+
+  /// More ids for the same phone (Android: the hardware DRM id, `drm:...`). The DRM id survives a factory reset, which
+  /// changes the Android id, so a ban found through either id spreads to the other (register_device_v2).
+  final List<String> extraIds;
+
+  /// Every id this phone answers to, the main one first.
+  List<String> get allIds => [id, ...extraIds];
 
   /// Stable per device (and install-signing key on Android), prefixed with where
   /// it came from, e.g. `android:9774d56d682e549c`.
@@ -18,10 +31,13 @@ class DeviceIdentity {
 
 /// What the platform says about this device, before we turn it into an id.
 class RawDeviceInfo {
-  const RawDeviceInfo({required this.platform, this.rawId, this.model});
+  const RawDeviceInfo({required this.platform, this.rawId, this.model, this.hardwareId});
   final String platform;
   final String? rawId;
   final String? model;
+
+  /// A hardware-backed id that outlives a factory reset (Android: SHA-256 of the DRM device id), or null.
+  final String? hardwareId;
 }
 
 /// The id a device ban keys on: Android's ANDROID_ID, or iOS's
@@ -73,10 +89,12 @@ class DeviceIdentityService {
       }
       id = 'install:$installId';
     }
+    final hardware = _clean(raw.hardwareId);
     return _cached = DeviceIdentity(
       id: id,
       platform: raw.platform,
       model: _clean(raw.model),
+      extraIds: hardware == null ? const [] : ['drm:$hardware'],
     );
   }
 
@@ -92,6 +110,17 @@ class DeviceIdentityService {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
+  /// The DRM-based hardware id from the native side (MainActivity.kt). Null when the phone has no Widevine DRM or the
+  /// call fails: the ban then works on the Android id alone, exactly as before.
+  static Future<String?> _hardwareId() async {
+    try {
+      final id = await const MethodChannel('com.sabalive.in/device_ids').invokeMethod<String>('drmId');
+      return (id == null || id.isEmpty) ? null : id;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<RawDeviceInfo> _readNative() async {
     final info = DeviceInfoPlugin();
     if (Platform.isAndroid) {
@@ -100,6 +129,7 @@ class DeviceIdentityService {
         platform: 'android',
         rawId: await const AndroidId().getId(),
         model: android.model,
+        hardwareId: await _hardwareId(),
       );
     }
     if (Platform.isIOS) {

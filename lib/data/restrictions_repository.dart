@@ -16,18 +16,23 @@ String formatBanDate(DateTime d) {
 
 /// One kind of restriction on this user / device: until a date, or forever.
 class BanInfo {
-  const BanInfo({this.until, this.permanent = false});
+  const BanInfo({this.until, this.permanent = false, this.reason});
 
   factory BanInfo.fromJson(Map<dynamic, dynamic> json) {
     final until = json['until'] as String?;
     return BanInfo(
       until: until == null ? null : DateTime.parse(until).toUtc(),
       permanent: json['permanent'] == true,
+      reason: json['reason'] as String?,
     );
   }
 
   final DateTime? until;
   final bool permanent;
+
+  /// Why a sign-up check refused: `device`, `identity` (a banned Google / email / phone) or `ip` (a short block on new
+  /// accounts from a banned user's network). Null for the older answers that carried no reason.
+  final String? reason;
 
   /// Still in force at [now]. A ban whose date has passed no longer counts even
   /// if the app hasn't heard from the server since.
@@ -120,6 +125,34 @@ class RestrictionsRepository {
     return null;
   }
 
+  /// Before any sign-in / sign-up: is this phone (any of its ids) banned, is this email / phone number on the blocklist,
+  /// and — for a NEW account only — is this network briefly blocked? Falls back to the single-id check on a database that
+  /// does not have `check_signup_access` yet.
+  Future<BanInfo?> checkSignup({
+    required List<String> deviceIds,
+    String? email,
+    String? phone,
+    bool newAccount = false,
+  }) async {
+    try {
+      final res = await supabase.rpc(
+        'check_signup_access',
+        params: {
+          'p_device_ids': deviceIds,
+          'p_email': email,
+          'p_phone': phone,
+          'p_new_account': newAccount,
+        },
+      );
+      return _bannedOrNull(res);
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST202' || e.code == '42883') {
+        return deviceIds.isEmpty ? null : checkDevice(deviceIds.first);
+      }
+      rethrow;
+    }
+  }
+
   /// Is this phone banned? Callable before sign-in.
   Future<BanInfo?> checkDevice(String deviceId) async {
     final res = await supabase.rpc(
@@ -131,6 +164,21 @@ class RestrictionsRepository {
 
   /// Tells the server this account uses this device, and whether it is banned.
   Future<BanInfo?> registerDevice(DeviceIdentity device) async {
+    try {
+      // v2 also records the hardware id and spreads a ban across every id this phone has shown
+      final res = await supabase.rpc(
+        'register_device_v2',
+        params: {
+          'p_device_id': device.id,
+          'p_platform': device.platform,
+          'p_model': device.model,
+          'p_extra_ids': device.extraIds,
+        },
+      );
+      return _bannedOrNull(res);
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+    }
     final res = await supabase.rpc(
       'register_device',
       params: {

@@ -69,3 +69,17 @@ Production is shared with the live Play app: follow "Production safety" in the r
   marks every element dirty so nothing loses its state.
 - Audio: Agora scenario is game-streaming (media volume) so MP4 gift sound and music are audible; local
   songs use the system file picker (no storage permission) + Agora audio mixing (`LocalMusicController`).
+
+## Bans (device / account / identity / IP)
+- An account or device ban (`user_bans`) also writes to `banned_identities` (normalized email / phone / Google / Apple id; gmail
+  dots, `+tag` and `googlemail` are folded) and `banned_ips` (24 h, new accounts only, skipped for IPs seen with 4+ accounts). These
+  outlive the account (`user_bans.user_id` is `on delete set null`), and a lift releases them (`release_ban_signals`).
+- Enforcement: BEFORE INSERT triggers on `auth.users` / `auth.identities` refuse a banned identity with SQLSTATE `BN010` for
+  ANY client, old or modified. They fail open on internal errors: a bug must never stop honest sign-ups. Keep them that way.
+- The app calls `check_signup_access` (anon-callable) before sign-in / sign-up with every device id and falls back to
+  `check_device_access` on an older server. `register_device_v2` stores a second Android id (`drm:` Widevine hardware id, survives a
+  factory reset) and spreads a ban to all of a user's ids. The Kotlin `device_ids` channel is a thin wrapper: no id = no extra id.
+- The sign-up IP is only visible to the `before_user_created_hook` Auth hook (Dashboard -> Authentication -> Hooks), which is
+  inert until the owner enables it. MAC addresses are unreadable on modern Android / iOS: never promise a MAC ban.
+- Retiring old app versions = the minimum Android version code in Master -> Config -> Release controls (owner's release decision).
+- Staff see "Linked accounts" on a user's profile (`admin_linked_accounts`: same phone / network / login).

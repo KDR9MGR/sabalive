@@ -25,6 +25,28 @@ void main() {
     expect(id.model, 'Pixel 8');
   });
 
+  test('a hardware id becomes a second id for the same phone (it outlives a factory reset)', () async {
+    final id = await _service(
+      () async => const RawDeviceInfo(
+        platform: 'android',
+        rawId: '9774d56d682e549c',
+        model: 'Pixel 8',
+        hardwareId: 'ab12cd34',
+      ),
+    ).load();
+    expect(id.id, 'android:9774d56d682e549c');
+    expect(id.extraIds, ['drm:ab12cd34']);
+    expect(id.allIds, ['android:9774d56d682e549c', 'drm:ab12cd34']);
+  });
+
+  test('no hardware id means just the main id, as before', () async {
+    final id = await _service(
+      () async => const RawDeviceInfo(platform: 'android', rawId: 'abc', hardwareId: '  '),
+    ).load();
+    expect(id.extraIds, isEmpty);
+    expect(id.allIds, ['android:abc']);
+  });
+
   test('an iOS vendor id works the same way', () async {
     final id = await _service(
       () async => const RawDeviceInfo(platform: 'ios', rawId: 'ABCD-1234', model: 'iPhone15,2'),

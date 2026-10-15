@@ -4,9 +4,11 @@
 --   select set_config('request.jwt.claim.sub', '<user uuid>', true);
 create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator noinherit login;
 create role supabase_admin;
+create role supabase_auth_admin;
 create schema auth; create schema storage; create schema extensions;
 create table auth.users (id uuid primary key default gen_random_uuid(), email text, phone text, raw_user_meta_data jsonb default '{}', raw_app_meta_data jsonb default '{}', created_at timestamptz default now());
 create table auth.sessions (id uuid primary key default gen_random_uuid(), user_id uuid);
+create table auth.identities (id uuid primary key default gen_random_uuid(), user_id uuid, provider text, provider_id text, identity_data jsonb default '{}', created_at timestamptz default now());
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
 create function auth.role() returns text language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), 'anon') $$;

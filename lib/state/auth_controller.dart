@@ -330,19 +330,30 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  /// Before any sign-in or sign-up: a banned phone can't even start one.
-  /// Fails open if the server can't be reached.
-  Future<void> _requireDeviceAllowed() async {
+  /// Before any sign-in or sign-up: a banned phone (any of its ids), a banned email / phone number, or — for a NEW
+  /// account — a briefly blocked network can't even start one. Fails open if the server can't be reached.
+  Future<void> _requireDeviceAllowed({String? email, String? phone, bool newAccount = false}) async {
     String? message;
     try {
       final device = await DeviceIdentityService.instance.load();
-      final ban = await _restrictionsRepo.checkDevice(device.id);
-      if (ban != null && ban.isActive()) {
-        message = 'This device is banned ${ban.phrase}.';
-      }
+      final ban = await _restrictionsRepo.checkSignup(
+        deviceIds: device.allIds,
+        email: email,
+        phone: phone,
+        newAccount: newAccount,
+      );
+      if (ban != null && ban.isActive()) message = signupBlockedMessage(ban);
     } catch (_) {}
     if (message != null) throw Exception(message);
   }
+
+  /// What to tell someone a sign-in / sign-up check turned away.
+  @visibleForTesting
+  static String signupBlockedMessage(BanInfo ban) => switch (ban.reason) {
+    'identity' => 'This account cannot be created.',
+    'ip' => 'New accounts cannot be created from this network right now. Please try again later.',
+    _ => 'This device is banned ${ban.phrase}.',
+  };
 
   /// Re-reads the signed-in user's profile (after equipping a frame, say) so
   /// every screen showing it picks the change up.
@@ -421,7 +432,7 @@ class AuthController extends ChangeNotifier {
       _guard(() async {
         clearNotice();
         await _requireLoginsOpen();
-        await _requireDeviceAllowed();
+        await _requireDeviceAllowed(email: id.contains('@') ? id.trim() : null);
         final trimmed = id.trim();
         if (trimmed.contains('@')) {
           await supabase.auth.signInWithPassword(
@@ -512,7 +523,7 @@ class AuthController extends ChangeNotifier {
   Future<void> requestOtp(String phone) => _guard(() async {
     clearNotice();
     await _requireLoginsOpen();
-    await _requireDeviceAllowed();
+    await _requireDeviceAllowed(phone: phone);
     _pendingPhone = phone;
     await supabase.auth.signInWithOtp(phone: phone);
   });
@@ -562,7 +573,7 @@ class AuthController extends ChangeNotifier {
     required String password,
   }) => _guard(() async {
     await _requireLoginsOpen();
-    await _requireDeviceAllowed();
+    await _requireDeviceAllowed(email: email.trim(), newAccount: true);
     final res = await supabase.auth.signUp(
       email: email.trim(),
       password: password,
