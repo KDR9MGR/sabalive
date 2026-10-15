@@ -27,9 +27,22 @@ verify_bundle() {
   echo "Verifying $aab"
 
   local signer fp
-  signer=$(keytool -printcert -jarfile "$aab" 2>/dev/null | grep -m1 'Owner:' | sed 's/^Owner: //')
-  fp=$(keytool -printcert -jarfile "$aab" 2>/dev/null | grep -m1 'SHA256:' | sed 's/.*SHA256: *//' | tr -d ' \n')
-  if [ "$fp" = "$EXPECTED_SIGNER" ]; then echo "  PASS  signed with the release key ($signer)"
+  if [[ "$aab" == *.apk ]]; then
+    # an .apk is signed with APK Signature Scheme v2/v3 only (no JAR signature), which keytool cannot read: use apksigner
+    local apksigner out
+    apksigner=$(ls -d "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+    [ -n "$apksigner" ] || { echo "  FAIL  apksigner not found (Android SDK build-tools)"; ok=1; }
+    out=$([ -n "$apksigner" ] && "$apksigner" verify --print-certs "$aab" 2>/dev/null || true)
+    signer=$(echo "$out" | grep -m1 'certificate DN:' | sed 's/.*DN: //')
+    fp=$(echo "$out" | grep -m1 'SHA-256 digest:' | sed 's/.*digest: *//')
+  else
+    signer=$(keytool -printcert -jarfile "$aab" 2>/dev/null | grep -m1 'Owner:' | sed 's/^Owner: //')
+    fp=$(keytool -printcert -jarfile "$aab" 2>/dev/null | grep -m1 'SHA256:' | sed 's/.*SHA256: *//')
+  fi
+  # compare ignoring case and colons (keytool prints 36:F5:..., apksigner prints 36f5...)
+  local fp_n expected_n
+  fp_n=$(printf %s "$fp" | tr -d ': \n' | tr 'A-F' 'a-f'); expected_n=$(printf %s "$EXPECTED_SIGNER" | tr -d ': \n' | tr 'A-F' 'a-f')
+  if [ -n "$fp_n" ] && [ "$fp_n" = "$expected_n" ]; then echo "  PASS  signed with the release key ($signer)"
   else echo "  FAIL  signer is '$signer' ($fp), expected the release key $EXPECTED_SIGNER. Is /Users/abdulrazak/sabalive-secrets/android/key.properties present?"; ok=1; fi
 
   local tmp urls
