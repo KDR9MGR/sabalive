@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../config/feature_flags.dart';
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
@@ -1080,18 +1081,21 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   // ─────────────────────────────────────────────────────── Tools sheet
   Future<void> _openTools() async {
     final tools = <ToolSpec>[
-      ToolSpec(
-        Icons.bolt_rounded,
-        'Invite PK',
-        const Color(0xFFFF7A45),
-        () => _soon('PK battles'),
-      ),
-      ToolSpec(
-        Icons.casino_rounded,
-        'Random PK',
-        const Color(0xFFFF5C5C),
-        () => _soon('PK battles'),
-      ),
+      // PK is on: a PK is started from Go Live -> PK, so these two would only say "coming soon" here
+      if (!FeatureFlags.pkBattleEnabled) ...[
+        ToolSpec(
+          Icons.bolt_rounded,
+          'Invite PK',
+          const Color(0xFFFF7A45),
+          () => _soon('PK battles'),
+        ),
+        ToolSpec(
+          Icons.casino_rounded,
+          'Random PK',
+          const Color(0xFFFF5C5C),
+          () => _soon('PK battles'),
+        ),
+      ],
       ToolSpec(
         Icons.sports_esports_rounded,
         'Games',

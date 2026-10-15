@@ -1,3 +1,5 @@
+import '../state/remote_config_controller.dart';
+
 /// Switches for UI that's deliberately hidden during the alpha because the
 /// backend behind it isn't real yet. Flip these to `true` — and remove this
 /// comment's checklist item — as each backend piece actually lands:
@@ -20,14 +22,16 @@
 ///   to call `dev_purchase_coins` (a test RPC that instantly grants coins,
 ///   no real charge) regardless of this flag, so tapping Pay silently gave
 ///   free coins. Now shows "coming soon" instead while this is false.
-/// - [pkBattleEnabled]: PK Battle mode stays visible throughout the app
-///   (Go Live's mode picker, the host tools sheet's Invite/Random PK tiles,
-///   the Home/Live-feed PK filter) so people know it's coming, but every
-///   place that would actually start or join one shows "coming soon"
-///   instead while this is false (2026-09-28, per Rey). Go Live's PK tab
-///   checks this directly since it's the one remaining action that used to
-///   create a real PK stream; the tools-sheet tiles were already gated this
-///   way before this flag existed.
+/// - [pkBattleEnabled]: PK Battles are ON (2026-10-15, owner's decision; the
+///   backend has been live since migration 20260918100000). It follows the
+///   server switch `pk_battles` (Application Config -> Release controls, Super
+///   Admin), which is on unless set to false: switching it off puts PK back to
+///   "coming soon" without a release. Until then (2026-09-28, per Rey) PK mode
+///   was visible everywhere (Go Live's mode picker, the Home/Live-feed PK
+///   filter) but every place that would start or join one said "coming soon".
+///   Go Live's PK tab checks it; the host tools sheet hides its Invite/Random PK
+///   tiles while it is on (a PK is started from Go Live -> PK, and the
+///   opponent is picked inside the PK room).
 ///
 /// - [callsEnabled]: voice/video calls between users are hidden everywhere
 ///   (the two call buttons in a chat, the incoming-call banner, and the
@@ -42,6 +46,10 @@ class FeatureFlags {
 
   static const bool socialLoginEnabled = true;
   static const bool paymentMethodsEnabled = false;
-  static const bool pkBattleEnabled = false;
+  static bool get pkBattleEnabled => pkBattleEnabledFor(RemoteConfigController.instance);
+
+  /// The rule behind [pkBattleEnabled], for any [RemoteConfigController] (tests use their own). Fails OPEN: no answer from the
+  /// server means on, the same as every other release switch.
+  static bool pkBattleEnabledFor(RemoteConfigController config) => config.flag('pk_battles');
   static const bool callsEnabled = false;
 }
