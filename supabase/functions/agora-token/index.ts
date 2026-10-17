@@ -20,6 +20,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { RtcRole, RtcTokenBuilder } from "npm:agora-token@2.0.5";
+import { mayPublishToBattle } from "./battle_access.ts";
 
 const APP_ID = Deno.env.get("AGORA_APP_ID") ?? "";
 const APP_CERTIFICATE = Deno.env.get("AGORA_APP_CERTIFICATE") ?? "";
@@ -124,11 +125,22 @@ Deno.serve(async (req) => {
     const battleId = channelName.slice(3);
     const { data: battle } = await userClient
       .from("pk_battles")
-      .select("host_a_id, host_b_id, status")
+      .select("host_a_id, host_b_id, status, stream_a_id, stream_b_id, source")
       .eq("id", battleId)
       .maybeSingle();
-    if (!battle || battle.status !== "live" ||
-        (battle.host_a_id !== user.id && battle.host_b_id !== user.id)) {
+    // A battle made by the PK layer (it has a source) also lets the guests on a seat of either room keep talking; a legacy battle
+    // keeps the old rule, the two hosts only (battle_access.ts).
+    let seatedStreamIds: string[] = [];
+    if (battle && battle.status === "live" && battle.source != null &&
+        battle.host_a_id !== user.id && battle.host_b_id !== user.id) {
+      const { data: seats } = await userClient
+        .from("live_stream_seats")
+        .select("live_stream_id")
+        .in("live_stream_id", [battle.stream_a_id, battle.stream_b_id])
+        .eq("occupant_id", user.id);
+      seatedStreamIds = (seats ?? []).map((r: { live_stream_id: string }) => r.live_stream_id);
+    }
+    if (!mayPublishToBattle(battle, user.id, seatedStreamIds)) {
       return json({ error: "Not authorized to publish to this PK battle" }, 403);
     }
   } else if (role === RtcRole.PUBLISHER) {
