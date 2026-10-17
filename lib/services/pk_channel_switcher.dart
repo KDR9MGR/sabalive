@@ -46,6 +46,16 @@ class PkChannelSwitcher {
   late String _target = ownChannel;
   Future<void> _last = Future<void>.value();
 
+  /// The channel this phone is in, null until its first join has succeeded. A switch is never started before that: the first join
+  /// is still on its way and would land in the old channel after it (a viewer who opens a room in the middle of a battle).
+  String? _at;
+
+  /// Call from the screen's `onJoinChannelSuccess` with the channel that was joined (the first join, and every later one).
+  void markJoined(String channel) {
+    _at = channel;
+    if (_target != channel) _last = _last.then((_) => _go(_target)); // the battle was already on when we got in
+  }
+
   static Future<void> _viaAgoraService(RtcEngine engine,
           {required String newChannelName, required bool asBroadcaster, required bool publishCamera}) =>
       AgoraService.instance.switchChannel(engine, newChannelName: newChannelName, asBroadcaster: asBroadcaster, publishCamera: publishCamera);
@@ -62,7 +72,8 @@ class PkChannelSwitcher {
 
   Future<void> _go(String target) async {
     final e = engine();
-    if (e == null || _target != target) return; // not joined yet, or a newer answer already replaced this one
+    // not joined yet (markJoined will come back), already there, or a newer answer already replaced this one
+    if (e == null || _at == null || _at == target || _target != target) return;
     if (stagger) {
       await Future<void>.delayed(Duration(milliseconds: _random.nextInt(1500)));
       if (_target != target) return;
@@ -75,6 +86,7 @@ class PkChannelSwitcher {
         asBroadcaster: broadcaster(inBattle),
         publishCamera: publishCamera?.call(inBattle) ?? false,
       );
+      _at = target;
     } catch (error) {
       onError?.call(error);
     }

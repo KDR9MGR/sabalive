@@ -308,6 +308,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           // in this same channel — onUserJoined alone no longer uniquely
           // identifies "the host" once more than one broadcaster can join.
           onJoinChannelSuccess: (connection, elapsed) {
+            _pkSwitcher?.markJoined(connection.channelId ?? '');
             final uid = connection.localUid;
             if (uid != null) {
               supabase

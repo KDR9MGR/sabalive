@@ -591,6 +591,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       engine.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (connection, elapsed) {
+            _pkSwitcher?.markJoined(connection.channelId ?? '');
             _myAgoraUid = connection.localUid;
             _syncMySeatUid();
           },

@@ -14,7 +14,9 @@ void main() {
     bool Function(bool)? publishCamera,
     RtcEngine? Function()? engine,
     void Function(Object)? onError,
-  }) => PkChannelSwitcher(
+    bool joined = true,
+  }) {
+    final s = PkChannelSwitcher(
     engine: engine ?? () => _FakeEngine(),
     ownChannel: 'room-1',
     broadcaster: broadcaster ?? (_) => true,
@@ -26,7 +28,11 @@ void main() {
       roles.add(asBroadcaster);
       cameras.add(publishCamera);
     },
-  );
+    );
+    // a screen calls markJoined from onJoinChannelSuccess; the helper has done that already unless a test says otherwise
+    if (joined) s.markJoined('room-1');
+    return s;
+  }
 
   setUp(() {
     switches = [];
@@ -71,7 +77,19 @@ void main() {
     expect(cameras, [false, false]);
   });
 
-  test('before the engine has joined nothing happens, and a quick "joined then over" runs in order', () async {
+  test('a battle that is already on when the phone gets in: the switch waits for the first join, then happens', () async {
+    final s = make(joined: false);
+    await s.sync('pk-b1'); // the battle row arrived before onJoinChannelSuccess
+    expect(switches, isEmpty, reason: 'the first join is still on its way: switching now would be overridden by it');
+    s.markJoined('room-1'); // ... and now the first join has succeeded
+    await Future<void>.delayed(Duration.zero);
+    expect(switches, ['pk-b1']);
+    s.markJoined('pk-b1'); // the join of the switch itself reports in too: nothing more to do
+    await Future<void>.delayed(Duration.zero);
+    expect(switches, ['pk-b1']);
+  });
+
+  test('before the engine has joined nothing happens, and a battle that is over before the switch ran costs no switch at all', () async {
     final s = make(engine: () => null);
     await s.sync('pk-b1');
     expect(switches, isEmpty);
@@ -80,7 +98,7 @@ void main() {
     final a = t.sync('pk-b1');
     final b = t.sync(null);
     await Future.wait([a, b]);
-    expect(switches.last, 'room-1', reason: 'the last answer wins');
+    expect(switches, isEmpty, reason: 'the last answer wins: the phone never left its own channel, so there is nothing to switch back');
   });
 
   test('a failed switch is reported, not thrown', () async {
