@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final source = context.watch<LiveStreamsController>().streams;
     final streams = _cat == 0
         ? source
-        : source.where((s) => s.mode == _liveModes[_cat - 1]).toList();
+        : source.where((s) => s.isIn(_liveModes[_cat - 1])).toList();
     final trending = source;
 
     return Scaffold(
@@ -243,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (context, i) {
           final mode = _liveModes[i];
           final selected = _cat == i + 1;
-          final liveCount = source.where((s) => s.mode == mode).length;
+          final liveCount = source.where((s) => s.isIn(mode)).length;
           return GestureDetector(
             onTap: () => setState(() => _cat = i + 1),
             child: Column(

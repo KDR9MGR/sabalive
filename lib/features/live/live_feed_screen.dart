@@ -28,7 +28,7 @@ class _LiveFeedScreenState extends State<LiveFeedScreen> {
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>();
     final all = context.watch<LiveStreamsController>().streams;
-    final byMode = all.where((s) => s.mode == _modes[_modeFilter]).toList();
+    final byMode = all.where((s) => s.isIn(_modes[_modeFilter])).toList();
     final list = _tab == 0
         ? byMode.where((s) => session.isFollowing(s.host.id)).toList()
         : byMode;

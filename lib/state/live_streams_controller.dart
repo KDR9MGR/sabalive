@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/feature_flags.dart';
 import '../config/supabase_client.dart';
 import '../core/utils/coalesced_runner.dart';
 import '../data/models.dart';
@@ -63,8 +64,23 @@ class LiveStreamsController extends ChangeNotifier {
       for (final row in rows)
         LiveStream.fromRow(row, AppUser.fromRow(row['profiles'] as Map<String, dynamic>)),
     ];
+    await _markBattles();
     _loading = false;
     notifyListeners();
+  }
+
+  /// Lives that are in a PK battle right now show under the PK filter. One small query per reload, and none while PK is off.
+  Future<void> _markBattles() async {
+    if (!FeatureFlags.pkBattleEnabled) return;
+    try {
+      final rows = await supabase.from('pk_battles').select('stream_a_id, stream_b_id').eq('status', 'live');
+      final ids = <String>{for (final r in rows) ...[r['stream_a_id'] as String, r['stream_b_id'] as String]};
+      for (final s in _streams) {
+        s.inBattle = ids.contains(s.id);
+      }
+    } catch (_) {
+      // the filter just misses the battles this time
+    }
   }
 
   Future<LiveStream> createStream({

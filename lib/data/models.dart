@@ -162,6 +162,12 @@ class LiveStream {
   final DateTime? startedAt;
 
   bool get pk => mode == LiveMode.pk;
+
+  /// In a PK battle right now (the PK battle layer: an ordinary audio / video live that is in a battle). Set by the live list.
+  bool inBattle = false;
+
+  /// Does this live belong under [m] in the Home / Live feed filters? PK lists the old PK-mode lives AND lives in a battle.
+  bool isIn(LiveMode m) => m == LiveMode.pk ? (mode == LiveMode.pk || inBattle) : mode == m;
 }
 
 /// The panel's "play speed" column (numeric: arrives as a number or a string), clamped to the
