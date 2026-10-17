@@ -114,6 +114,13 @@ class PkBattleController extends ChangeNotifier {
 
   /// 'a' or 'b': the side of this live in the current battle.
   String? get mySide => _battle?.sideFor(streamId);
+
+  /// The other live of the current battle (null without one).
+  String? get opponentStreamId {
+    final b = _battle;
+    if (b == null) return null;
+    return b.streamAId == streamId ? b.streamBId : b.streamAId;
+  }
   bool get amHost => _battle != null && (_battle!.hostAId == myHostId || _battle!.hostBId == myHostId);
   int get scoreMine => _battle == null ? 0 : (mySide == 'b' ? _battle!.scoreB : _battle!.scoreA);
   int get scoreTheirs => _battle == null ? 0 : (mySide == 'b' ? _battle!.scoreA : _battle!.scoreB);

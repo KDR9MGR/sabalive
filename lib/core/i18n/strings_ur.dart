@@ -804,4 +804,6 @@ const Map<String, String> urStrings = {
   'Video PK: you go live on camera, then invite a host you follow or find a random opponent. Both cameras show side by side.': 'ویڈیو PK: آپ کیمرے پر لائیو آتے ہیں، پھر کسی فالو کیے ہوئے ہوسٹ کو مدعو کرتے ہیں یا رینڈم مقابل تلاش کرتے ہیں۔ دونوں کیمرے ساتھ ساتھ دکھائی دیتے ہیں۔',
   'Start Audio PK': 'آڈیو PK شروع کریں',
   'Start Video PK': 'ویڈیو PK شروع کریں',
+  '{0}\'s room': '{0} کا روم',
+  'A PK battle is already on': 'PK بیٹل پہلے سے جاری ہے',
 };

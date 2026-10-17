@@ -804,4 +804,6 @@ const Map<String, String> neStrings = {
   'Video PK: you go live on camera, then invite a host you follow or find a random opponent. Both cameras show side by side.': 'भिडियो PK: तपाईं क्यामेरामा लाइभ आउनुहुन्छ, त्यसपछि फलो गरेको होस्टलाई आमन्त्रण गर्नुहुन्छ वा र‍्यान्डम प्रतिद्वन्द्वी खोज्नुहुन्छ। दुवै क्यामेरा छेउछाउ देखिन्छन्।',
   'Start Audio PK': 'अडियो PK सुरु गर्नुहोस्',
   'Start Video PK': 'भिडियो PK सुरु गर्नुहोस्',
+  '{0}\'s room': '{0} को रुम',
+  'A PK battle is already on': 'PK ब्याटल पहिले नै चलिरहेको छ',
 };

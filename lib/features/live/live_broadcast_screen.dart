@@ -1063,7 +1063,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   /// Invite PK (tab 0) / Random PK (tab 1) in the Tools sheet.
   void _pkFromHere(int tab) {
     final pk = _pk;
-    if (pk != null) {
+    if (pk != null && pk.inBattle) {
+      _snack('A PK battle is already on'); // one battle at a time: a second invite would only be refused
+    } else if (pk != null) {
       showPkInviteSheet(context, pk, initialTab: tab);
     } else if (!FeatureFlags.pkBattleEnabled) {
       _soon('PK battles');
@@ -1965,7 +1967,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               diamonds: _diamonds.all,
               emotes: _emotes,
               onSeatTap: _seatMenu,
-              header: _pk == null ? null : PkBattleHeader(controller: _pk!, me: widget.stream.host),
+              header: _pk == null ? null : PkBattleTop(controller: _pk!, me: widget.stream.host),
               onAddSeat: _seatCount >= kMaxAudioSeats ? null : () => _changeSeatCount(kSeatStep),
               onRemoveSeat: _seatCount <= kMinAudioSeats ? null : () => _changeSeatCount(-kSeatStep),
             )

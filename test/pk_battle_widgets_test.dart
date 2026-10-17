@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/data/pk_battles_repository.dart';
+import 'package:sabalive/core/widgets/app_avatar.dart';
 import 'package:sabalive/features/live/widgets/pk_battle_widgets.dart';
+import 'package:sabalive/features/live/widgets/seat_snapshot.dart';
 import 'package:sabalive/state/pk_battle_controller.dart';
 
 import 'helpers/pk_fakes.dart';
@@ -242,6 +244,88 @@ void main() {
     final side = await sendPkGift(ctx, c, const Gift('g', 'Rose', 'r', 1), 1, mineLabel: 'x');
     expect(side, isNull);
     expect(find.text('Send to'), findsNothing);
+    await unmount(t);
+  });
+
+  testWidgets('the opponent\'s room: who sits there, only while the battle runs, read from the OTHER live', (t) async {
+    await mount(t);
+    final asked = <String>[];
+    SeatSnapshot seats(Map<int, AppUser> m) => SeatSnapshot(occupants: m, muted: {}, agoraUids: {});
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PkOpponentRoom(
+          controller: c,
+          every: const Duration(seconds: 1),
+          fetchSeats: (id) async {
+            asked.add(id);
+            return seats({1: AppUser(id: 'o1', name: 'Opp Host', username: '@o1'), 3: AppUser(id: 'o2', name: 'Guest', username: '@o2')});
+          },
+        ),
+      ),
+    ));
+    expect(find.byKey(const ValueKey('pk-opponent-room')), findsNothing, reason: 'no battle yet');
+
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 50));
+    expect(asked, [pkOtherStream], reason: 'the other live\'s seats, not mine');
+    expect(find.byKey(const ValueKey('pk-opponent-room')), findsOneWidget);
+    expect(find.text("Opponent's room"), findsOneWidget);
+    expect(find.byType(AppAvatar), findsNWidgets(2));
+    expect(find.descendant(of: find.byKey(const ValueKey('pk-opponent-room')), matching: find.byType(GestureDetector)), findsNothing,
+        reason: 'read-only: nothing here takes a tap');
+
+    await t.pump(const Duration(seconds: 1));
+    expect(asked.length, 2, reason: 'it re-reads every second here (every few seconds in the app)');
+
+    api.emit(pkRow(status: 'finished', scoreA: 3, scoreB: 1, winner: 'a'));
+    await t.pump();
+    expect(find.byKey(const ValueKey('pk-opponent-room')), findsNothing, reason: 'gone when the battle is over');
+    await t.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+
+  testWidgets('a win throws confetti once; a loss does not', (t) async {
+    await mount(t);
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    api.emit(pkRow(status: 'finished', scoreA: 9, scoreB: 1, winner: 'a'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey('pk-confetti')), findsOneWidget);
+    await t.pump(const Duration(seconds: 3)); // the burst is over, nothing keeps animating
+    await t.tap(find.byKey(const ValueKey('pk-result-ok')));
+    await t.pumpAndSettle();
+    await unmount(t);
+
+    await mount(t);
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    api.emit(pkRow(status: 'finished', scoreA: 1, scoreB: 9, winner: 'b'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pk-confetti')), findsNothing);
+    expect(find.text('You lost'), findsOneWidget);
+    await unmount(t);
+  });
+
+  testWidgets('a live that was minimized when the invite came shows it as soon as the screen is back', (t) async {
+    now = DateTime.utc(2026, 10, 17, 12);
+    api = PkFakeApi(() => now);
+    c = PkBattleController(api: api, streamId: pkMyStream, myHostId: pkMe, clock: () => now);
+    c.start();
+    await t.pump();
+    // the screen is minimized: no PkBattleEvents is mounted while the invite arrives
+    await t.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+    api.emit(pkRow(status: 'invited', iAmA: false, seconds: 600));
+    await t.pump();
+    expect(c.phase, PkPhase.incoming);
+    // restored: the events layer mounts again and picks up what is going on
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: Stack(children: [Positioned.fill(child: PkBattleEvents(controller: c))]))));
+    await t.pumpAndSettle();
+    expect(find.text('PK invite'), findsOneWidget);
+    expect(find.textContaining('10 minute'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('pk-decline')));
+    await t.pumpAndSettle();
     await unmount(t);
   });
 }

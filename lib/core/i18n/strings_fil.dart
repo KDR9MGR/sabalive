@@ -804,4 +804,6 @@ const Map<String, String> filStrings = {
   'Video PK: you go live on camera, then invite a host you follow or find a random opponent. Both cameras show side by side.': 'Video PK: mag-live ka sa camera, pagkatapos ay mag-imbita ng host na sinusundan mo o maghanap ng random na kalaban. Magkatabi ang dalawang camera.',
   'Start Audio PK': 'Simulan ang Audio PK',
   'Start Video PK': 'Simulan ang Video PK',
+  '{0}\'s room': 'Room ni {0}',
+  'A PK battle is already on': 'May PK battle na ngayon',
 };

@@ -34,6 +34,7 @@ void main() {
     'Video PK is coming soon',
     'Start a PK from Go Live: choose the PK tab',
     'A PK battle is on: if you end now, the other host wins.',
+    'A PK battle is already on',
     'Audio PK',
     'Video PK',
     'Video PK (soon)',
@@ -68,6 +69,7 @@ void main() {
       expect(tr('12 watching'), contains('12'), reason: l.code);
       expect(tr('10 min'), contains('10'), reason: l.code);
       expect(tr('Waiting for Asha…'), contains('Asha'), reason: l.code);
+      expect(tr("Asha's room"), allOf(contains('Asha'), isNot(contains('{0}'))), reason: l.code);
     }
   });
 

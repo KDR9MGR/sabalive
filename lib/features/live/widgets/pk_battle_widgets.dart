@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/services.dart';
 
 import '../../../core/i18n/text.dart';
 import '../../../core/utils/errors.dart';
@@ -11,6 +13,7 @@ import '../../../data/pk_battles_repository.dart';
 import '../../../state/pk_battle_controller.dart';
 import '../../../theme/app_colors.dart';
 import 'pk_score_bar.dart';
+import 'seat_snapshot.dart';
 
 /// The PK battle layer's screens (PK as a layer over a normal audio live; see HANDOFF.md "PK battle layer"). Everything here only
 /// READS the [PkBattleController]; the server row is the single source of truth.
@@ -125,6 +128,185 @@ class PkBattleHeader extends StatelessWidget {
     textAlign: end ? TextAlign.end : TextAlign.start,
     style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
   );
+}
+
+// ------------------------------------------------------------------------------------------------- opponent's room
+/// While a battle runs: who is on the OTHER room's seats, read-only (nothing here takes a tap: a host only ever locks, adds or removes
+/// the seats of their own room). The seats are re-read every few seconds, the way the rooms already keep their own seats honest,
+/// so it costs no extra live connection.
+class PkOpponentRoom extends StatefulWidget {
+  const PkOpponentRoom({
+    super.key,
+    required this.controller,
+    this.fetchSeats = fetchSeatSnapshot,
+    this.every = const Duration(seconds: 8),
+  });
+
+  final PkBattleController controller;
+  final Future<SeatSnapshot?> Function(String streamId) fetchSeats;
+  final Duration every;
+
+  @override
+  State<PkOpponentRoom> createState() => _PkOpponentRoomState();
+}
+
+class _PkOpponentRoomState extends State<PkOpponentRoom> {
+  Timer? _timer;
+  String? _watching;
+  List<AppUser> _people = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_sync);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _sync());
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_sync);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _sync() {
+    if (!mounted) return;
+    final c = widget.controller;
+    final on = (c.phase == PkPhase.live || c.phase == PkPhase.countdown) ? c.opponentStreamId : null;
+    if (on == _watching) return;
+    _watching = on;
+    _timer?.cancel();
+    if (on == null) {
+      setState(() => _people = const []);
+      return;
+    }
+    unawaited(_read(on));
+    _timer = Timer.periodic(widget.every, (_) => _read(on));
+  }
+
+  Future<void> _read(String streamId) async {
+    final snap = await widget.fetchSeats(streamId);
+    if (!mounted || _watching != streamId || snap == null) return;
+    final seats = snap.occupants.keys.toList()..sort();
+    setState(() => _people = [for (final seat in seats) snap.occupants[seat]!]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_watching == null || _people.isEmpty) return const SizedBox.shrink();
+    final name = widget.controller.opponent?.name ?? '';
+    return Container(
+      key: const ValueKey('pk-opponent-room'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            "$name's room",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final u in _people)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 36),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The battle header with the opponent's room under it: what the audio rooms (host and viewer) show above their seats.
+class PkBattleTop extends StatelessWidget {
+  const PkBattleTop({super.key, required this.controller, required this.me});
+  final PkBattleController controller;
+  final AppUser me;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [PkBattleHeader(controller: controller, me: me), PkOpponentRoom(controller: controller)],
+  );
+}
+
+// ----------------------------------------------------------------------------------------------------------- confetti
+/// A one-shot burst of confetti for a win (about 2 s, then it stops: a looping animation does not belong on a live screen).
+class PkConfetti extends StatefulWidget {
+  const PkConfetti({super.key});
+
+  @override
+  State<PkConfetti> createState() => _PkConfettiState();
+}
+
+class _PkConfettiState extends State<PkConfetti> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))..forward();
+  final _random = math.Random(7);
+  late final List<_Piece> _pieces = [for (var i = 0; i < 46; i++) _Piece(_random)];
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) => CustomPaint(key: const ValueKey('pk-confetti'), painter: _ConfettiPainter(_pieces, _c.value), size: Size.infinite),
+    ),
+  );
+}
+
+class _Piece {
+  _Piece(math.Random r)
+    : x = r.nextDouble(),
+      delay = r.nextDouble() * 0.35,
+      speed = 0.55 + r.nextDouble() * 0.5,
+      sway = (r.nextDouble() - 0.5) * 0.18,
+      size = 5 + r.nextDouble() * 6,
+      color = const [Color(0xFFFFD166), Color(0xFFFF5C8A), Color(0xFF4DD4FF), Color(0xFF7CFFB2), Color(0xFFFFFFFF)][r.nextInt(5)];
+  final double x, delay, speed, sway, size;
+  final Color color;
+}
+
+class _ConfettiPainter extends CustomPainter {
+  _ConfettiPainter(this.pieces, this.t);
+  final List<_Piece> pieces;
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final p in pieces) {
+      final local = ((t - p.delay) / (1 - p.delay)).clamp(0.0, 1.0);
+      if (local <= 0) continue;
+      final y = -20 + local * p.speed * (size.height + 40);
+      final x = p.x * size.width + math.sin(local * 9 + p.x * 20) * p.sway * size.width;
+      final paint = Paint()..color = p.color.withValues(alpha: (1 - local * local).clamp(0.0, 1.0));
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(local * 10 + p.x * 6);
+      canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.55), paint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPainter old) => old.t != t;
 }
 
 // ------------------------------------------------------------------------------------------------------ video stage
@@ -394,6 +576,7 @@ class _PkBattleEventsState extends State<PkBattleEvents> {
         _showIncoming();
       case PkPhase.countdown:
         _startCount();
+        HapticFeedback.mediumImpact();
       case PkPhase.finished:
         _stopCount();
         _showResult();
@@ -486,18 +669,24 @@ class _PkBattleEventsState extends State<PkBattleEvents> {
     final why = r.forfeit
         ? (r.outcome == PkOutcome.win ? 'The other host left, so you win.' : 'You left the battle.')
         : 'Final score: ${r.mine} – ${r.theirs}';
+    if (r.outcome == PkOutcome.win) HapticFeedback.heavyImpact();
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        title: Text(title, key: const ValueKey('pk-result-title')),
-        content: Text(why),
-        actions: [
-          FilledButton(
-            key: const ValueKey('pk-result-ok'),
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Back to the live'),
+      builder: (dialogContext) => Stack(
+        children: [
+          if (r.outcome == PkOutcome.win) const Positioned.fill(child: PkConfetti()),
+          AlertDialog(
+            backgroundColor: AppColors.bgElevated,
+            title: Text(title, key: const ValueKey('pk-result-title')),
+            content: Text(why),
+            actions: [
+              FilledButton(
+                key: const ValueKey('pk-result-ok'),
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Back to the live'),
+              ),
+            ],
           ),
         ],
       ),

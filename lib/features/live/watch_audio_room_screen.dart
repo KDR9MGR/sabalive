@@ -1373,7 +1373,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         children: [
           const SizedBox(height: 24),
           // the PK battle header, while a battle is on
-          if (_pk != null) PkBattleHeader(controller: _pk!, me: widget.stream.host),
+          if (_pk != null) PkBattleTop(controller: _pk!, me: widget.stream.host),
           // the same four-to-a-row layout as the host's stage, with room for each seat's frame
           SeatGrid(
             seatCount: _seatCount,

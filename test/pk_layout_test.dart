@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/features/live/widgets/pk_battle_widgets.dart';
 import 'package:sabalive/features/live/widgets/seat_room.dart';
+import 'package:sabalive/features/live/widgets/seat_snapshot.dart';
 import 'package:sabalive/state/pk_battle_controller.dart';
 
 import 'helpers/pk_fakes.dart';
@@ -40,11 +41,27 @@ void main() {
               onSeatTap: (_) {},
               onAddSeat: () {},
               onRemoveSeat: () {},
-              header: PkBattleHeader(controller: c, me: me),
+              header: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PkBattleHeader(controller: c, me: me),
+                  // the opponent's room under it: eight people on its seats
+                  PkOpponentRoom(
+                    controller: c,
+                    fetchSeats: (_) async => SeatSnapshot(
+                      occupants: {for (var i = 1; i <= 8; i++) i: AppUser(id: 'o$i', name: 'Guest $i', username: '@o$i')},
+                      muted: {},
+                      agoraUids: {},
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ));
         await t.pump();
+        await t.pump(const Duration(milliseconds: 50));
+        expect(find.byKey(const ValueKey('pk-opponent-room')), findsOneWidget);
         final overflow = t.takeException();
         // 16 seats are four rows high; with the header on a very small phone the room may need more height than the screen has:
         // report it instead of hiding it

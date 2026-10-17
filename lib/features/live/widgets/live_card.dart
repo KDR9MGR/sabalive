@@ -69,6 +69,22 @@ class LiveCard extends StatelessWidget {
                     Row(
                       children: [
                         const LiveBadge(dense: true),
+                        // a live that is in a PK battle right now
+                        if (stream.inBattle) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            key: const ValueKey('live-card-pk'),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(gradient: AppColors.goldGradient, borderRadius: BorderRadius.circular(10)),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.bolt_rounded, size: 11, color: Color(0xFF3A1A5E)),
+                                Text('PK', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w800, fontSize: 10, color: Color(0xFF3A1A5E))),
+                              ],
+                            ),
+                          ),
+                        ],
                         const Spacer(),
                         CountChip(
                           icon: Icons.visibility_rounded,
