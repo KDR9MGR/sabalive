@@ -23,6 +23,7 @@ drop function if exists public.pk_random_join(uuid);
 drop function if exists public.pk_eligible_following(uuid);
 drop function if exists public.pk_invite_v2(uuid, uuid, integer);
 drop function if exists public.pk_set_ready(uuid, boolean);
+drop function if exists public.pk_now();
 drop function if exists public.pk_hosts_blocked(uuid, uuid);
 drop function if exists public.pk_stream_busy(uuid);
 

@@ -2,6 +2,7 @@
 --
 -- invite_pk_opponent / respond_to_pk_invite / cancel_pk_battle / begin_pk_battle / finalize_pk_battle / send_pk_gift are NOT
 -- touched: the legacy PK screens keep using them. The layer uses these new names:
+--   pk_now                the server's clock, so every phone counts a battle down against the same time
 --   pk_set_ready          the host's app says "this live has the PK layer on" (opponents must have it)
 --   pk_invite_v2          invite a host in a live of the SAME kind (audio / video), with a length from pk_config
 --   pk_eligible_following followed hosts who can be invited right now
@@ -38,6 +39,15 @@ as $$
   );
 $$;
 revoke execute on function public.pk_hosts_blocked(uuid, uuid) from public, anon, authenticated;
+
+-- --------------------------------------------------------------------------------------------------- pk_now
+-- A phone's own clock can be minutes off. The app asks once when it joins a battle and keeps the difference.
+create or replace function public.pk_now()
+returns timestamptz
+language sql stable security definer set search_path = public
+as $$ select clock_timestamp(); $$;
+revoke execute on function public.pk_now() from public, anon;
+grant execute on function public.pk_now() to authenticated;
 
 -- ------------------------------------------------------------------------------------------------ pk_set_ready
 create or replace function public.pk_set_ready(p_stream_id uuid, p_ready boolean)

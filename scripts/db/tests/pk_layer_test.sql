@@ -48,6 +48,7 @@ values ('f1000000-0000-0000-0000-000000000001', 'f1000000-0000-0000-0000-0000000
 
 -- 0. the new objects exist and the legacy row got the defaults
 select '0 config row (expect 1)' as check, count(*) as n from public.pk_config;
+select '0 pk_now is the real time (expect t)' as check, abs(extract(epoch from public.pk_now() - now())) < 5 as ok;
 select '0 legacy battle: duration 300, kind / source null (expect 300, t, t)' as check, duration_seconds, kind is null as kind_null, source is null as source_null from public.pk_battles;
 -- (the replay's pg_cron is a stub that records no jobs: the job is checked on the real project after the push)
 
@@ -151,4 +152,4 @@ select set_config('request.jwt.claim.sub', 'c1000001-0000-0000-0000-000000000001
 select '8 legacy invite on busy legacy lives is still refused (expect raised)' as check, pg_temp.raises($$select public.invite_pk_opponent('f1000000-0000-0000-0000-000000000001', 'f1000000-0000-0000-0000-000000000002')$$) as result;
 select '8 no function is callable by anon (expect 0)' as check, count(*) as n
   from information_schema.routine_privileges
-  where routine_schema = 'public' and grantee = 'anon' and routine_name in ('pk_set_ready','pk_invite_v2','pk_eligible_following','pk_random_join','pk_random_leave','pk_begin_v2','pk_forfeit_sweep','pk_stream_busy','pk_hosts_blocked');
+  where routine_schema = 'public' and grantee = 'anon' and routine_name in ('pk_set_ready','pk_invite_v2','pk_eligible_following','pk_random_join','pk_random_leave','pk_begin_v2','pk_forfeit_sweep','pk_stream_busy','pk_hosts_blocked','pk_now');
