@@ -20,10 +20,12 @@ import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/keyboard_lift.dart';
 import '../../core/widgets/pills.dart';
 import '../../core/widgets/remote_media.dart';
+import '../../config/feature_flags.dart';
 import '../../data/mock_data.dart';
 import '../../data/live_emojis_repository.dart';
 import '../../data/level_banner_images.dart';
 import '../../data/models.dart';
+import '../../data/pk_battles_repository.dart';
 import '../../data/profile_cache.dart';
 import '../../data/store_repository.dart';
 import '../../data/stream_end_watcher.dart';
@@ -32,9 +34,11 @@ import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
 import '../../services/agora_errors.dart';
 import '../../services/agora_service.dart';
+import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
 import '../../state/blocks_controller.dart';
+import '../../state/pk_battle_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
@@ -49,6 +53,7 @@ import 'widgets/ghost_watch_bar.dart';
 import 'widgets/live_chat_bubble.dart';
 import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
+import 'widgets/pk_battle_widgets.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
@@ -177,6 +182,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
+      _startPk();
       _subscribeSeats();
       _stopEndWatch = watchStreamEnd(widget.stream.id, _onHostEnded);
       _mod.addListener(() {
@@ -825,6 +831,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _seatSyncTimer?.cancel();
     _seatsChannel?.unsubscribe();
     _seatStreamChannel?.unsubscribe();
+    _pk?.dispose();
     if (_isReal) {
       WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
@@ -854,6 +861,28 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   }
 
   bool get _ghost => isGhostViewer(context);
+
+  // The PK battle layer (while PK is switched on): follows this room's battle, moves this phone's audio to the battle's shared
+  // channel and back (a guest on a seat keeps publishing), and counts gifts for a side. Null = no PK here.
+  PkBattleController? _pk;
+  PkChannelSwitcher? _pkSwitcher;
+
+  void _startPk() {
+    if (!FeatureFlags.pkLayerEnabled || widget.stream.mode != LiveMode.audio) return;
+    _pkSwitcher = PkChannelSwitcher(
+      engine: () => _engine,
+      ownChannel: widget.stream.id,
+      broadcaster: () => _mySeat != null,
+      stagger: true, // a room of hundreds must not ask for a token in the same second
+    );
+    final pk = _pk = PkBattleController(
+      api: PkBattlesRepository(),
+      streamId: widget.stream.id,
+      myHostId: supabase.auth.currentUser?.id ?? '',
+      onChannel: (channel) => unawaited(_pkSwitcher!.sync(channel)),
+    );
+    unawaited(pk.start());
+  }
 
 
   Future<void> _seatTap(int seat) async {
@@ -1040,6 +1069,18 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     if (giftChoice == null || !mounted) return;
     final gift = giftChoice.gift;
     final me = context.read<AuthController>().user ?? Mock.me;
+    final pk = _pk;
+    if (pk != null &&
+        pk.phase == PkPhase.live &&
+        !giftChoice.sendToAll &&
+        (giftChoice.recipient == null || giftChoice.recipient!.id == widget.stream.host.id)) {
+      // a gift to the host during a battle must count for a side: ask which, and send it as a PK gift
+      final side = await sendPkGift(context, pk, gift, giftChoice.quantity, mineLabel: widget.stream.host.name);
+      if (side != null && mounted) {
+        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity));
+      }
+      return;
+    }
     final recipients = giftChoice.sendToAll
         ? _giftRecipients()
         : [if (giftChoice.recipient != null) giftChoice.recipient!];
@@ -1293,6 +1334,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           ),
           // gift animation, for everyone in the room
           Positioned.fill(child: RoomEffectLayer(controller: _effects)),
+
+          // PK battle: invite / result dialogs and the 3-2-1
+          if (_pk != null) Positioned.fill(child: PkBattleEvents(controller: _pk!)),
         ],
       ),
     );
@@ -1327,6 +1371,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       child: Column(
         children: [
           const SizedBox(height: 24),
+          // the PK battle header, while a battle is on
+          if (_pk != null) PkBattleHeader(controller: _pk!, me: widget.stream.host),
           // the same four-to-a-row layout as the host's stage, with room for each seat's frame
           SeatGrid(
             seatCount: _seatCount,

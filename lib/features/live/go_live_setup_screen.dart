@@ -31,6 +31,10 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
   bool _starting = false;
   LiveMode _mode = LiveMode.video;
 
+  /// The PK tab with the battle layer: an ordinary AUDIO live that opens the PK invite (the old standalone PK screen is the fallback
+  /// while `pk_layer` is off).
+  bool _pkLayer = false;
+
   @override
   void dispose() {
     _title.dispose();
@@ -61,7 +65,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
       final stream = await liveStreams.createStream(
         title: title,
         category: _category,
-        mode: _mode,
+        mode: _pkLayer ? LiveMode.audio : _mode,
       );
       final token = await AgoraService.instance.fetchToken(
         channelName: stream.id,
@@ -69,7 +73,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
       );
 
       if (!mounted) return;
-      if (_mode == LiveMode.pk) {
+      if (_mode == LiveMode.pk && !_pkLayer) {
         // PK has no minimize (it's naturally self-blocking — there's no
         // way to background it and reach another live without ending it
         // first), so it stays a normal pushed route.
@@ -95,7 +99,8 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
         builder: (_) => LiveBroadcastScreen(
           stream: stream,
           token: token,
-          audioOnly: _mode == LiveMode.audio,
+          audioOnly: _pkLayer || _mode == LiveMode.audio,
+          openPk: _pkLayer,
         ),
       );
       navigator.popUntil((route) => route.isFirst);
@@ -167,9 +172,20 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                       );
                       return;
                     }
-                    setState(() => _mode = mode);
+                    setState(() {
+                      _mode = mode;
+                      _pkLayer = mode == LiveMode.pk && FeatureFlags.pkLayerEnabled;
+                    });
                   },
                 ),
+                if (_pkLayer) ...[
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Audio PK: you go live in a voice room, then invite a host you follow or find a random opponent. Video PK is coming soon.',
+                    key: ValueKey('go-live-pk-note'),
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 _label('Stream Title'),
                 TextField(
@@ -183,7 +199,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                 const Spacer(),
                 GradientButton(
                   label: switch (_mode) {
-                    LiveMode.pk => 'Start PK Battle',
+                    LiveMode.pk => _pkLayer ? 'Start Audio PK' : 'Start PK Battle',
                     LiveMode.audio => 'Start Audio Room',
                     LiveMode.video => 'Start Live',
                   },

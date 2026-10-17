@@ -326,6 +326,7 @@ class SeatRoom extends StatelessWidget {
     required this.onSeatTap,
     this.onAddSeat,
     this.onRemoveSeat,
+    this.header,
     this.occupants = const {},
     this.mutedSeats = const {},
     this.speakingSeats = const {},
@@ -346,6 +347,9 @@ class SeatRoom extends StatelessWidget {
   final void Function(int seat) onSeatTap;
   final VoidCallback? onAddSeat;
   final VoidCallback? onRemoveSeat;
+
+  /// Drawn above the seats (the PK battle header while a battle is on); null = nothing, the seats start where they always did.
+  final Widget? header;
   /// Who's actually sitting where, keyed by seat number (1-based). Empty by
   /// default so callers that don't track occupancy render exactly as before.
   final Map<int, AppUser> occupants;
@@ -398,6 +402,7 @@ class SeatRoom extends StatelessWidget {
                     style: const TextStyle(color: Colors.white70)),
               )
             else ...[
+              ?header,
               SeatGrid(
                 seatCount: seatCount,
                 occupants: occupants,

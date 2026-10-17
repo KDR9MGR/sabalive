@@ -29,8 +29,16 @@ void main() {
     expect(FeatureFlags.pkVideoEnabledFor(await config({'feature_flags': {'pk_battles': false, 'pk_video': true}})), isFalse);
   });
 
+  test('the battle layer is the default way PK works; pk_layer false falls back to the old PK screens', () async {
+    expect(FeatureFlags.pkLayerEnabledFor(await config({'feature_flags': {'pk_battles': true}})), isTrue);
+    expect(FeatureFlags.pkLayerEnabledFor(await config({'feature_flags': {'pk_battles': true, 'pk_layer': false}})), isFalse);
+    expect(FeatureFlags.pkLayerEnabledFor(await config({'feature_flags': {'pk_layer': true}})), isFalse, reason: 'PK itself is off');
+    expect(FeatureFlags.pkLayerEnabledFor(await config(null)), isFalse);
+  });
+
   test('the app-wide answers are off before any config has been read', () {
     expect(FeatureFlags.pkBattleEnabled, isFalse);
     expect(FeatureFlags.pkVideoEnabled, isFalse);
+    expect(FeatureFlags.pkLayerEnabled, isFalse);
   });
 }

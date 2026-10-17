@@ -47,10 +47,16 @@ class FeatureFlags {
   static const bool paymentMethodsEnabled = false;
   static bool get pkBattleEnabled => pkBattleEnabledFor(RemoteConfigController.instance);
   static bool get pkVideoEnabled => pkVideoEnabledFor(RemoteConfigController.instance);
+  static bool get pkLayerEnabled => pkLayerEnabledFor(RemoteConfigController.instance);
 
   /// The rule behind [pkBattleEnabled], for any [RemoteConfigController] (tests use their own). Fails CLOSED: no answer from the
   /// server (no network, an old row) means off, like the Games switch.
   static bool pkBattleEnabledFor(RemoteConfigController config) => config.flag('pk_battles', defaultValue: false);
+
+  /// The PK battle layer (PK inside a normal audio live) is the way PK works while PK is on. `pk_layer: false` is an emergency
+  /// fallback to the old standalone PK screens (Go Live -> PK), without a release. It counts only while PK is on.
+  static bool pkLayerEnabledFor(RemoteConfigController config) =>
+      pkBattleEnabledFor(config) && config.flag('pk_layer', defaultValue: true);
 
   /// Video PK: needs the PK switch on as well as its own.
   static bool pkVideoEnabledFor(RemoteConfigController config) =>

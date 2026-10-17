@@ -5,7 +5,15 @@ import 'models.dart';
 
 /// A host who can be invited right now (from `pk_eligible_following`).
 class PkCandidate {
-  const PkCandidate({required this.streamId, required this.hostId, required this.title, this.viewerCount = 0, this.mode = 'audio'});
+  const PkCandidate({
+    required this.streamId,
+    required this.hostId,
+    required this.title,
+    this.viewerCount = 0,
+    this.mode = 'audio',
+    this.hostName = '',
+    this.hostAvatarUrl,
+  });
 
   factory PkCandidate.fromRow(Map<String, dynamic> r) => PkCandidate(
     streamId: r['stream_id'] as String,
@@ -13,6 +21,8 @@ class PkCandidate {
     title: r['title'] as String? ?? '',
     viewerCount: r['viewer_count'] as int? ?? 0,
     mode: r['mode'] as String? ?? 'audio',
+    hostName: r['host_name'] as String? ?? '',
+    hostAvatarUrl: r['host_avatar_url'] as String?,
   );
 
   final String streamId;
@@ -20,6 +30,8 @@ class PkCandidate {
   final String title;
   final int viewerCount;
   final String mode;
+  final String hostName;
+  final String? hostAvatarUrl;
 }
 
 /// A live subscription to the battle rows of one live; [close] stops it.

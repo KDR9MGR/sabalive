@@ -7,6 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/feature_flags.dart';
+import '../../data/pk_battles_repository.dart';
+import '../../services/pk_channel_switcher.dart';
+import '../../state/pk_battle_controller.dart';
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
@@ -53,6 +56,7 @@ import 'widgets/seat_room.dart';
 import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
 import 'widgets/speaking_waves.dart';
+import 'widgets/pk_battle_widgets.dart';
 import 'widgets/stream_diamonds.dart';
 import 'widgets/tool_grid.dart';
 import '../../core/i18n/text.dart';
@@ -66,10 +70,14 @@ class LiveBroadcastScreen extends StatefulWidget {
     required this.stream,
     required this.token,
     this.audioOnly = false,
+    this.openPk = false,
   });
   final LiveStream stream;
   final AgoraToken token;
   final bool audioOnly;
+
+  /// Go Live -> PK: open the PK invite sheet as soon as the room is up.
+  final bool openPk;
 
   @override
   State<LiveBroadcastScreen> createState() => _LiveBroadcastScreenState();
@@ -79,6 +87,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     with WidgetsBindingObserver {
   RtcEngine? _engine;
   int _viewers = 0;
+  // The PK battle layer (audio lives, while PK is switched on). Null = no PK here.
+  PkBattleController? _pk;
+  PkChannelSwitcher? _pkSwitcher;
   final List<LiveChatLine> _chat = [];
   RealtimeChannel? _chatChannel;
   RealtimeChannel? _viewerChannel;
@@ -200,6 +211,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     unawaited(_mod.start());
     _subscribeSeats();
     if (!widget.audioOnly) _subscribeSeatRequests();
+    _startPk();
     if (widget.audioOnly) {
       // Audio rooms no longer give the host a seat of their own outside the
       // numbered grid — the host just occupies seat 1 like anyone else,
@@ -862,6 +874,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _seatSyncTimer?.cancel();
     _seatsChannel?.unsubscribe();
     _seatRequestsChannel?.unsubscribe();
+    _pk?.dispose();
     AgoraService.instance.release();
     super.dispose();
   }
@@ -882,6 +895,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         backgroundColor: AppColors.bgElevated,
         title: const Text('End live stream?'),
         content: Text(
+          '${_pk?.phase == PkPhase.live ? 'A PK battle is on: if you end now, the other host wins.\n\n' : ''}'
           'You streamed for ${_fmt(_elapsed.value)} to $_viewers viewer${_viewers == 1 ? '' : 's'}.',
         ),
         actions: [
@@ -933,10 +947,48 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   void _soon(String what) => _snack('$what — coming soon');
 
-  /// Invite PK / Random PK in the Tools sheet: not wired yet. With PK switched on, a PK is started from Go Live -> PK.
-  void _pkFromHere() => FeatureFlags.pkBattleEnabled
-      ? _snack('Start a PK from Go Live: choose the PK tab')
-      : _soon('PK battles');
+  /// The PK battle layer: audio lives only (video PK comes later), while PK is switched on. A new battle controller follows this live's
+  /// battle rows, moves the audio to the battle's shared channel and back, and tells the server this live can be invited.
+  void _startPk() {
+    if (!widget.audioOnly || !FeatureFlags.pkLayerEnabled || !isRealId(widget.stream.id)) return;
+    final api = PkBattlesRepository();
+    _pkSwitcher = PkChannelSwitcher(
+      engine: () => _engine,
+      ownChannel: widget.stream.id,
+      broadcaster: () => true,
+      onError: (e) {
+        if (mounted) _snack(friendlyError(e));
+      },
+    );
+    final pk = _pk = PkBattleController(
+      api: api,
+      streamId: widget.stream.id,
+      myHostId: widget.stream.host.id,
+      onChannel: (channel) => unawaited(_pkSwitcher!.sync(channel)),
+    );
+    unawaited(pk.start());
+    // opponents must be on a build that can answer an invite: this live says so
+    unawaited(api.setReady(widget.stream.id, true).catchError((_) {}));
+    if (widget.openPk) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) showPkInviteSheet(context, pk);
+      });
+    }
+  }
+
+  /// Invite PK (tab 0) / Random PK (tab 1) in the Tools sheet.
+  void _pkFromHere(int tab) {
+    final pk = _pk;
+    if (pk != null) {
+      showPkInviteSheet(context, pk, initialTab: tab);
+    } else if (!FeatureFlags.pkBattleEnabled) {
+      _soon('PK battles');
+    } else if (!widget.audioOnly) {
+      _snack('Video PK is coming soon');
+    } else {
+      _snack('Start a PK from Go Live: choose the PK tab'); // the old PK screens are the fallback (pk_layer off)
+    }
+  }
 
   Future<void> _toggleMic() async {
     setState(() => _micMuted = !_micMuted);
@@ -1092,13 +1144,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         Icons.bolt_rounded,
         'Invite PK',
         const Color(0xFFFF7A45),
-        _pkFromHere,
+        () => _pkFromHere(0),
       ),
       ToolSpec(
         Icons.casino_rounded,
         'Random PK',
         const Color(0xFFFF5C5C),
-        _pkFromHere,
+        () => _pkFromHere(1),
       ),
       ToolSpec(
         Icons.sports_esports_rounded,
@@ -1215,6 +1267,20 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       recipients: _giftRecipients(),
     );
     if (choice == null || !mounted) return;
+    final pk = _pk;
+    if (pk != null &&
+        pk.phase == PkPhase.live &&
+        !choice.sendToAll &&
+        (choice.recipient == null || choice.recipient!.id == widget.stream.host.id)) {
+      // a gift to the host during a battle must count for a side: ask which, and send it as a PK gift
+      final side = await sendPkGift(context, pk, choice.gift, choice.quantity, mineLabel: widget.stream.host.name);
+      if (side != null && mounted) {
+        _effects.enqueue(
+          RoomEffect.gift(gift: choice.gift, senderName: 'You', senderId: supabase.auth.currentUser?.id, count: choice.quantity),
+        );
+      }
+      return;
+    }
     if (choice.sendToAll) {
       // Send All always sends exactly one copy per recipient regardless of
       // the quantity picker — quantity × every seated guest could add up to
@@ -1815,6 +1881,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               diamonds: _diamonds.all,
               emotes: _emotes,
               onSeatTap: _seatMenu,
+              header: _pk == null ? null : PkBattleHeader(controller: _pk!, me: widget.stream.host),
               onAddSeat: _seatCount >= kMaxAudioSeats ? null : () => _changeSeatCount(kSeatStep),
               onRemoveSeat: _seatCount <= kMinAudioSeats ? null : () => _changeSeatCount(-kSeatStep),
             )
@@ -1849,6 +1916,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
           // gift animation, for everyone in the room
           Positioned.fill(child: RoomEffectLayer(controller: _effects)),
+
+          // PK battle: invite / result dialogs and the 3-2-1
+          if (_pk != null) Positioned.fill(child: PkBattleEvents(controller: _pk!)),
 
           // The keyboard moves nothing here: only the chat and the input bar are painted higher
           // (KeyboardStable / KeyboardLift); the rail and the seat strip stay behind the keyboard.
