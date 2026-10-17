@@ -904,9 +904,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgElevated,
         title: const Text('End live stream?'),
-        content: Text(
-          '${_pk?.phase == PkPhase.live ? 'A PK battle is on: if you end now, the other host wins.\n\n' : ''}'
-          'You streamed for ${_fmt(_elapsed.value)} to $_viewers viewer${_viewers == 1 ? '' : 's'}.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_pk?.phase == PkPhase.live) ...[
+              const Text('A PK battle is on: if you end now, the other host wins.'),
+              const SizedBox(height: 10),
+            ],
+            Text('You streamed for ${_fmt(_elapsed.value)} to $_viewers viewer${_viewers == 1 ? '' : 's'}.'),
+          ],
         ),
         actions: [
           TextButton(
