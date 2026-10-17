@@ -933,6 +933,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   void _soon(String what) => _snack('$what — coming soon');
 
+  /// Invite PK / Random PK in the Tools sheet: not wired yet. With PK switched on, a PK is started from Go Live -> PK.
+  void _pkFromHere() => FeatureFlags.pkBattleEnabled
+      ? _snack('Start a PK from Go Live: choose the PK tab')
+      : _soon('PK battles');
+
   Future<void> _toggleMic() async {
     setState(() => _micMuted = !_micMuted);
     try {
@@ -1081,21 +1086,20 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   // ─────────────────────────────────────────────────────── Tools sheet
   Future<void> _openTools() async {
     final tools = <ToolSpec>[
-      // PK is on: a PK is started from Go Live -> PK, so these two would only say "coming soon" here
-      if (!FeatureFlags.pkBattleEnabled) ...[
-        ToolSpec(
-          Icons.bolt_rounded,
-          'Invite PK',
-          const Color(0xFFFF7A45),
-          () => _soon('PK battles'),
-        ),
-        ToolSpec(
-          Icons.casino_rounded,
-          'Random PK',
-          const Color(0xFFFF5C5C),
-          () => _soon('PK battles'),
-        ),
-      ],
+      // The PK entry points inside a live (audio and video). They stay visible; they become the real Invite / Random PK
+      // (the PK battle layer, see HANDOFF.md) and until then only point to Go Live -> PK, or say "coming soon" while PK is off.
+      ToolSpec(
+        Icons.bolt_rounded,
+        'Invite PK',
+        const Color(0xFFFF7A45),
+        _pkFromHere,
+      ),
+      ToolSpec(
+        Icons.casino_rounded,
+        'Random PK',
+        const Color(0xFFFF5C5C),
+        _pkFromHere,
+      ),
       ToolSpec(
         Icons.sports_esports_rounded,
         'Games',

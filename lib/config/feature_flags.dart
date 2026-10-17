@@ -22,16 +22,15 @@ import '../state/remote_config_controller.dart';
 ///   to call `dev_purchase_coins` (a test RPC that instantly grants coins,
 ///   no real charge) regardless of this flag, so tapping Pay silently gave
 ///   free coins. Now shows "coming soon" instead while this is false.
-/// - [pkBattleEnabled]: PK Battles are ON (2026-10-15, owner's decision; the
-///   backend has been live since migration 20260918100000). It follows the
+/// - [pkBattleEnabled]: PK Battles are OFF unless the server says so (owner's
+///   decision 2026-10-17: the next Play bundle ships with PK off, and audio PK is
+///   switched on from the panel after it has been tested). It follows the
 ///   server switch `pk_battles` (Application Config -> Release controls, Super
-///   Admin), which is on unless set to false: switching it off puts PK back to
-///   "coming soon" without a release. Until then (2026-09-28, per Rey) PK mode
-///   was visible everywhere (Go Live's mode picker, the Home/Live-feed PK
-///   filter) but every place that would start or join one said "coming soon".
-///   Go Live's PK tab checks it; the host tools sheet hides its Invite/Random PK
-///   tiles while it is on (a PK is started from Go Live -> PK, and the
-///   opponent is picked inside the PK room).
+///   Admin). While off, every place that would start or join a PK says "coming
+///   soon", as it always did (2026-09-28, per Rey): Go Live's PK tab and the host
+///   tools' Invite PK / Random PK tiles. [pkVideoEnabled] ('pk_video', also off
+///   by default) is the separate switch for VIDEO PK, which stays off until its
+///   Agora cost and reliability are measured; it only counts while PK is on.
 ///
 /// - [callsEnabled]: voice/video calls between users are hidden everywhere
 ///   (the two call buttons in a chat, the incoming-call banner, and the
@@ -47,9 +46,14 @@ class FeatureFlags {
   static const bool socialLoginEnabled = true;
   static const bool paymentMethodsEnabled = false;
   static bool get pkBattleEnabled => pkBattleEnabledFor(RemoteConfigController.instance);
+  static bool get pkVideoEnabled => pkVideoEnabledFor(RemoteConfigController.instance);
 
-  /// The rule behind [pkBattleEnabled], for any [RemoteConfigController] (tests use their own). Fails OPEN: no answer from the
-  /// server means on, the same as every other release switch.
-  static bool pkBattleEnabledFor(RemoteConfigController config) => config.flag('pk_battles');
+  /// The rule behind [pkBattleEnabled], for any [RemoteConfigController] (tests use their own). Fails CLOSED: no answer from the
+  /// server (no network, an old row) means off, like the Games switch.
+  static bool pkBattleEnabledFor(RemoteConfigController config) => config.flag('pk_battles', defaultValue: false);
+
+  /// Video PK: needs the PK switch on as well as its own.
+  static bool pkVideoEnabledFor(RemoteConfigController config) =>
+      pkBattleEnabledFor(config) && config.flag('pk_video', defaultValue: false);
   static const bool callsEnabled = false;
 }
