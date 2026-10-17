@@ -178,6 +178,7 @@ class AgoraService {
     RtcEngine engine, {
     required String newChannelName,
     required bool asBroadcaster,
+    bool publishCamera = false,
   }) async {
     final fresh = await fetchToken(
       channelName: newChannelName,
@@ -195,12 +196,35 @@ class AgoraService {
             : ClientRoleType.clientRoleAudience,
         autoSubscribeAudio: true,
         autoSubscribeVideo: true,
-        publishCameraTrack: false,
+        // audio rooms never publish the camera; a video PK host does (a video live's host keeps publishing it across the switch)
+        publishCameraTrack: asBroadcaster && publishCamera,
         publishMicrophoneTrack: asBroadcaster,
       ),
     );
     _asBroadcaster = asBroadcaster;
     _channelName = newChannelName;
+  }
+
+  /// A VIDEO PK battle puts two hosts' video in front of every viewer. The hosts send a second, small stream (360 x 640 at 15 fps)
+  /// for the whole battle and the viewers take that one for both halves of the split screen, so a viewer's total stays about what
+  /// one HD host costs (Agora bills the resolutions a user receives together; to be measured). [on] false puts the sender back to
+  /// Agora's default (the small stream only when somebody asks for it). Best effort: a phone that refuses just keeps the big stream.
+  Future<void> setBattleDualStream(RtcEngine engine, {required bool on}) async {
+    try {
+      await engine.setDualStreamMode(
+        mode: on ? SimulcastStreamMode.enableSimulcastStream : SimulcastStreamMode.autoSimulcastStream,
+        streamConfig: on
+            ? const SimulcastStreamConfig(dimensions: VideoDimensions(width: 360, height: 640), kBitrate: 400, framerate: 15)
+            : null,
+      );
+    } catch (_) {}
+  }
+
+  /// The viewer's side of [setBattleDualStream]: ask for the small stream of a host (or the big one again after the battle).
+  Future<void> setRemoteBattleQuality(RtcEngine engine, int uid, {required bool low}) async {
+    try {
+      await engine.setRemoteVideoStreamType(uid: uid, streamType: low ? VideoStreamType.videoStreamLow : VideoStreamType.videoStreamHigh);
+    } catch (_) {}
   }
 
   /// Applies (or clears, when [enabled] is false) real-time beauty

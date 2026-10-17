@@ -35,6 +35,9 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
   /// while `pk_layer` is off).
   bool _pkLayer = false;
 
+  /// Within the PK tab: a VIDEO PK (a video live that opens the invite) instead of an audio one. Only while `pk_video` is on.
+  bool _pkVideo = false;
+
   @override
   void dispose() {
     _title.dispose();
@@ -65,7 +68,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
       final stream = await liveStreams.createStream(
         title: title,
         category: _category,
-        mode: _pkLayer ? LiveMode.audio : _mode,
+        mode: _pkLayer ? (_pkVideo ? LiveMode.video : LiveMode.audio) : _mode,
       );
       final token = await AgoraService.instance.fetchToken(
         channelName: stream.id,
@@ -99,7 +102,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
         builder: (_) => LiveBroadcastScreen(
           stream: stream,
           token: token,
-          audioOnly: _pkLayer || _mode == LiveMode.audio,
+          audioOnly: _pkLayer ? !_pkVideo : _mode == LiveMode.audio,
           openPk: _pkLayer,
         ),
       );
@@ -175,15 +178,36 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                     setState(() {
                       _mode = mode;
                       _pkLayer = mode == LiveMode.pk && FeatureFlags.pkLayerEnabled;
+                      _pkVideo = false;
                     });
                   },
                 ),
                 if (_pkLayer) ...[
                   const SizedBox(height: 10),
-                  const Text(
-                    'Audio PK: you go live in a voice room, then invite a host you follow or find a random opponent. Video PK is coming soon.',
-                    key: ValueKey('go-live-pk-note'),
-                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+                  Row(
+                    children: [
+                      ChoiceChip(
+                        key: const ValueKey('go-live-pk-audio'),
+                        label: const Text('Audio PK'),
+                        selected: !_pkVideo,
+                        onSelected: (_) => setState(() => _pkVideo = false),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        key: const ValueKey('go-live-pk-video'),
+                        label: Text(FeatureFlags.pkVideoEnabled ? 'Video PK' : 'Video PK (soon)'),
+                        selected: _pkVideo,
+                        onSelected: FeatureFlags.pkVideoEnabled ? (_) => setState(() => _pkVideo = true) : null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _pkVideo
+                        ? 'Video PK: you go live on camera, then invite a host you follow or find a random opponent. Both cameras show side by side.'
+                        : 'Audio PK: you go live in a voice room, then invite a host you follow or find a random opponent.',
+                    key: const ValueKey('go-live-pk-note'),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
                   ),
                 ],
                 const SizedBox(height: 20),
@@ -199,7 +223,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
                 const Spacer(),
                 GradientButton(
                   label: switch (_mode) {
-                    LiveMode.pk => _pkLayer ? 'Start Audio PK' : 'Start PK Battle',
+                    LiveMode.pk => _pkLayer ? (_pkVideo ? 'Start Video PK' : 'Start Audio PK') : 'Start PK Battle',
                     LiveMode.audio => 'Start Audio Room',
                     LiveMode.video => 'Start Live',
                   },

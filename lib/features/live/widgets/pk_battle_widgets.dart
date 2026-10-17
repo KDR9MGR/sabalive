@@ -127,6 +127,76 @@ class PkBattleHeader extends StatelessWidget {
   );
 }
 
+// ------------------------------------------------------------------------------------------------------ video stage
+/// A VIDEO PK battle's picture: the battle header (names, score, clock) over two videos side by side, mine on the left and the
+/// opponent's on the right. [left] and [right] are the two video views (or whatever shows while one is not there yet): this widget
+/// only lays them out, so the same stage serves the host (a local camera and a remote one) and the viewers (two remote ones).
+class PkVideoStage extends StatelessWidget {
+  const PkVideoStage({super.key, required this.controller, required this.me, required this.left, required this.right});
+
+  final PkBattleController controller;
+  final AppUser me;
+  final Widget left;
+  final Widget right;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PkBattleHeader(controller: controller, me: me),
+        ListenableBuilder(
+          listenable: controller,
+          builder: (context, _) => Row(
+            children: [
+              Expanded(child: _pane(left, me.name, key: const ValueKey('pk-pane-left'))),
+              const SizedBox(width: 2),
+              Expanded(child: _pane(right, controller.opponent?.name ?? '…', key: const ValueKey('pk-pane-right'))),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _pane(Widget video, String name, {Key? key}) {
+    return AspectRatio(
+      key: key,
+      aspectRatio: 3 / 4,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Color(0xFF0B0714)),
+          video,
+          Positioned(
+            left: 8,
+            bottom: 8,
+            right: 8,
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
+                child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a half of the stage shows while its video is not there yet (the other host is still joining the shared channel).
+class PkVideoWaiting extends StatelessWidget {
+  const PkVideoWaiting({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)),
+  );
+}
+
 // ------------------------------------------------------------------------------------------------------- invite sheet
 /// "Invite PK" / "Random PK": a length and a host from the people I follow who are live now, or a random opponent (always 5 min).
 Future<void> showPkInviteSheet(BuildContext context, PkBattleController controller, {int initialTab = 0}) {

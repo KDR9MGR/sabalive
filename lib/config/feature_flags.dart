@@ -58,8 +58,8 @@ class FeatureFlags {
   static bool pkLayerEnabledFor(RemoteConfigController config) =>
       pkBattleEnabledFor(config) && config.flag('pk_layer', defaultValue: true);
 
-  /// Video PK: needs the PK switch on as well as its own.
+  /// Video PK: needs the PK switch AND the battle layer on as well as its own (the old PK screens have no video).
   static bool pkVideoEnabledFor(RemoteConfigController config) =>
-      pkBattleEnabledFor(config) && config.flag('pk_video', defaultValue: false);
+      pkLayerEnabledFor(config) && config.flag('pk_video', defaultValue: false);
   static const bool callsEnabled = false;
 }

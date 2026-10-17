@@ -27,6 +27,8 @@ void main() {
     expect(FeatureFlags.pkVideoEnabledFor(await config({'feature_flags': {'pk_video': true}})), isFalse, reason: 'PK itself is off');
     expect(FeatureFlags.pkVideoEnabledFor(await config({'feature_flags': {'pk_battles': true, 'pk_video': true}})), isTrue);
     expect(FeatureFlags.pkVideoEnabledFor(await config({'feature_flags': {'pk_battles': false, 'pk_video': true}})), isFalse);
+    expect(FeatureFlags.pkVideoEnabledFor(await config({'feature_flags': {'pk_battles': true, 'pk_layer': false, 'pk_video': true}})), isFalse,
+        reason: 'the old PK screens have no video');
   });
 
   test('the battle layer is the default way PK works; pk_layer false falls back to the old PK screens', () async {

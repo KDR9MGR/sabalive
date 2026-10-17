@@ -872,7 +872,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     _pkSwitcher = PkChannelSwitcher(
       engine: () => _engine,
       ownChannel: widget.stream.id,
-      broadcaster: () => _mySeat != null,
+      broadcaster: (_) => _mySeat != null,
       stagger: true, // a room of hundreds must not ask for a token in the same second
     );
     final pk = _pk = PkBattleController(

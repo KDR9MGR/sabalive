@@ -90,6 +90,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   // The PK battle layer (audio lives, while PK is switched on). Null = no PK here.
   PkBattleController? _pk;
   PkChannelSwitcher? _pkSwitcher;
+  // video PK: the split screen is on while a battle counts down or runs; the hosts' video uids in the shared channel
+  bool _pkStage = false;
+  final Set<int> _pkUids = {};
   final List<LiveChatLine> _chat = [];
   RealtimeChannel? _chatChannel;
   RealtimeChannel? _viewerChannel;
@@ -278,8 +281,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           },
           // A guest on a seat leaving (or dropping) frees their seat on this screen now, not when
           // the server sweeps it. Agora only reports people who were publishing.
-          onUserOffline: (connection, remoteUid, reason) => _hideGoneSeat(remoteUid),
-          onUserJoined: (connection, remoteUid, elapsed) => _showBackSeat(remoteUid),
+          onUserOffline: (connection, remoteUid, reason) {
+            _hideGoneSeat(remoteUid);
+            _pkUserGone(remoteUid);
+          },
+          onUserJoined: (connection, remoteUid, elapsed) {
+            _showBackSeat(remoteUid);
+            _pkUserSeen(remoteUid);
+          },
           onError: (err, msg) {
             if (mounted) setState(() => _error = agoraErrorMessage(err, msg));
           },
@@ -874,6 +883,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _seatSyncTimer?.cancel();
     _seatsChannel?.unsubscribe();
     _seatRequestsChannel?.unsubscribe();
+    _pk?.removeListener(_pkStageChanged);
     _pk?.dispose();
     AgoraService.instance.release();
     super.dispose();
@@ -950,12 +960,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   /// The PK battle layer: audio lives only (video PK comes later), while PK is switched on. A new battle controller follows this live's
   /// battle rows, moves the audio to the battle's shared channel and back, and tells the server this live can be invited.
   void _startPk() {
-    if (!widget.audioOnly || !FeatureFlags.pkLayerEnabled || !isRealId(widget.stream.id)) return;
+    final enabled = widget.audioOnly ? FeatureFlags.pkLayerEnabled : FeatureFlags.pkVideoEnabled;
+    if (!enabled || !isRealId(widget.stream.id)) return;
     final api = PkBattlesRepository();
     _pkSwitcher = PkChannelSwitcher(
       engine: () => _engine,
       ownChannel: widget.stream.id,
-      broadcaster: () => true,
+      broadcaster: (_) => true,
+      publishCamera: widget.audioOnly ? null : (_) => true, // a video host keeps its camera on in the battle channel
       onError: (e) {
         if (mounted) _snack(friendlyError(e));
       },
@@ -964,8 +976,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       api: api,
       streamId: widget.stream.id,
       myHostId: widget.stream.host.id,
-      onChannel: (channel) => unawaited(_pkSwitcher!.sync(channel)),
+      onChannel: (channel) {
+        unawaited(_pkSwitcher!.sync(channel));
+        if (!widget.audioOnly) {
+          // video PK: send the small second stream for the battle (viewers take that one for both halves)
+          final e = _engine;
+          if (e != null) unawaited(AgoraService.instance.setBattleDualStream(e, on: channel != null));
+        }
+      },
     );
+    if (!widget.audioOnly) pk.addListener(_pkStageChanged);
     unawaited(pk.start());
     // opponents must be on a build that can answer an invite: this live says so
     unawaited(api.setReady(widget.stream.id, true).catchError((_) {}));
@@ -974,6 +994,62 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         if (mounted) showPkInviteSheet(context, pk);
       });
     }
+  }
+
+  /// Video PK: the split screen is on from the countdown until the battle is over.
+  void _pkStageChanged() {
+    final phase = _pk?.phase;
+    final on = phase == PkPhase.countdown || phase == PkPhase.live;
+    if (on != _pkStage && mounted) {
+      setState(() {
+        _pkStage = on;
+        if (!on) _pkUids.clear();
+      });
+    }
+  }
+
+  void _pkUserSeen(int uid) {
+    if (!_pkStage || !_pkUids.add(uid) || !mounted) return;
+    setState(() {});
+  }
+
+  void _pkUserGone(int uid) {
+    if (_pkUids.remove(uid) && mounted) setState(() {});
+  }
+
+  /// The two videos side by side: my camera, and the opponent host's once they have joined the shared channel.
+  Widget _pkVideoStage() {
+    final engine = _engine!;
+    final pk = _pk!;
+    final channel = pk.battle?.agoraChannel;
+    final opponentUid = _pkUids.isEmpty ? null : _pkUids.first;
+    return ColoredBox(
+      color: Colors.black,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 96),
+          child: PkVideoStage(
+            controller: pk,
+            me: widget.stream.host,
+            left: AgoraVideoView(
+              key: const ValueKey('pk-local-video'),
+              controller: VideoViewController(rtcEngine: engine, canvas: const VideoCanvas(uid: 0)),
+            ),
+            right: opponentUid == null || channel == null
+                ? const PkVideoWaiting()
+                : AgoraVideoView(
+                    key: ValueKey('pk-remote-video-$opponentUid'),
+                    controller: VideoViewController.remote(
+                      rtcEngine: engine,
+                      canvas: VideoCanvas(uid: opponentUid),
+                      connection: RtcConnection(channelId: channel),
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Invite PK (tab 0) / Random PK (tab 1) in the Tools sheet.
@@ -1885,6 +1961,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
               onAddSeat: _seatCount >= kMaxAudioSeats ? null : () => _changeSeatCount(kSeatStep),
               onRemoveSeat: _seatCount <= kMinAudioSeats ? null : () => _changeSeatCount(-kSeatStep),
             )
+          else if (_engine != null && _pkStage)
+            _pkVideoStage()
           else if (_engine != null)
             AgoraVideoView(
               controller: VideoViewController(
@@ -1976,7 +2054,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
                   // ── Lucky Box (left, under the time / diamonds pills) — a real
                   //    video live only; counts down to the host's reward
-                  if (!widget.audioOnly && isRealId(widget.stream.id))
+                  if (!widget.audioOnly && isRealId(widget.stream.id) && !_pkStage)
                     Positioned(
                       left: 12,
                       top: 100,
@@ -2054,8 +2132,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                     ),
                   ),
                   // a video live's guest seats, one above the other down the right-hand edge (out of the host's
-                  // face); they step aside while the host types
-                  if (!widget.audioOnly)
+                  // face); they step aside while the host types, and while a video PK battle is on
+                  if (!widget.audioOnly && !_pkStage)
                     Positioned(
                       right: 0,
                       top: 110,

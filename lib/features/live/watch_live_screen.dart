@@ -20,10 +20,12 @@ import '../../core/widgets/app_thumb.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/keyboard_lift.dart';
 import '../../core/widgets/pills.dart';
+import '../../config/feature_flags.dart';
 import '../../data/mock_data.dart';
 import '../../data/live_emojis_repository.dart';
 import '../../data/level_banner_images.dart';
 import '../../data/models.dart';
+import '../../data/pk_battles_repository.dart';
 import '../../data/profile_cache.dart';
 import '../../data/store_repository.dart';
 import '../../data/stream_end_watcher.dart';
@@ -32,9 +34,11 @@ import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
 import '../../services/agora_errors.dart';
 import '../../services/agora_service.dart';
+import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
 import '../../state/blocks_controller.dart';
+import '../../state/pk_battle_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
@@ -49,6 +53,7 @@ import 'widgets/ghost_watch_bar.dart';
 import 'widgets/live_chat_bubble.dart';
 import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
+import 'widgets/pk_battle_widgets.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
@@ -96,6 +101,86 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
   RtcEngine? _engine;
   int? _remoteUid;
+
+  // Video PK (while the server switch is on): follows this live's battle, moves this phone to the battle's shared channel and
+  // back, and shows the two hosts side by side while it counts down and runs. Null = no PK here.
+  PkBattleController? _pk;
+  PkChannelSwitcher? _pkSwitcher;
+  bool _pkStage = false;
+
+  void _startPk() {
+    if (!FeatureFlags.pkVideoEnabled || widget.stream.mode != LiveMode.video) return;
+    _pkSwitcher = PkChannelSwitcher(
+      engine: () => _engine,
+      ownChannel: widget.stream.id,
+      // in a video battle the guests only listen; back in the live's own channel a guest on a seat speaks again
+      broadcaster: (inBattle) => !inBattle && _mySeat != null,
+      stagger: true, // a room of hundreds must not ask for a token in the same second
+    );
+    final pk = _pk = PkBattleController(
+      api: PkBattlesRepository(),
+      streamId: widget.stream.id,
+      myHostId: supabase.auth.currentUser?.id ?? '',
+      onChannel: (channel) => unawaited(_pkSwitcher!.sync(channel)),
+    )..addListener(_pkStageChanged);
+    unawaited(pk.start());
+  }
+
+  /// The split screen is on from the countdown until the battle is over.
+  void _pkStageChanged() {
+    final phase = _pk?.phase;
+    final on = phase == PkPhase.countdown || phase == PkPhase.live;
+    if (on == _pkStage || !mounted) return;
+    setState(() {
+      _pkStage = on;
+      if (on) {
+        // both halves are small: take the hosts' small streams (what the hosts send for the battle)
+        final engine = _engine;
+        if (engine != null) {
+          for (final uid in _joinedUids) {
+            unawaited(AgoraService.instance.setRemoteBattleQuality(engine, uid, low: true));
+          }
+        }
+      }
+    });
+  }
+
+  /// The two hosts' videos in the shared channel: this live's host (its uid comes with the live's row) on the left, the other
+  /// joined host on the right. Until a host has joined, its half shows a spinner.
+  Widget _pkVideoStage(RtcEngine engine) {
+    final pk = _pk!;
+    final channel = pk.battle?.agoraChannel;
+    final mine = _hostAgoraUid;
+    final others = _joinedUids.where((u) => u != mine).toList()..sort();
+    int? leftUid = mine != null && _joinedUids.contains(mine) ? mine : null;
+    int? rightUid = others.isEmpty ? null : others.first;
+    if (mine == null && _joinedUids.length >= 2) {
+      // this live's host uid has not arrived yet: the two joined hosts fill the halves in a fixed order until it does
+      final sorted = _joinedUids.toList()..sort();
+      leftUid = sorted.first;
+      rightUid = sorted.last;
+    }
+    Widget view(int? uid) => uid == null || channel == null
+        ? const PkVideoWaiting()
+        : AgoraVideoView(
+            key: ValueKey('pk-remote-video-$uid'),
+            controller: VideoViewController.remote(
+              rtcEngine: engine,
+              canvas: VideoCanvas(uid: uid),
+              connection: RtcConnection(channelId: channel),
+            ),
+          );
+    return ColoredBox(
+      color: Colors.black,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 96),
+          child: PkVideoStage(controller: pk, me: widget.stream.host, left: view(leftUid), right: view(rightUid)),
+        ),
+      ),
+    );
+  }
   // Multiple broadcasters can now be in this channel (host + seat-holders),
   // so onUserJoined alone can't tell them apart — track everyone who's
   // currently joined and pick the host's uid out of that set once known.
@@ -174,6 +259,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
+      _startPk();
       _subscribeSeats();
       _stopEndWatch = watchStreamEnd(widget.stream.id, _onHostEnded);
       _mod.addListener(() {
@@ -708,6 +794,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           onUserJoined: (connection, remoteUid, elapsed) {
             _waitTimer?.cancel();
             _joinedUids.add(remoteUid);
+            if (_pkStage) unawaited(AgoraService.instance.setRemoteBattleQuality(engine, remoteUid, low: true));
             if (mounted) {
               setState(() {
                 _waitingTooLong = false;
@@ -928,6 +1015,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     _seatSyncTimer?.cancel();
     _seatsChannel?.unsubscribe();
     _seatStreamChannel?.unsubscribe();
+    _pk?.removeListener(_pkStageChanged);
+    _pk?.dispose();
     if (_isReal) {
       WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
@@ -1002,6 +1091,18 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     if (giftChoice == null || !mounted) return;
     final gift = giftChoice.gift;
     final me = context.read<AuthController>().user ?? Mock.me;
+    final pk = _pk;
+    if (pk != null &&
+        pk.phase == PkPhase.live &&
+        !giftChoice.sendToAll &&
+        (giftChoice.recipient == null || giftChoice.recipient!.id == widget.stream.host.id)) {
+      // a gift to the host during a battle must count for a side: ask which, and send it as a PK gift
+      final side = await sendPkGift(context, pk, gift, giftChoice.quantity, mineLabel: widget.stream.host.name);
+      if (side != null && mounted) {
+        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity));
+      }
+      return;
+    }
     final recipients = giftChoice.sendToAll
         ? _giftRecipients()
         : [if (giftChoice.recipient != null) giftChoice.recipient!];
@@ -1245,7 +1346,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             ),
               // the guest seats, one above the other down the right-hand edge (out of the host's face);
               // they step aside while someone types
-              if (_isReal)
+              if (_isReal && !_pkStage)
                 Positioned(
                   right: 0,
                   top: MediaQuery.viewPaddingOf(context).top + 110,
@@ -1284,6 +1385,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
   Widget _realVideo() {
     final engine = _engine;
+    if (_pkStage && engine != null) return _pkVideoStage(engine);
     if (engine == null || _remoteUid == null) {
       return ColoredBox(
         color: Colors.black,

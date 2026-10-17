@@ -58,6 +58,38 @@ void main() {
     await unmount(t);
   });
 
+  testWidgets('the video stage shows both videos side by side with the battle header above', (t) async {
+    t.view.physicalSize = const Size(390, 844); // a phone: two 3:4 panes side by side need a phone's width, not the default 800 x 600
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await mount(t);
+    api.emit(pkRow(status: 'live', scoreA: 5, scoreB: 9, startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topCenter,
+          child: PkVideoStage(
+            controller: c,
+            me: me,
+            left: const ColoredBox(key: ValueKey('my-video'), color: Colors.red),
+            right: const PkVideoWaiting(),
+          ),
+        ),
+      ),
+    ));
+    expect(find.byKey(const ValueKey('pk-battle')), findsOneWidget, reason: 'the header is part of the stage');
+    final left = t.getRect(find.byKey(const ValueKey('pk-pane-left')));
+    final right = t.getRect(find.byKey(const ValueKey('pk-pane-right')));
+    expect(left.left, lessThan(right.left));
+    expect((left.width - right.width).abs(), lessThan(0.5), reason: 'two equal halves');
+    expect(left.height / left.width, closeTo(4 / 3, 0.01), reason: 'each pane is 3:4');
+    expect(find.byKey(const ValueKey('my-video')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget, reason: 'the opponent is still joining');
+    expect(find.text('Me Host'), findsWidgets);
+    await unmount(t);
+  });
+
   testWidgets('searching shows a way to stop', (t) async {
     await mount(t);
     c.searchRandom();

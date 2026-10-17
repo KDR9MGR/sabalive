@@ -7,21 +7,31 @@ void main() {
   late List<bool> roles;
   Object? failWith;
 
-  PkChannelSwitcher make({bool Function()? broadcaster, RtcEngine? Function()? engine, void Function(Object)? onError}) => PkChannelSwitcher(
+  late List<bool> cameras;
+
+  PkChannelSwitcher make({
+    bool Function(bool)? broadcaster,
+    bool Function(bool)? publishCamera,
+    RtcEngine? Function()? engine,
+    void Function(Object)? onError,
+  }) => PkChannelSwitcher(
     engine: engine ?? () => _FakeEngine(),
     ownChannel: 'room-1',
-    broadcaster: broadcaster ?? () => true,
+    broadcaster: broadcaster ?? (_) => true,
+    publishCamera: publishCamera,
     onError: onError,
-    switcher: (e, {required newChannelName, required asBroadcaster}) async {
+    switcher: (e, {required newChannelName, required asBroadcaster, required publishCamera}) async {
       if (failWith != null) throw failWith!;
       switches.add(newChannelName);
       roles.add(asBroadcaster);
+      cameras.add(publishCamera);
     },
   );
 
   setUp(() {
     switches = [];
     roles = [];
+    cameras = [];
     failWith = null;
   });
 
@@ -38,11 +48,27 @@ void main() {
 
   test('a seat guest keeps publishing, a plain listener does not', () async {
     var onSeat = true;
-    final s = make(broadcaster: () => onSeat);
+    final s = make(broadcaster: (_) => onSeat);
     await s.sync('pk-b1');
     onSeat = false;
     await s.sync(null);
     expect(roles, [true, false]);
+  });
+
+  test('a video host keeps its camera on in both channels; in a video battle the guests only listen', () async {
+    final host = make(publishCamera: (_) => true);
+    await host.sync('pk-b1');
+    await host.sync(null);
+    expect(cameras, [true, true]);
+    expect(roles, [true, true]);
+
+    roles.clear();
+    cameras.clear();
+    final guest = make(broadcaster: (inBattle) => !inBattle);
+    await guest.sync('pk-b1');
+    await guest.sync(null);
+    expect(roles, [false, true], reason: 'a listener in the battle channel, a speaker again in the live\'s own');
+    expect(cameras, [false, false]);
   });
 
   test('before the engine has joined nothing happens, and a quick "joined then over" runs in order', () async {

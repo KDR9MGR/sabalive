@@ -5,7 +5,8 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
 import 'agora_service.dart';
 
-typedef AgoraChannelSwitch = Future<void> Function(RtcEngine engine, {required String newChannelName, required bool asBroadcaster});
+typedef AgoraChannelSwitch =
+    Future<void> Function(RtcEngine engine, {required String newChannelName, required bool asBroadcaster, required bool publishCamera});
 
 /// Moves a live's audio to a PK battle's shared Agora channel while the battle runs, and back to the live's own channel when it ends.
 ///
@@ -17,6 +18,7 @@ class PkChannelSwitcher {
     required this.engine,
     required this.ownChannel,
     required this.broadcaster,
+    this.publishCamera,
     this.stagger = false,
     this.onError,
     AgoraChannelSwitch? switcher,
@@ -28,8 +30,12 @@ class PkChannelSwitcher {
   /// The live's own channel (the stream id).
   final String ownChannel;
 
-  /// Does this phone publish audio? The host and a guest on a seat do; a plain listener does not.
-  final bool Function() broadcaster;
+  /// Does this phone publish audio? The host and (in an audio live) a guest on a seat do; a plain listener does not. The argument is
+  /// true for the battle's channel, false for the live's own: in a VIDEO battle the guests only listen.
+  final bool Function(bool inBattle) broadcaster;
+
+  /// Does this phone publish its camera? Only a video live's host (in both channels). Null = never.
+  final bool Function(bool inBattle)? publishCamera;
 
   /// Listeners spread their switch over about 1.5 s, so a room of hundreds does not ask for a token in the same second.
   final bool stagger;
@@ -40,8 +46,9 @@ class PkChannelSwitcher {
   late String _target = ownChannel;
   Future<void> _last = Future<void>.value();
 
-  static Future<void> _viaAgoraService(RtcEngine engine, {required String newChannelName, required bool asBroadcaster}) =>
-      AgoraService.instance.switchChannel(engine, newChannelName: newChannelName, asBroadcaster: asBroadcaster);
+  static Future<void> _viaAgoraService(RtcEngine engine,
+          {required String newChannelName, required bool asBroadcaster, required bool publishCamera}) =>
+      AgoraService.instance.switchChannel(engine, newChannelName: newChannelName, asBroadcaster: asBroadcaster, publishCamera: publishCamera);
 
   /// [sharedChannel] = the battle's channel while it is live, null otherwise (back to the live's own channel).
   Future<void> sync(String? sharedChannel) {
@@ -61,7 +68,13 @@ class PkChannelSwitcher {
       if (_target != target) return;
     }
     try {
-      await _switch(e, newChannelName: target, asBroadcaster: broadcaster());
+      final inBattle = target != ownChannel;
+      await _switch(
+        e,
+        newChannelName: target,
+        asBroadcaster: broadcaster(inBattle),
+        publishCamera: publishCamera?.call(inBattle) ?? false,
+      );
     } catch (error) {
       onError?.call(error);
     }
