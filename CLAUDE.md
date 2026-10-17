@@ -59,6 +59,17 @@ Production is shared with the live Play app: follow "Production safety" in the r
   integer, or the RPC fails silently for those users and their seat never lights up.
 - Don't run `dart format` on whole directories; it reformats unrelated files.
 
+## PK battles (a layer over audio lives; HANDOFF.md has the plan and the status)
+- Server rows in `pk_battles` are the only truth (invited -> accepted -> live -> finished / cancelled). `PkBattleController`
+  (`lib/state/`) follows one live's rows through `PkBattlesApi` (the real `PkBattlesRepository`, or a fake in tests), runs the 3 s
+  countdown and a timer against the SERVER clock (`pk_now()`), and never decides a score, a winner or a length.
+- Everyone in both rooms moves to the Agora channel `pk-<battleId>` while it is live and back after (`PkChannelSwitcher`); the
+  `agora-token` function lets the two hosts and the guests on a seat of either room publish there (`battle_access.ts`).
+- Switches (panel, Release controls, all default OFF except the fallback): `pk_battles` (audio PK), `pk_video` (video PK, not built),
+  `pk_layer` (default ON; OFF falls back to the old standalone PK screens). Old app builds are never offered as opponents
+  (`live_streams.pk_ready`). A Realtime watch must be FILTERED to one live (`watchStream`); never subscribe to every battle.
+- New SQL objects are `pk_*_v2` / new names only; `invite_pk_opponent` and the other legacy functions serve the old screens.
+
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
   translates its English string at build time. Hints / tooltips use `tr('...')`. English in code is the key.
