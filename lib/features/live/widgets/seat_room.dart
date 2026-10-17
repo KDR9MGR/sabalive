@@ -389,11 +389,11 @@ class SeatRoom extends StatelessWidget {
   }
 
   Widget _content(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 90, 20, 0),
-        child: Column(
-          children: [
+    // with a PK battle header above the seats the room can be taller than a small phone: it scrolls then (without a header it is
+    // laid out exactly as it always was)
+    final content = Column(
+      mainAxisSize: header == null ? MainAxisSize.max : MainAxisSize.min,
+      children: [
             if (error != null)
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -424,8 +424,12 @@ class SeatRoom extends StatelessWidget {
                 ],
               ),
             ],
-          ],
-        ),
+      ],
+    );
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 90, 20, 0),
+        child: header == null ? content : SingleChildScrollView(child: content),
       ),
     );
   }

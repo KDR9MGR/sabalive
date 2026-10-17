@@ -122,41 +122,51 @@ class PkScoreBar extends StatelessWidget {
     );
   }
 
+  /// One side's score panel. Three medals fit only when the panel is wide (the PK layer's header leaves a narrow room on a small
+  /// phone); narrower panels show fewer medals and always keep the score.
   Widget _scorePanel(int score, Color tint) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: [
-          for (final m in const ['🥇', '🥈', '🥉'])
-            Padding(
-              padding: const EdgeInsets.only(right: 2),
-              child: Container(
-                width: 22,
-                height: 22,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
+    return LayoutBuilder(builder: (context, box) {
+      final medals = box.maxWidth >= 150 ? 3 : (box.maxWidth >= 118 ? 1 : 0);
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Row(
+          children: [
+            for (final m in const ['🥇', '🥈', '🥉'].take(medals))
+              Padding(
+                padding: const EdgeInsets.only(right: 2),
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                  child: Text(m, style: const TextStyle(fontSize: 11)),
                 ),
-                child: Text(m, style: const TextStyle(fontSize: 11)),
               ),
+            const Spacer(),
+            const Icon(Icons.diamond_rounded, size: 12, color: AppColors.diamond),
+            const SizedBox(width: 3),
+            Flexible(
+              child: Text(compactCount(score),
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: Colors.white)),
             ),
-          const Spacer(),
-          const Icon(Icons.diamond_rounded, size: 12, color: AppColors.diamond),
-          const SizedBox(width: 3),
-          Text(compactCount(score),
-              style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  color: Colors.white)),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    });
   }
 }
