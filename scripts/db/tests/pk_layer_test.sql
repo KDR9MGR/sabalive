@@ -63,7 +63,7 @@ select public.pk_set_ready('d1000000-0000-0000-0000-000000000001', true);
 select '1 host turned it on again (expect t)' as check, pk_ready from public.live_streams where id = 'd1000000-0000-0000-0000-000000000001';
 
 -- 2. who H1 can invite from the Following list: H2 only (H3 is on an old build, V1 is a video live)
-select '2 eligible following (expect exactly s2)' as check, title from public.pk_eligible_following('d1000000-0000-0000-0000-000000000001');
+select '2 eligible following (expect exactly s2, with the host''s name)' as check, title, host_name is not null as has_name from public.pk_eligible_following('d1000000-0000-0000-0000-000000000001');
 
 -- 3. invite rules (as H1, live in s1)
 select '3 old-build host (expect raised)' as check, pg_temp.raises($$select public.pk_invite_v2('d1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000003', 300)$$) as result;

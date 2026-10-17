@@ -140,7 +140,7 @@ grant execute on function public.pk_invite_v2(uuid, uuid, integer) to authentica
 -- ---------------------------------------------------------------------------------------- pk_eligible_following
 -- Hosts the caller follows who are live right now, in a live of the same kind, with PK on, not in a battle, not blocked.
 create or replace function public.pk_eligible_following(p_my_stream_id uuid)
-returns table (stream_id uuid, host_id uuid, title text, viewer_count integer, mode text)
+returns table (stream_id uuid, host_id uuid, title text, viewer_count integer, mode text, host_name text, host_avatar_url text)
 language plpgsql stable security definer set search_path = public
 as $$
 declare
@@ -155,9 +155,10 @@ begin
     return;
   end if;
   return query
-    select s.id, s.host_id, s.title, s.viewer_count, s.mode
+    select s.id, s.host_id, s.title, s.viewer_count, s.mode, p.name, p.avatar_url
     from public.follows f
     join public.live_streams s on s.host_id = f.followee_id
+    join public.profiles p on p.id = s.host_id
     where f.follower_id = v_me
       and s.status = 'live' and s.mode = v_my.mode and s.pk_ready and s.id <> p_my_stream_id
       and not public.pk_stream_busy(s.id)
