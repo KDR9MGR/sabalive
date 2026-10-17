@@ -314,6 +314,28 @@ void main() {
       expect(finished, 1);
     });
   });
+
+  group('a layer of its own', () {
+    Finder boundary() => find.descendant(of: find.byType(RemoteMedia), matching: find.byType(RepaintBoundary));
+
+    testWidgets('an animated picture that plays is isolated, so it cannot drag its surroundings into every repaint', (t) async {
+      await t.pumpWidget(MaterialApp(
+        home: RemoteMedia('https://x.co/frame.svga', animate: true, fallback: _marker, svgaLoader: (_) async => _movie()),
+      ));
+      expect(boundary(), findsOneWidget);
+      await t.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a still (not playing) animated file and an ordinary picture need no extra layer', (t) async {
+      await t.pumpWidget(MaterialApp(
+        home: RemoteMedia('https://x.co/frame.svga', animate: false, fallback: _marker, svgaLoader: (_) async => _movie()),
+      ));
+      expect(boundary(), findsNothing);
+      await t.pumpWidget(MaterialApp(home: RemoteMedia('https://x.co/pic.png', fallback: _marker)));
+      expect(boundary(), findsNothing);
+      await t.pumpWidget(const SizedBox());
+    });
+  });
 }
 
 /// A real 2-frame GIF (1x1: red, then blue) whose frames both ask for a 0 ms

@@ -100,7 +100,7 @@ class RemoteMedia extends StatelessWidget {
   Widget build(BuildContext context) {
     final blank = fallback ?? const SizedBox.shrink();
     final kind = mediaKindFor(url);
-    return switch (kind) {
+    final media = switch (kind) {
       MediaKind.svga => _SvgaMedia(
           url: url,
           fit: fit,
@@ -157,6 +157,9 @@ class RemoteMedia extends StatelessWidget {
           },
         ),
     };
+    // An animated picture (SVGA, MP4, GIF / WebP) repaints on every display refresh. Without its own layer each one drags everything
+    // around it into the same repaint (all seats, names, the room), which is what made rooms with several animated frames lag.
+    return (kind == MediaKind.image || !animate) ? media : RepaintBoundary(child: media);
   }
 }
 

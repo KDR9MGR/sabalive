@@ -114,7 +114,8 @@ class _SpeakingWavesState extends State<SpeakingWaves> with TickerProviderStateM
           amplitude: widget.amplitude,
           gap: widget.gap,
         ),
-        child: widget.child,
+        // the picture (and its animated frame) get their own layer: the bars repaint at the display rate while someone talks
+        child: RepaintBoundary(child: widget.child),
       ),
     );
   }
