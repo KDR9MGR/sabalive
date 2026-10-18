@@ -65,9 +65,12 @@ Production is shared with the live Play app: follow "Production safety" in the r
   countdown and a timer against the SERVER clock (`pk_now()`), and never decides a score, a winner or a length.
 - Everyone in both rooms moves to the Agora channel `pk-<battleId>` while it is live and back after (`PkChannelSwitcher`); the
   `agora-token` function lets the two hosts and the guests on a seat of either room publish there (`battle_access.ts`).
-- Switches (panel, Release controls, all default OFF except the fallback): `pk_battles` (audio PK), `pk_video` (video PK, not built),
+- Switches (panel, Release controls, all default OFF except the fallback): `pk_battles` (audio PK), `pk_video` (video PK: built, off until Agora cost is measured; needs `pk_battles` + `pk_layer`),
   `pk_layer` (default ON; OFF falls back to the old standalone PK screens). Old app builds are never offered as opponents
   (`live_streams.pk_ready`). A Realtime watch must be FILTERED to one live (`watchStream`); never subscribe to every battle.
+- Look and controls: audio PK = `PkBattleArena` (`pk_battle_arena.dart`: red / blue halves, up to 7 guest seats a side, the host's Add / Remove seat,
+  Requests and End PK); video PK = `PkVideoStage`. End PK = the host gives up (`pk_give_up_v2`: the other host wins). Seat requests
+  (`request_seat_v2`, `live_streams.seat_requests`) are a courtesy, not a lock: `claim_seat` stays self-serve for builds that do not know the setting.
 - New SQL objects are `pk_*_v2` / new names only; `invite_pk_opponent` and the other legacy functions serve the old screens.
 
 ## Translations (9 languages)
