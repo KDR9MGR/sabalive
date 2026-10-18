@@ -172,3 +172,89 @@ select '9 nine lengths are refused (expect raised)' as check, pg_temp.raises($$s
 select '9 a null is refused (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{300}', null, 60, 6, 20)$$) as result;
 select '9 the refused calls changed nothing (expect 420)' as check, random_duration from public.pk_config;
 select '9 anon cannot call it (expect 0)' as check, count(*) as n from information_schema.routine_privileges where routine_schema = 'public' and grantee = 'anon' and routine_name = 'admin_set_pk_config';
+
+-- 10. seat requests for an audio room (migration 20261019100000): in a battle, or where the host switched "ask first" on; the host approves
+insert into auth.users (id, email) values ('a2000001-0000-0000-0000-000000000001', 'q1@x'), ('a2000002-0000-0000-0000-000000000001', 'q2@x'),
+  ('a2000003-0000-0000-0000-000000000001', 'q3@x');
+select '10 the setting starts off on every existing room (expect 0)' as check, count(*) as n from public.live_streams where seat_requests;
+-- a room that does not ask and is in no battle
+select set_config('request.jwt.claim.sub', 'a2000001-0000-0000-0000-000000000001', false);
+select '10 a room that does not ask (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('d1000000-0000-0000-0000-000000000004')$$) as result;
+-- only the host can switch it on, and only for an audio room
+select '10 a stranger cannot switch it on (expect raised)' as check, pg_temp.raises($$select public.set_seat_requests_v2('d1000000-0000-0000-0000-000000000004', true)$$) as result;
+select set_config('request.jwt.claim.sub', 'a1000004-0000-0000-0000-000000000001', false);
+select public.set_seat_requests_v2('d1000000-0000-0000-0000-000000000004', true);
+select '10 the host switched it on (expect t)' as check, seat_requests from public.live_streams where id = 'd1000000-0000-0000-0000-000000000004';
+select '10 a null is refused (expect raised)' as check, pg_temp.raises($$select public.set_seat_requests_v2('d1000000-0000-0000-0000-000000000004', null)$$) as result;
+select set_config('request.jwt.claim.sub', 'b1000001-0000-0000-0000-000000000001', false);
+select '10 a video room cannot use it (expect raised)' as check, pg_temp.raises($$select public.set_seat_requests_v2('e1000000-0000-0000-0000-000000000001', true)$$) as result;
+select '10 and a video room takes no requests this way (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('e1000000-0000-0000-0000-000000000001')$$) as result;
+-- with the setting on, a request works without any battle
+select set_config('request.jwt.claim.sub', 'a2000001-0000-0000-0000-000000000001', false);
+select '10 setting on, no battle: a pending request (expect pending)' as check, status from public.request_seat_v2('d1000000-0000-0000-0000-000000000004');
+select '10 asking again keeps one pending request (expect 1)' as check, (select count(*) from public.pk_seat_requests where live_stream_id = 'd1000000-0000-0000-0000-000000000004' and status = 'pending') as n
+  from (select public.request_seat_v2('d1000000-0000-0000-0000-000000000004')) x;
+select set_config('request.jwt.claim.sub', 'a1000004-0000-0000-0000-000000000001', false);
+select '10 the host cannot request on their own live (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('d1000000-0000-0000-0000-000000000004')$$) as result;
+select public.clear_seat_requests_v2('d1000000-0000-0000-0000-000000000004');
+select '10 switching it off and clearing leaves nothing pending (expect 0)' as check, count(*) as n from public.pk_seat_requests where live_stream_id = 'd1000000-0000-0000-0000-000000000004' and status = 'pending';
+select public.set_seat_requests_v2('d1000000-0000-0000-0000-000000000004', false);
+select set_config('request.jwt.claim.sub', 'a2000001-0000-0000-0000-000000000001', false);
+select '10 switched off again: refused (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('d1000000-0000-0000-0000-000000000004')$$) as result;
+
+-- a live PK battle between the audio lives of H7 and H8: requests are asked for there even with the setting off
+insert into public.pk_battles (stream_a_id, stream_b_id, host_a_id, host_b_id, status, invited_at, started_at, ends_at, source, kind, duration_seconds)
+values ('d1000000-0000-0000-0000-000000000007', 'd1000000-0000-0000-0000-000000000008', 'a1000007-0000-0000-0000-000000000001',
+        'a1000008-0000-0000-0000-000000000001', 'live', now(), now(), now() + interval '5 minutes', 'invite', 'audio', 300);
+select '10 in a battle: a pending request (expect pending)' as check, status from public.request_seat_v2('d1000000-0000-0000-0000-000000000007');
+select '10 one pending row (expect 1)' as check, count(*) as n from public.pk_seat_requests where live_stream_id = 'd1000000-0000-0000-0000-000000000007' and status = 'pending';
+select set_config('request.jwt.claim.sub', 'a1000007-0000-0000-0000-000000000001', false);
+select '10 the host of the battle live cannot request (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('d1000000-0000-0000-0000-000000000007')$$) as result;
+-- a viewer the host removed from the seats
+insert into public.live_stream_seat_bans (live_stream_id, banned_id, banned_by)
+values ('d1000000-0000-0000-0000-000000000007', 'a2000002-0000-0000-0000-000000000001', 'a1000007-0000-0000-0000-000000000001');
+select set_config('request.jwt.claim.sub', 'a2000002-0000-0000-0000-000000000001', false);
+select '10 removed from the seats by the host (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('d1000000-0000-0000-0000-000000000007')$$) as result;
+-- someone already seated
+insert into public.live_stream_seats (live_stream_id, seat_number, occupant_id, last_heartbeat_at)
+values ('d1000000-0000-0000-0000-000000000007', 3, 'a2000003-0000-0000-0000-000000000001', now());
+select set_config('request.jwt.claim.sub', 'a2000003-0000-0000-0000-000000000001', false);
+select '10 already on a seat (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('d1000000-0000-0000-0000-000000000007')$$) as result;
+-- the host approves with the EXISTING function (it never looked at the mode)
+select set_config('request.jwt.claim.sub', 'a1000007-0000-0000-0000-000000000001', false);
+select public.approve_pk_seat_request((select id from public.pk_seat_requests where requester_id = 'a2000001-0000-0000-0000-000000000001' and live_stream_id = 'd1000000-0000-0000-0000-000000000007' and status = 'pending'), 2);
+select '10 approved: q1 sits on seat 2 (expect 2)' as check, seat_number from public.live_stream_seats where occupant_id = 'a2000001-0000-0000-0000-000000000001';
+select set_config('request.jwt.claim.sub', 'a2000001-0000-0000-0000-000000000001', false);
+select '10 a stranger cannot clear the requests (expect raised)' as check, pg_temp.raises($$select public.clear_seat_requests_v2('d1000000-0000-0000-0000-000000000007')$$) as result;
+-- once the battle is over (and the room does not ask on its own) nobody can request any more
+select set_config('request.jwt.claim.sub', 'a1000007-0000-0000-0000-000000000001', false);
+update public.pk_battles set status = 'finished', ended_at = now(), winner = 'draw' where stream_a_id = 'd1000000-0000-0000-0000-000000000007' and status = 'live';
+select set_config('request.jwt.claim.sub', 'a2000001-0000-0000-0000-000000000001', false);
+delete from public.live_stream_seats where occupant_id = 'a2000001-0000-0000-0000-000000000001';
+select '10 after the battle (expect raised)' as check, pg_temp.raises($$select public.request_seat_v2('d1000000-0000-0000-0000-000000000007')$$) as result;
+
+-- 11. End PK = giving up (pk_give_up_v2): the host who ends a live battle loses, the other host wins, reason forfeit
+insert into public.pk_battles (id, stream_a_id, stream_b_id, host_a_id, host_b_id, status, invited_at, started_at, ends_at, source, kind, duration_seconds, score_a, score_b)
+values ('b0000000-0000-0000-0000-0000000000a1', 'd1000000-0000-0000-0000-000000000005', 'd1000000-0000-0000-0000-000000000006', 'a1000005-0000-0000-0000-000000000001',
+        'a1000006-0000-0000-0000-000000000001', 'live', now(), now(), now() + interval '5 minutes', 'invite', 'audio', 300, 90, 10),
+       ('b0000000-0000-0000-0000-0000000000a2', 'd1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000002', 'a1000001-0000-0000-0000-000000000001',
+        'a1000002-0000-0000-0000-000000000001', 'accepted', now(), null, null, 'invite', 'audio', 300, 0, 0);
+select set_config('request.jwt.claim.sub', 'a2000001-0000-0000-0000-000000000001', false);
+select '11 a viewer cannot end it (expect raised)' as check, pg_temp.raises($$select public.pk_give_up_v2('b0000000-0000-0000-0000-0000000000a1')$$) as result;
+select set_config('request.jwt.claim.sub', 'a1000001-0000-0000-0000-000000000001', false);
+select '11 a battle that has not started yet (expect raised)' as check, pg_temp.raises($$select public.pk_give_up_v2('b0000000-0000-0000-0000-0000000000a2')$$) as result;
+select '11 a LEGACY battle (no source) (expect raised)' as check, pg_temp.raises($$select public.pk_give_up_v2((select id from public.pk_battles where source is null limit 1))$$) as result;
+-- H5 is ahead 90 to 10 and still gives up: the other host wins anyway
+select set_config('request.jwt.claim.sub', 'a1000005-0000-0000-0000-000000000001', false);
+select '11 the leading host gives up (expect finished, b, forfeit)' as check, status, winner, end_reason from public.pk_give_up_v2('b0000000-0000-0000-0000-0000000000a1');
+select set_config('request.jwt.claim.sub', 'a1000006-0000-0000-0000-000000000001', false);
+select '11 asking again is harmless (expect finished, b, forfeit)' as check, status, winner, end_reason from public.pk_give_up_v2('b0000000-0000-0000-0000-0000000000a1');
+-- side B gives up: side A wins
+insert into public.pk_battles (id, stream_a_id, stream_b_id, host_a_id, host_b_id, status, invited_at, started_at, ends_at, source, kind, duration_seconds)
+values ('b0000000-0000-0000-0000-0000000000a3', 'd1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000002', 'a1000001-0000-0000-0000-000000000001',
+        'a1000002-0000-0000-0000-000000000001', 'live', now(), now(), now() + interval '5 minutes', 'invite', 'audio', 300);
+select set_config('request.jwt.claim.sub', 'a1000002-0000-0000-0000-000000000001', false);
+select '11 host B gives up (expect finished, a, forfeit)' as check, status, winner, end_reason from public.pk_give_up_v2('b0000000-0000-0000-0000-0000000000a3');
+select '11 no new function is callable by anon (expect 0)' as check, count(*) as n
+  from information_schema.routine_privileges
+  where routine_schema = 'public' and grantee = 'anon' and routine_name in ('request_seat_v2', 'clear_seat_requests_v2', 'set_seat_requests_v2', 'pk_give_up_v2');
