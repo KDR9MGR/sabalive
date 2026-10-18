@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/data/pk_battles_repository.dart';
-import 'package:sabalive/core/widgets/app_avatar.dart';
+import 'package:sabalive/features/live/widgets/pk_battle_arena.dart';
 import 'package:sabalive/features/live/widgets/pk_battle_widgets.dart';
 import 'package:sabalive/features/live/widgets/seat_snapshot.dart';
 import 'package:sabalive/state/pk_battle_controller.dart';
@@ -40,10 +40,9 @@ void main() {
     await t.pump();
   }
 
-  testWidgets('the header draws nothing without a battle, then follows the invite and the battle', (t) async {
+  testWidgets('the setup strip draws nothing without a battle, follows the invite, and steps aside when the battle starts', (t) async {
     await mount(t);
     expect(find.byKey(const ValueKey('pk-status')), findsNothing);
-    expect(find.byKey(const ValueKey('pk-battle')), findsNothing);
 
     api.emit(pkRow(status: 'invited'));
     await t.pump();
@@ -52,15 +51,11 @@ void main() {
 
     api.emit(pkRow(status: 'live', scoreA: 120, scoreB: 80, startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
     await t.pump();
-    expect(find.byKey(const ValueKey('pk-battle')), findsOneWidget);
-    expect(find.text('Me Host'), findsOneWidget);
-    expect(find.text('Opponent'), findsOneWidget);
-    expect(find.text('120'), findsWidgets);
-    expect(find.text('05:00'), findsWidgets);
+    expect(find.byKey(const ValueKey('pk-status')), findsNothing, reason: 'once the battle runs, the arena or the stage shows it');
     await unmount(t);
   });
 
-  testWidgets('the video stage shows both videos side by side with the battle header above', (t) async {
+  testWidgets('the video stage shows both videos side by side under the scores and the clock, WIN on the leader', (t) async {
     t.view.physicalSize = const Size(390, 844); // a phone: two 3:4 panes side by side need a phone's width, not the default 800 x 600
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
@@ -80,7 +75,14 @@ void main() {
         ),
       ),
     ));
-    expect(find.byKey(const ValueKey('pk-battle')), findsOneWidget, reason: 'the header is part of the stage');
+    expect(find.byKey(const ValueKey('pk-clock')), findsOneWidget, reason: 'the score row with the clock is part of the stage');
+    expect(find.text('PK 05:00'), findsOneWidget);
+    expect(find.text('9'), findsOneWidget, reason: 'their score');
+    expect(find.text('5'), findsOneWidget, reason: 'my score');
+    expect(find.byKey(const ValueKey('pk-lose')), findsOneWidget, reason: 'I am behind 5 to 9');
+    expect(find.byKey(const ValueKey('pk-win')), findsOneWidget);
+    expect(t.getCenter(find.byKey(const ValueKey('pk-win'))).dx, greaterThan(t.getCenter(find.byKey(const ValueKey('pk-lose'))).dx),
+        reason: 'WIN on the right half, where the leading opponent is');
     final left = t.getRect(find.byKey(const ValueKey('pk-pane-left')));
     final right = t.getRect(find.byKey(const ValueKey('pk-pane-right')));
     expect(left.left, lessThan(right.left));
@@ -213,7 +215,7 @@ void main() {
     await unmount(t);
   });
 
-  testWidgets('a gift during a battle asks which side, and goes to the opponent when chosen', (t) async {
+  testWidgets('a gift in a battle goes to the side of the host it is for, with no question asked: once per unit', (t) async {
     late BuildContext ctx;
     await mount(t, extra: Builder(builder: (context) {
       ctx = context;
@@ -221,66 +223,119 @@ void main() {
     }));
     api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
     await t.pump();
-    String? side;
-    final done = sendPkGift(ctx, c, const Gift('g', 'Rose', 'r', 1), 2, mineLabel: 'Me Host').then((s) => side = s);
-    await t.pumpAndSettle();
-    expect(find.text('Send to'), findsOneWidget);
-    await t.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Opponent')));
-    await t.pump();
-    await t.tap(find.byKey(const ValueKey('pk-gift-send')));
-    await t.pumpAndSettle();
-    await done;
-    expect(side, 'b', reason: 'I am side A, so the opponent is B');
+    const rose = Gift('g', 'Rose', 'r', 1);
+    final toThem = await sendPkGift(ctx, c, rose, 2, to: PkGiftSide.theirs);
+    expect(toThem, 'b', reason: 'I am side A, so the other host is B');
     expect(api.calls.where((x) => x == 'gift:b').length, 2, reason: 'once per unit');
+    final toMe = await sendPkGift(ctx, c, rose, 1, to: PkGiftSide.mine);
+    expect(toMe, 'a');
+    expect(api.calls.where((x) => x == 'gift:a').length, 1);
+    expect(find.byType(AlertDialog), findsNothing, reason: 'the old "Send to" popup is gone');
     await unmount(t);
   });
 
-  testWidgets('no gift dialog outside a live battle', (t) async {
+  testWidgets('no PK gift outside a live battle', (t) async {
     late BuildContext ctx;
     await mount(t, extra: Builder(builder: (context) {
       ctx = context;
       return const SizedBox();
     }));
-    final side = await sendPkGift(ctx, c, const Gift('g', 'Rose', 'r', 1), 1, mineLabel: 'x');
+    final side = await sendPkGift(ctx, c, const Gift('g', 'Rose', 'r', 1), 1, to: PkGiftSide.mine);
     expect(side, isNull);
-    expect(find.text('Send to'), findsNothing);
+    expect(api.calls.where((x) => x.startsWith('gift:')), isEmpty);
     await unmount(t);
   });
 
-  testWidgets('the opponent\'s room: who sits there, only while the battle runs, read from the OTHER live', (t) async {
+  testWidgets('who a gift counts for: the room\'s host or the other host in a live battle; guests and "all" are ordinary gifts', (t) async {
+    await mount(t);
+    // no battle: nothing is a PK gift
+    expect(pkGiftSideFor(c, recipientId: pkMe, myHostId: pkMe), isNull);
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    await t.pump(); // the opponent's profile arrives
+    expect(pkGiftSideFor(c, recipientId: pkMe, myHostId: pkMe), PkGiftSide.mine);
+    expect(pkGiftSideFor(c, recipientId: null, myHostId: pkMe), PkGiftSide.mine, reason: 'the sheet\'s default is the host');
+    expect(pkGiftSideFor(c, recipientId: pkOther, myHostId: pkMe), PkGiftSide.theirs);
+    expect(pkGiftSideFor(c, recipientId: 'a-guest', myHostId: pkMe), isNull, reason: 'a guest on a seat: an ordinary gift');
+    expect(pkGiftSideFor(c, recipientId: pkOther, myHostId: pkMe, sendToAll: true), isNull, reason: 'send to all: ordinary');
+
+    // the sheet lists the other host as one more person to gift, only while the battle is live
+    final base = [me, AppUser(id: 'g1', name: 'Guest', username: '@g')];
+    final shown = pkGiftSheetRecipients(base, c);
+    expect([for (final u in shown) u.id], [pkMe, 'g1', pkOther]);
+    expect(pkGiftSheetRecipients(shown, c).length, 3, reason: 'never twice');
+    expect(pkGiftSheetRecipients(base, null).length, 2, reason: 'no PK in this room');
+    api.emit(pkRow(status: 'finished', scoreA: 1, scoreB: 0, winner: 'a'));
+    await t.pump();
+    expect(pkGiftSheetRecipients(base, c).length, 2, reason: 'battle over');
+    await unmount(t);
+  });
+
+  testWidgets('the arena: my seats on the red half, the OTHER live\'s seats on the blue half, read only, only while the battle runs', (t) async {
+    t.view.physicalSize = const Size(390, 844);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
     await mount(t);
     final asked = <String>[];
-    SeatSnapshot seats(Map<int, AppUser> m) => SeatSnapshot(occupants: m, muted: {}, agoraUids: {});
+    final tapped = <int>[];
+    AppUser guest(String id) => AppUser(id: id, name: 'Guest $id', username: '@$id');
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: PkOpponentRoom(
-          controller: c,
-          every: const Duration(seconds: 1),
-          fetchSeats: (id) async {
-            asked.add(id);
-            return seats({1: AppUser(id: 'o1', name: 'Opp Host', username: '@o1'), 3: AppUser(id: 'o2', name: 'Guest', username: '@o2')});
-          },
+        body: SingleChildScrollView(
+          child: PkBattleArena(
+            controller: c,
+            me: me,
+            every: const Duration(seconds: 1),
+            mine: PkSeatsData(
+              hostId: pkMe,
+              seatCount: 8,
+              occupants: {1: me, 2: guest('g2')},
+              onSeatTap: tapped.add,
+            ),
+            fetchSeats: (id) async {
+              asked.add(id);
+              return SeatSnapshot(
+                occupants: {1: AppUser(id: pkOther, name: 'Opponent', username: '@o'), 3: guest('o3')},
+                muted: {},
+                agoraUids: {},
+                seatCount: 8,
+                locked: {4},
+              );
+            },
+          ),
         ),
       ),
     ));
-    expect(find.byKey(const ValueKey('pk-opponent-room')), findsNothing, reason: 'no battle yet');
+    expect(find.byKey(const ValueKey('pk-arena')), findsNothing, reason: 'no battle yet');
 
-    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    api.emit(pkRow(status: 'live', scoreA: 70, scoreB: 30, startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
     await t.pump();
     await t.pump(const Duration(milliseconds: 50));
     expect(asked, [pkOtherStream], reason: 'the other live\'s seats, not mine');
-    expect(find.byKey(const ValueKey('pk-opponent-room')), findsOneWidget);
-    expect(find.text("Opponent's room"), findsOneWidget);
-    expect(find.byType(AppAvatar), findsNWidgets(2));
-    expect(find.descendant(of: find.byKey(const ValueKey('pk-opponent-room')), matching: find.byType(GestureDetector)), findsNothing,
-        reason: 'read-only: nothing here takes a tap');
+    expect(find.byKey(const ValueKey('pk-arena')), findsOneWidget);
+    expect(find.text('Me Host'), findsOneWidget);
+    expect(find.text('Opponent'), findsOneWidget);
+    expect(find.text('05:00'), findsOneWidget, reason: 'the old score bar: clock between the two scores');
+    expect(find.text('VS'), findsOneWidget);
+    expect(find.text('Guest g2'), findsOneWidget, reason: 'my guest is on my red half');
+    expect(find.text('Guest o3'), findsOneWidget, reason: 'their guest is on the blue half');
+    expect(find.text('Locked'), findsOneWidget, reason: 'their locked seat shows');
+
+    // a tap on MY guest seat reaches the room (the host menu / a viewer request); the host's big picture is seat 1
+    await t.tap(find.byKey(const ValueKey('pk-arena-seat-a-2')));
+    await t.tap(find.byKey(const ValueKey('pk-arena-seat-a-3')));
+    expect(tapped, [2, 3]);
+    // nothing on the opponent's half does anything
+    await t.tap(find.byKey(const ValueKey('pk-arena-seat-b-3')));
+    await t.tap(find.byKey(const ValueKey('pk-arena-seat-b-4')));
+    expect(tapped, [2, 3], reason: 'read only');
 
     await t.pump(const Duration(seconds: 1));
     expect(asked.length, 2, reason: 'it re-reads every second here (every few seconds in the app)');
 
     api.emit(pkRow(status: 'finished', scoreA: 3, scoreB: 1, winner: 'a'));
     await t.pump();
-    expect(find.byKey(const ValueKey('pk-opponent-room')), findsNothing, reason: 'gone when the battle is over');
+    expect(find.byKey(const ValueKey('pk-arena')), findsNothing, reason: 'gone when the battle is over');
     await t.pumpWidget(const SizedBox());
     c.dispose();
   });

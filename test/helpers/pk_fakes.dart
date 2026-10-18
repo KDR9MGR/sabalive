@@ -53,6 +53,8 @@ class PkFakeApi implements PkBattlesApi {
   final calls = <String>[];
   final randomAnswers = <PkBattleInfo?>[];
   Object? inviteError;
+  Object? finalizeError;
+  Object? giveUpError;
   int inviteSeconds = 300; // the length the invite carried: the server begins the battle with it
   void Function(PkBattleInfo)? onRow;
   final watch = PkFakeWatch();
@@ -109,8 +111,17 @@ class PkFakeApi implements PkBattlesApi {
     return liveRow(id: battleId, seconds: inviteSeconds);
   }
 
+  /// The host who gives up loses: in these rows I am side A, so side B wins.
+  @override
+  Future<PkBattleInfo> giveUp(String battleId) async {
+    if (giveUpError != null) throw giveUpError!;
+    calls.add('give-up');
+    return pkRow(status: 'finished', scoreA: 90, scoreB: 10, winner: 'b', endReason: 'forfeit');
+  }
+
   @override
   Future<PkBattleInfo> finalizeNow(String battleId) async {
+    if (finalizeError != null) throw finalizeError!;
     calls.add('finalize');
     return pkRow(status: 'finished', scoreA: 30, scoreB: 10, winner: 'a');
   }

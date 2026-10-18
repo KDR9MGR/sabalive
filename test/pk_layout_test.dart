@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/models.dart';
+import 'package:sabalive/features/live/widgets/pk_battle_arena.dart';
 import 'package:sabalive/features/live/widgets/pk_battle_widgets.dart';
 import 'package:sabalive/features/live/widgets/seat_room.dart';
 import 'package:sabalive/features/live/widgets/seat_snapshot.dart';
@@ -8,8 +9,8 @@ import 'package:sabalive/state/pk_battle_controller.dart';
 
 import 'helpers/pk_fakes.dart';
 
-/// The PK header sits above the seats of an audio room. On small phones and with many seats it must not push the room into an
-/// overflow (the seats and the Add / Remove buttons stay on screen).
+/// The PK arena replaces the seat grid of an audio room during a battle. On small phones, with both rooms full, it must not overflow
+/// and must leave the lower part of the screen to the chat and the input bar.
 void main() {
   final me = AppUser(id: pkMe, name: 'Me Host', username: '@me');
 
@@ -24,14 +25,23 @@ void main() {
     return c;
   }
 
+  AppUser guest(String id) => AppUser(id: id, name: 'Guest $id', username: '@$id');
+
   for (final size in [const Size(320, 640), const Size(360, 740), const Size(412, 915)]) {
     for (final seats in [8, 16]) {
-      testWidgets('audio PK header with $seats seats on a ${size.width.toInt()} x ${size.height.toInt()} phone: no overflow', (t) async {
+      testWidgets('audio PK arena with $seats seats, both rooms full, on a ${size.width.toInt()} x ${size.height.toInt()} phone: no overflow', (t) async {
         t.view.physicalSize = size;
         t.view.devicePixelRatio = 1;
         addTearDown(t.view.reset);
         final now = DateTime.utc(2026, 10, 17, 12);
         final c = await liveBattle(t, now);
+        final mine = PkSeatsData(
+          hostId: pkMe,
+          seatCount: seats,
+          // the host on seat 1 and guests on every other seat up to the count: more than the arena can show
+          occupants: {1: me, for (var i = 2; i <= seats; i++) i: guest('m$i')},
+          onSeatTap: (_) {},
+        );
         await t.pumpWidget(MaterialApp(
           home: Scaffold(
             body: SeatRoom(
@@ -41,31 +51,37 @@ void main() {
               onSeatTap: (_) {},
               onAddSeat: () {},
               onRemoveSeat: () {},
-              header: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  PkBattleHeader(controller: c, me: me),
-                  // the opponent's room under it: eight people on its seats
-                  PkOpponentRoom(
-                    controller: c,
-                    fetchSeats: (_) async => SeatSnapshot(
-                      occupants: {for (var i = 1; i <= 8; i++) i: AppUser(id: 'o$i', name: 'Guest $i', username: '@o$i')},
-                      muted: {},
-                      agoraUids: {},
-                    ),
-                  ),
-                ],
+              showSeats: false,
+              header: PkBattleTop(
+                controller: c,
+                me: me,
+                mine: mine,
+                fetchSeats: (_) async => SeatSnapshot(
+                  occupants: {1: AppUser(id: pkOther, name: 'Opponent', username: '@o'), for (var i = 2; i <= seats; i++) i: guest('o$i')},
+                  muted: {},
+                  agoraUids: {},
+                  seatCount: seats,
+                ),
               ),
             ),
           ),
         ));
         await t.pump();
         await t.pump(const Duration(milliseconds: 50));
-        expect(find.byKey(const ValueKey('pk-opponent-room')), findsOneWidget);
+        expect(find.byKey(const ValueKey('pk-arena')), findsOneWidget);
+        expect(find.byKey(const ValueKey('pk-arena-mine')), findsOneWidget);
+        // up to seven guest seats a side (the host is the big picture), and the rest is counted
+        expect(find.byWidgetPredicate((w) => w.key.toString().contains('pk-arena-seat-a-')), findsNWidgets(7));
+        expect(find.byWidgetPredicate((w) => w.key.toString().contains('pk-arena-seat-b-')), findsNWidgets(7));
+        expect(find.byKey(const ValueKey('pk-arena-more')), seats == 8 ? findsNothing : findsNWidgets(2),
+            reason: '${seats - 1 - 7} more guests on each side');
+        expect(find.text('Add 4'), findsNothing, reason: 'the room\'s seat buttons wait until the battle is over');
         final overflow = t.takeException();
-        // 16 seats are four rows high; with the header on a very small phone the room may need more height than the screen has:
-        // report it instead of hiding it
         expect(overflow, isNull, reason: '$seats seats on ${size.width.toInt()} x ${size.height.toInt()}: $overflow');
+        final bottom = t.getRect(find.byKey(const ValueKey('pk-arena'))).bottom;
+        // seven seats a side are three short rows: on the smallest phone the arena takes more of the screen, and the room scrolls
+        final limit = size.height <= 640 ? 0.82 : 0.72;
+        expect(bottom, lessThan(size.height * limit), reason: 'the chat and the input bar keep the lower part of the screen');
         await t.pumpWidget(const SizedBox());
         c.dispose();
       });

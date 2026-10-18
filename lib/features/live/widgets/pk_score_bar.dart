@@ -4,6 +4,58 @@ import '../../../core/utils/formatters.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
 
+/// "04:12" for a number of seconds (never negative).
+String pkClock(int seconds) {
+  final d = Duration(seconds: seconds.clamp(0, 1 << 30));
+  final m = d.inMinutes.toString().padLeft(2, '0');
+  final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+  return '$m:$s';
+}
+
+/// The slim two-colour bar of the video PK stage: my share of the points in red, theirs in blue, a diamond where they meet.
+class PkThinBar extends StatelessWidget {
+  const PkThinBar({super.key, required this.scoreA, required this.scoreB});
+  final int scoreA;
+  final int scoreB;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (scoreA + scoreB).clamp(1, 1 << 30);
+    final ratioA = scoreA == 0 && scoreB == 0 ? 0.5 : scoreA / total;
+    return LayoutBuilder(builder: (context, c) {
+      final w = c.maxWidth;
+      return SizedBox(
+        height: 14,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Row(children: [
+              Expanded(
+                flex: (ratioA * 1000).round().clamp(1, 999),
+                child: Container(
+                  height: 6,
+                  decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFFFF2D55), Color(0xFFFF7A9C)])),
+                ),
+              ),
+              Expanded(
+                flex: ((1 - ratioA) * 1000).round().clamp(1, 999),
+                child: Container(
+                  height: 6,
+                  decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF9CC6FF), Color(0xFF2D6BFF)])),
+                ),
+              ),
+            ]),
+            Positioned(
+              left: (w * ratioA - 7).clamp(0.0, w - 14),
+              child: Icon(Icons.diamond_rounded, color: AppColors.primaryBright, size: 14),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+}
+
 /// The tug-of-war bar + score panels + VS badge + countdown clock. Shared by
 /// the host's own PK screen (pk_battle_screen.dart, the source of truth for
 /// these numbers) and the viewer's PK screen (watch_pk_battle_screen.dart,
@@ -20,12 +72,7 @@ class PkScoreBar extends StatelessWidget {
   final int scoreB;
   final int secondsLeft;
 
-  String get _clock {
-    final d = Duration(seconds: secondsLeft.clamp(0, 1 << 30));
-    final m = d.inMinutes.toString().padLeft(2, '0');
-    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
+  String get _clock => pkClock(secondsLeft);
 
   @override
   Widget build(BuildContext context) {

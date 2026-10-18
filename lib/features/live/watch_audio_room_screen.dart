@@ -53,6 +53,8 @@ import 'widgets/ghost_watch_bar.dart';
 import 'widgets/live_chat_bubble.dart';
 import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
+import 'widgets/pk_battle_arena.dart';
+import 'widgets/seat_requests.dart';
 import 'widgets/pk_battle_widgets.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_snapshot.dart';
@@ -135,6 +137,14 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   /// without letting go), shown to everyone with my face until the sweep removed it, and it left me
   /// "seated" without a microphone. Such a seat is released instead (see [_dropLeftoverSeat]).
   int? _mySeat;
+
+  /// When I asked the host for a seat during a PK battle. While it is recent, a seat that shows up in my name is the host's answer
+  /// (a yes), not a leftover.
+  DateTime? _seatRequestedAt;
+
+  /// The host asks before someone sits (read from the room, null = an older server without the setting).
+  bool? _roomAsks;
+  bool get _seatRequested => _seatRequestedAt != null && DateTime.now().difference(_seatRequestedAt!) < const Duration(minutes: 10);
 
   /// Bumped whenever a seat changes hands, so a profile lookup that finishes late cannot paint the
   /// previous occupant over the current one.
@@ -303,10 +313,14 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     final occupants = Map<int, AppUser>.of(snap.occupants);
     // a seat in my name that this screen did not claim (and is not mid-claim) is a leftover
     if (mine != null && _mySeat == null && !_seatBusy) {
-      occupants.remove(mine);
-      _speaking.unbindSeat(mine);
-      _dropLeftoverSeat();
-      mine = null;
+      if (_seatRequested) {
+        unawaited(_becomeSeated(mine)); // the host said yes to my request
+      } else {
+        occupants.remove(mine);
+        _speaking.unbindSeat(mine);
+        _dropLeftoverSeat();
+        mine = null;
+      }
     }
     // hidden-because-gone seats stay hidden only while the same person is still on them
     _goneSeats.removeWhere((seat, id) => occupants[seat]?.id != id);
@@ -345,6 +359,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       }
       if (snap.locked != null) _lockedSeats = snap.locked!;
       if (snap.seatCount != null) _seatCount = snap.seatCount!;
+      _roomAsks = snap.seatRequests;
       if (snap.hostAgoraUid != null) _speaking.hostUid = snap.hostAgoraUid;
       // a seat I hold stays mine; a seat in my name that I did not claim was dropped above
       if (mine != null && _mySeat != null) _mySeat = mine;
@@ -428,8 +443,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             final occupantId = payload.newRecord['occupant_id'] as String;
             // a seat in my name that this screen is not claiming (another device, or a leftover)
             if (occupantId == supabase.auth.currentUser?.id && _mySeat == null && !_seatBusy) {
-              _dropLeftoverSeat();
-              return;
+              if (_seatRequested) {
+                unawaited(_becomeSeated(seat)); // the host said yes to my request
+              } else {
+                _dropLeftoverSeat();
+                return;
+              }
             }
             _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
             final gen = _bumpSeat(seat);
@@ -901,14 +920,23 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           params: {'p_stream_id': widget.stream.id},
         );
         final engine = _engine;
-        if (engine != null) {
+        final shared = _pkSwitcher?.inSharedChannel ?? false;
+        if (shared && mounted) {
+          // in a battle's channel: my role is decided from _mySeat, so clear it first
+          setState(() {
+            _seatOccupants.remove(seat);
+            _mySeat = null;
+            _myMuted = false;
+          });
+          await _pkSwitcher!.reapply();
+        } else if (engine != null) {
           await AgoraService.instance.switchRole(
             engine,
             channelName: widget.stream.id,
             asBroadcaster: false,
           );
         }
-          if (mounted) {
+        if (mounted && !shared) {
           setState(() {
             _seatOccupants.remove(seat);
             _mySeat = null;
@@ -975,6 +1003,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       return;
     }
 
+    // in a PK battle, or where the host asked to be asked first, ask instead of taking the seat (an older server has no request: take
+    // it as before)
+    if (shouldAskForSeat(pkFighting: _pk?.fighting ?? false, roomAsks: _roomAsks, iAmModerator: _mod.iAmModerator) &&
+        await _requestSeat()) {
+      return;
+    }
+
     setState(() => _seatBusy = true);
     try {
       await supabase.rpc(
@@ -982,7 +1017,11 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
       );
       final engine = _engine;
-      if (engine != null) {
+      if (_pkSwitcher?.inSharedChannel ?? false) {
+        // in a battle's channel: my role is decided from _mySeat, so set it first
+        if (mounted) setState(() => _mySeat = seat);
+        await _pkSwitcher!.reapply();
+      } else if (engine != null) {
         await AgoraService.instance.switchRole(
           engine,
           channelName: widget.stream.id,
@@ -1003,6 +1042,44 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     } finally {
       if (mounted) setState(() => _seatBusy = false);
     }
+  }
+
+  /// Asks the host for a seat (PK battle). True = handled (sent, or the reason shown); false = this server has no request function yet,
+  /// so the caller takes the seat the way it always did.
+  Future<bool> _requestSeat() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _seatBusy = true);
+    try {
+      await supabase.rpc('request_seat_v2', params: {'p_stream_id': widget.stream.id});
+      _seatRequestedAt = DateTime.now();
+      if (mounted) messenger.showSnackBar(const SnackBar(content: Text('Request sent. Waiting for the host to accept.')));
+      return true;
+    } catch (e) {
+      if (isMissingOnServer(e)) return false;
+      if (mounted) messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      return true;
+    } finally {
+      if (mounted) setState(() => _seatBusy = false);
+    }
+  }
+
+  /// The host accepted my request: I hold the seat now, so start publishing my microphone (in whichever channel I am in).
+  Future<void> _becomeSeated(int seat) async {
+    _seatRequestedAt = null;
+    if (_mySeat == seat || !mounted) return;
+    setState(() => _mySeat = seat);
+    try {
+      final engine = _engine;
+      if (_pkSwitcher?.inSharedChannel ?? false) {
+        await _pkSwitcher!.reapply();
+      } else if (engine != null) {
+        await AgoraService.instance.switchRole(engine, channelName: widget.stream.id, asBroadcaster: true);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    }
+    _syncMySeatUid();
+    supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id}).catchError((e) => debugPrint('heartbeat_seat failed: $e'));
   }
 
   Future<void> _toggleMyMute() async {
@@ -1065,18 +1142,23 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     final giftChoice = await showGiftSheet(
       context,
       hostName: widget.stream.host.name,
-      recipients: _giftRecipients(),
+      recipients: pkGiftSheetRecipients(_giftRecipients(), _pk),
     );
     if (giftChoice == null || !mounted) return;
     final gift = giftChoice.gift;
     final me = context.read<AuthController>().user ?? Mock.me;
     final pk = _pk;
-    if (pk != null &&
-        pk.phase == PkPhase.live &&
-        !giftChoice.sendToAll &&
-        (giftChoice.recipient == null || giftChoice.recipient!.id == widget.stream.host.id)) {
-      // a gift to the host during a battle must count for a side: ask which, and send it as a PK gift
-      final side = await sendPkGift(context, pk, gift, giftChoice.quantity, mineLabel: widget.stream.host.name);
+    final pkSide = pk == null
+        ? null
+        : pkGiftSideFor(
+            pk,
+            recipientId: giftChoice.recipient?.id,
+            myHostId: widget.stream.host.id,
+            sendToAll: giftChoice.sendToAll,
+          );
+    if (pk != null && pkSide != null) {
+      // a gift to either host of a battle counts for that host's side (the other host is a recipient in the sheet)
+      final side = await sendPkGift(context, pk, gift, giftChoice.quantity, to: pkSide);
       if (side != null && mounted) {
         _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity));
       }
@@ -1372,19 +1454,41 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       child: Column(
         children: [
           const SizedBox(height: 24),
-          // the PK battle header, while a battle is on
-          if (_pk != null) PkBattleTop(controller: _pk!, me: widget.stream.host),
-          // the same four-to-a-row layout as the host's stage, with room for each seat's frame
-          SeatGrid(
-            seatCount: _seatCount,
-            occupants: _seatOccupants,
-            hostId: widget.stream.host.id,
-            lockedSeats: _lockedSeats,
-            mutedSeats: _mutedSeats,
-            speakingSeats: _speakingSeats,
-            diamonds: _diamonds.all,
-            emotes: _emotes,
-            onSeatTap: _seatTap,
+          // the PK battle header and arena, while a battle is on
+          if (_pk != null)
+            PkBattleTop(
+              controller: _pk!,
+              me: widget.stream.host,
+              skinned: _skinUrl != null,
+              mine: PkSeatsData(
+                hostId: widget.stream.host.id,
+                seatCount: _seatCount,
+                occupants: _seatOccupants,
+                lockedSeats: _lockedSeats,
+                mutedSeats: _mutedSeats,
+                speakingSeats: _speakingSeats,
+                emotes: _emotes,
+                mySeat: _mySeat,
+                onSeatTap: _seatTap,
+              ),
+            ),
+          // the same four-to-a-row layout as the host's stage, with room for each seat's frame (the arena shows the seats itself
+          // while a battle runs)
+          PkFighting(
+            controller: _pk,
+            builder: (context, fighting) => fighting
+                ? const SizedBox.shrink()
+                : SeatGrid(
+                    seatCount: _seatCount,
+                    occupants: _seatOccupants,
+                    hostId: widget.stream.host.id,
+                    lockedSeats: _lockedSeats,
+                    mutedSeats: _mutedSeats,
+                    speakingSeats: _speakingSeats,
+                    diamonds: _diamonds.all,
+                    emotes: _emotes,
+                    onSeatTap: _seatTap,
+                  ),
           ),
           const SizedBox(height: 16),
         ],

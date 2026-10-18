@@ -50,6 +50,25 @@ class PkChannelSwitcher {
   /// is still on its way and would land in the old channel after it (a viewer who opens a room in the middle of a battle).
   String? _at;
 
+  /// Is this phone in a battle's shared channel right now (not the live's own)?
+  bool get inSharedChannel => _at != null && _at != ownChannel;
+
+  /// The phone is in the right channel but its role changed (a viewer was just seated, or left a seat, during a battle): join the same
+  /// channel again with the role [broadcaster] says now. Outside a battle there is nothing to do: the screen changes the role itself.
+  Future<void> reapply() {
+    _last = _last.then((_) async {
+      final e = engine();
+      final at = _at;
+      if (e == null || at == null || at == ownChannel) return;
+      try {
+        await _switch(e, newChannelName: at, asBroadcaster: broadcaster(true), publishCamera: publishCamera?.call(true) ?? false);
+      } catch (error) {
+        onError?.call(error);
+      }
+    });
+    return _last;
+  }
+
   /// Call from the screen's `onJoinChannelSuccess` with the channel that was joined (the first join, and every later one).
   void markJoined(String channel) {
     _at = channel;

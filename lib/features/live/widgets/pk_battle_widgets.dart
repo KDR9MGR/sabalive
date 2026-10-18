@@ -6,12 +6,14 @@ import 'package:flutter/services.dart';
 
 import '../../../core/i18n/text.dart';
 import '../../../core/utils/errors.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/pills.dart';
 import '../../../data/models.dart';
 import '../../../data/pk_battles_repository.dart';
 import '../../../state/pk_battle_controller.dart';
 import '../../../theme/app_colors.dart';
+import 'pk_battle_arena.dart';
 import 'pk_score_bar.dart';
 import 'seat_snapshot.dart';
 
@@ -24,13 +26,14 @@ const List<int> kPkInviteSeconds = [300, 600, 1800, 2400];
 String pkLengthLabel(int seconds) => '${seconds ~/ 60} min';
 
 // ---------------------------------------------------------------------------------------------------------------- header
-/// The strip above the seats: who the battle is against, the score and the clock. Draws nothing while there is no battle.
+/// The strip shown while a battle is being SET UP: "looking for an opponent" (with a way to stop) and "waiting for the other host". Once
+/// the 3-2-1 starts it draws nothing: the arena (audio) or the video stage takes over. Draws nothing without a battle either.
 class PkBattleHeader extends StatelessWidget {
   const PkBattleHeader({super.key, required this.controller, required this.me});
 
   final PkBattleController controller;
 
-  /// The host of THIS live (my side, drawn on the left).
+  /// The host of THIS live (my side).
   final AppUser me;
 
   @override
@@ -48,10 +51,6 @@ class PkBattleHeader extends StatelessWidget {
               onCancel: c.amHost ? () => c.cancel() : null,
               busy: true,
             );
-          case PkPhase.countdown:
-            return _battle(c, starting: true);
-          case PkPhase.live:
-            return _battle(c);
           default:
             return const SizedBox.shrink();
         }
@@ -82,164 +81,37 @@ class PkBattleHeader extends StatelessWidget {
       ),
     );
   }
-
-  Widget _battle(PkBattleController c, {bool starting = false}) {
-    final them = c.opponent;
-    return Container(
-      key: const ValueKey('pk-battle'),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(18)),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              AppAvatar(name: me.name, imageUrl: me.avatarUrl, size: 38),
-              const SizedBox(width: 8),
-              Expanded(child: _name(me.name)),
-              if (starting)
-                const Text('Starting…', style: TextStyle(color: AppColors.gold, fontSize: 12, fontWeight: FontWeight.w700))
-              else
-                const Text('PK', style: TextStyle(color: AppColors.gold, fontSize: 13, fontWeight: FontWeight.w800)),
-              Expanded(child: _name(them?.name ?? '…', end: true)),
-              const SizedBox(width: 8),
-              AppAvatar(name: them?.name ?? '?', imageUrl: them?.avatarUrl, size: 38),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ValueListenableBuilder<int>(
-            valueListenable: c.secondsLeft,
-            builder: (_, seconds, _) => PkScoreBar(
-              scoreA: c.scoreMine,
-              scoreB: c.scoreTheirs,
-              secondsLeft: starting ? (c.battle?.durationSeconds ?? 0) : seconds,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _name(String name, {bool end = false}) => Text(
-    name,
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-    textAlign: end ? TextAlign.end : TextAlign.start,
-    style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
-  );
 }
 
-// ------------------------------------------------------------------------------------------------- opponent's room
-/// While a battle runs: who is on the OTHER room's seats, read-only (nothing here takes a tap: a host only ever locks, adds or removes
-/// the seats of their own room). The seats are re-read every few seconds, the way the rooms already keep their own seats honest,
-/// so it costs no extra live connection.
-class PkOpponentRoom extends StatefulWidget {
-  const PkOpponentRoom({
+// ----------------------------------------------------------------------------------------------------------- audio top
+/// What an AUDIO room (host and viewer) shows above its seats during PK: the setup strip, then the red / blue arena. The room hides
+/// its own seat grid while [PkBattleController.fighting] (the arena draws the seats of both rooms itself).
+class PkBattleTop extends StatelessWidget {
+  const PkBattleTop({
     super.key,
     required this.controller,
+    required this.me,
+    required this.mine,
+    this.skinned = false,
     this.fetchSeats = fetchSeatSnapshot,
     this.every = const Duration(seconds: 8),
   });
-
   final PkBattleController controller;
+  final AppUser me;
+  final PkSeatsData mine;
+
+  /// The room has a skin: the arena's two halves let it show through.
+  final bool skinned;
   final Future<SeatSnapshot?> Function(String streamId) fetchSeats;
   final Duration every;
 
   @override
-  State<PkOpponentRoom> createState() => _PkOpponentRoomState();
-}
-
-class _PkOpponentRoomState extends State<PkOpponentRoom> {
-  Timer? _timer;
-  String? _watching;
-  List<AppUser> _people = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_sync);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _sync());
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_sync);
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _sync() {
-    if (!mounted) return;
-    final c = widget.controller;
-    final on = (c.phase == PkPhase.live || c.phase == PkPhase.countdown) ? c.opponentStreamId : null;
-    if (on == _watching) return;
-    _watching = on;
-    _timer?.cancel();
-    if (on == null) {
-      setState(() => _people = const []);
-      return;
-    }
-    unawaited(_read(on));
-    _timer = Timer.periodic(widget.every, (_) => _read(on));
-  }
-
-  Future<void> _read(String streamId) async {
-    final snap = await widget.fetchSeats(streamId);
-    if (!mounted || _watching != streamId || snap == null) return;
-    final seats = snap.occupants.keys.toList()..sort();
-    setState(() => _people = [for (final seat in seats) snap.occupants[seat]!]);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_watching == null || _people.isEmpty) return const SizedBox.shrink();
-    final name = widget.controller.opponent?.name ?? '';
-    return Container(
-      key: const ValueKey('pk-opponent-room'),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            "$name's room",
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 38,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (final u in _people)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: AppAvatar(name: u.name, imageUrl: u.avatarUrl, size: 36),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The battle header with the opponent's room under it: what the audio rooms (host and viewer) show above their seats.
-class PkBattleTop extends StatelessWidget {
-  const PkBattleTop({super.key, required this.controller, required this.me});
-  final PkBattleController controller;
-  final AppUser me;
-
-  @override
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
-    children: [PkBattleHeader(controller: controller, me: me), PkOpponentRoom(controller: controller)],
+    children: [
+      PkBattleHeader(controller: controller, me: me),
+      PkBattleArena(controller: controller, me: me, mine: mine, skinned: skinned, fetchSeats: fetchSeats, every: every),
+    ],
   );
 }
 
@@ -310,9 +182,10 @@ class _ConfettiPainter extends CustomPainter {
 }
 
 // ------------------------------------------------------------------------------------------------------ video stage
-/// A VIDEO PK battle's picture: the battle header (names, score, clock) over two videos side by side, mine on the left and the
-/// opponent's on the right. [left] and [right] are the two video views (or whatever shows while one is not there yet): this widget
-/// only lays them out, so the same stage serves the host (a local camera and a remote one) and the viewers (two remote ones).
+/// A VIDEO PK battle's picture: the scores and the clock over a slim red / blue bar, then two videos side by side in a red and a
+/// blue frame, mine on the left and the opponent's on the right; whoever leads carries WIN, the other LOSE. [left] and [right] are
+/// the two video views (or whatever shows while one is not there yet): this widget only lays them out, so the same stage serves
+/// the host (a local camera and a remote one) and the viewers (two remote ones).
 class PkVideoStage extends StatelessWidget {
   const PkVideoStage({super.key, required this.controller, required this.me, required this.left, required this.right});
 
@@ -329,41 +202,129 @@ class PkVideoStage extends StatelessWidget {
         PkBattleHeader(controller: controller, me: me),
         ListenableBuilder(
           listenable: controller,
-          builder: (context, _) => Row(
-            children: [
-              Expanded(child: _pane(left, me.name, key: const ValueKey('pk-pane-left'))),
-              const SizedBox(width: 2),
-              Expanded(child: _pane(right, controller.opponent?.name ?? '…', key: const ValueKey('pk-pane-right'))),
-            ],
-          ),
+          builder: (context, _) {
+            if (!controller.fighting) return const SizedBox.shrink();
+            final mine = controller.scoreMine;
+            final theirs = controller.scoreTheirs;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _scores(controller, mine, theirs),
+                Padding(padding: const EdgeInsets.fromLTRB(2, 2, 2, 6), child: PkThinBar(scoreA: mine, scoreB: theirs)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _pane(left, me.name, AppColors.live, mine > theirs ? 'WIN' : (mine < theirs ? 'LOSE' : null),
+                          winning: mine > theirs, key: const ValueKey('pk-pane-left')),
+                    ),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: _pane(right, controller.opponent?.name ?? '…', AppColors.diamond,
+                          theirs > mine ? 'WIN' : (theirs < mine ? 'LOSE' : null),
+                          winning: theirs > mine, key: const ValueKey('pk-pane-right')),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
   }
 
-  Widget _pane(Widget video, String name, {Key? key}) {
+  /// Score, clock, score: the same numbers the audio arena shows, in one row.
+  Widget _scores(PkBattleController c, int mine, int theirs) {
+    final starting = c.phase == PkPhase.countdown;
+    Widget score(int value, Color tint, {required bool end}) => Expanded(
+      child: Row(
+        mainAxisAlignment: end ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!end) Icon(Icons.diamond_rounded, size: 12, color: tint),
+          if (!end) const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              compactCount(value),
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white),
+            ),
+          ),
+          if (end) const SizedBox(width: 3),
+          if (end) Icon(Icons.diamond_rounded, size: 12, color: tint),
+        ],
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          score(mine, AppColors.live, end: false),
+          Container(
+            key: const ValueKey('pk-clock'),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(gradient: AppColors.goldGradient, borderRadius: BorderRadius.circular(12)),
+            child: starting
+                ? const Text('Starting…', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF3A1A5E)))
+                : ValueListenableBuilder<int>(
+                    valueListenable: c.secondsLeft,
+                    builder: (_, seconds, _) => Text(
+                      'PK ${pkClock(seconds)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF3A1A5E)),
+                    ),
+                  ),
+          ),
+          score(theirs, AppColors.diamond, end: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _pane(Widget video, String name, Color frame, String? label, {required bool winning, Key? key}) {
     return AspectRatio(
       key: key,
       aspectRatio: 3 / 4,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const ColoredBox(color: Color(0xFF0B0714)),
-          video,
-          Positioned(
-            left: 8,
-            bottom: 8,
-            right: 8,
-            child: Align(
-              alignment: Alignment.bottomLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
-                child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+      child: Container(
+        decoration: BoxDecoration(border: Border.all(color: frame, width: 2), borderRadius: BorderRadius.circular(10)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Color(0xFF0B0714)),
+              video,
+              Positioned(
+                left: 6,
+                bottom: 6,
+                right: 6,
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
+                        child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (label != null)
+                      Text(
+                        label,
+                        key: ValueKey('pk-${winning ? 'win' : 'lose'}'),
+                        style: TextStyle(
+                          color: winning ? AppColors.gold : Colors.white70,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5,
+                          shadows: const [Shadow(color: Colors.black87, blurRadius: 4)],
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -710,36 +671,33 @@ class _PkBattleEventsState extends State<PkBattleEvents> {
 }
 
 // ------------------------------------------------------------------------------------------------------------- gifting
-/// While a battle is live a gift must count for a side: asks "Send to" (this room or the opponent) and sends it through the
-/// server's PK gift, once per unit. Returns the side it went to ('a' / 'b'), or null if cancelled or it failed.
-Future<String?> sendPkGift(
-  BuildContext context,
-  PkBattleController c,
-  Gift gift,
-  int quantity, {
-  required String mineLabel,
-}) async {
+/// Which host of the battle a gift is for.
+enum PkGiftSide { mine, theirs }
+
+/// While a battle is live, who a gift counts for: the host of THIS room is [PkGiftSide.mine], the other host is [PkGiftSide.theirs].
+/// Null = an ordinary gift (to a guest on a seat, to everyone, or no battle is live).
+PkGiftSide? pkGiftSideFor(PkBattleController c, {required String? recipientId, required String myHostId, bool sendToAll = false}) {
+  if (c.phase != PkPhase.live || sendToAll) return null;
+  if (recipientId == null || recipientId == myHostId) return PkGiftSide.mine;
+  if (recipientId == c.opponent?.id) return PkGiftSide.theirs;
+  return null;
+}
+
+/// The people the gift sheet offers: the room's own list, and while a battle is live the OTHER host too, so a gift to either host is
+/// picked in the sheet like in any audio live (no extra question). "Send to all" never includes the other host.
+List<AppUser> pkGiftSheetRecipients(List<AppUser> base, PkBattleController? c) {
+  final them = c?.opponent;
+  if (c == null || c.phase != PkPhase.live || them == null || base.any((u) => u.id == them.id)) return base;
+  return [...base, them];
+}
+
+/// Sends the gift through the server's PK gift, once per unit, so the coins count for that host's side. Returns the side it went to
+/// ('a' / 'b'), or null if it failed (the reason is shown in a snackbar).
+Future<String?> sendPkGift(BuildContext context, PkBattleController c, Gift gift, int quantity, {required PkGiftSide to}) async {
   final battle = c.battle;
   final mine = c.mySide;
   if (battle == null || mine == null || c.phase != PkPhase.live) return null;
-  var picked = 0; // 0 = this room, 1 = the opponent
-  final theirs = c.opponent?.name ?? 'Opponent';
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (_, setDialog) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        title: const Text('Send to'),
-        content: SegmentedTabs(tabs: [mineLabel, theirs], index: picked, onChanged: (i) => setDialog(() => picked = i)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          TextButton(key: const ValueKey('pk-gift-send'), onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Send')),
-        ],
-      ),
-    ),
-  );
-  if (ok != true || !context.mounted) return null;
-  final side = picked == 0 ? mine : (mine == 'a' ? 'b' : 'a');
+  final side = to == PkGiftSide.mine ? mine : (mine == 'a' ? 'b' : 'a');
   try {
     for (var i = 0; i < quantity; i++) {
       await c.gift(side, gift);

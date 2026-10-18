@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/data/pk_battles_repository.dart';
 import 'package:sabalive/state/pk_battle_controller.dart';
@@ -282,5 +283,75 @@ void main() {
     expect(api.calls, isNot(contains('finalize')));
     c.dispose();
     expect(api.watch.closed, isTrue);
+  });
+
+  scenario('End PK: a host who gives up loses (even when ahead) and the other host wins', (t, elapse, api) async {
+    final c = make(api);
+    c.start();
+    await t.pump();
+    api.emit(pkRow(status: 'live', scoreA: 90, scoreB: 10, startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    expect(c.phase, PkPhase.live);
+    await c.giveUp();
+    await t.pump();
+    expect(api.calls, contains('give-up'));
+    expect(api.calls, isNot(contains('finalize')), reason: 'the score does not decide a give-up');
+    expect(c.phase, PkPhase.finished);
+    expect(c.result?.outcome, PkOutcome.lose, reason: 'I was ahead 90 to 10, and I still lose by giving up');
+    expect(c.result?.forfeit, isTrue, reason: 'the result screen explains it');
+    expect(c.busy, isFalse);
+    c.dispose();
+  });
+
+  scenario('End PK does nothing for a viewer, before the battle is live, or when there is no battle', (t, elapse, api) async {
+    final viewer = make(api, iAmHost: false);
+    viewer.start();
+    await t.pump();
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    await viewer.giveUp();
+    expect(api.calls, isNot(contains('give-up')), reason: 'a viewer is not a host of the battle');
+    viewer.dispose();
+
+    final host = make(api);
+    host.start();
+    await t.pump();
+    await host.giveUp();
+    expect(api.calls, isNot(contains('give-up')), reason: 'no battle, nothing to end');
+    host.dispose();
+  });
+
+  scenario('End PK on a server without the give-up function: the battle goes on and the reason is shown', (t, elapse, api) async {
+    final c = make(api);
+    c.start();
+    await t.pump();
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 20))));
+    await t.pump();
+    api.giveUpError = const PostgrestException(message: 'Could not find the function public.pk_give_up_v2(p_battle_id) in the schema cache', code: 'PGRST202');
+    await c.giveUp();
+    await t.pump();
+    expect(c.phase, PkPhase.live, reason: 'still fighting');
+    expect(c.message, contains('latest update'));
+    expect(c.busy, isFalse);
+    // the final bell still closes it, and a failed End PK did not use up that one chance
+    api.giveUpError = null;
+    await elapse(const Duration(seconds: 22));
+    await t.pump();
+    expect(api.calls.where((x) => x == 'finalize').length, 1);
+    c.dispose();
+  });
+
+  scenario('End PK: any other server error is shown too, and the battle goes on', (t, elapse, api) async {
+    final c = make(api);
+    c.start();
+    await t.pump();
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    api.giveUpError = Exception('message: Only a host of this battle can end it');
+    await c.giveUp();
+    await t.pump();
+    expect(c.phase, PkPhase.live);
+    expect(c.message, 'Only a host of this battle can end it');
+    c.dispose();
   });
 }

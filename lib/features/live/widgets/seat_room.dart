@@ -327,6 +327,9 @@ class SeatRoom extends StatelessWidget {
     this.onAddSeat,
     this.onRemoveSeat,
     this.header,
+    this.showSeats = true,
+    this.onRequests,
+    this.requestCount = 0,
     this.occupants = const {},
     this.mutedSeats = const {},
     this.speakingSeats = const {},
@@ -350,6 +353,13 @@ class SeatRoom extends StatelessWidget {
 
   /// Drawn above the seats (the PK battle header while a battle is on); null = nothing, the seats start where they always did.
   final Widget? header;
+
+  /// False while the PK arena (in [header]) draws the seats of both rooms itself: the grid and the Add / Remove buttons wait.
+  final bool showSeats;
+
+  /// The host's list of people who asked for a seat (null = this room has no such list), and how many are waiting.
+  final VoidCallback? onRequests;
+  final int requestCount;
   /// Who's actually sitting where, keyed by seat number (1-based). Empty by
   /// default so callers that don't track occupancy render exactly as before.
   final Map<int, AppUser> occupants;
@@ -403,26 +413,31 @@ class SeatRoom extends StatelessWidget {
               )
             else ...[
               ?header,
-              SeatGrid(
-                seatCount: seatCount,
-                occupants: occupants,
-                lockedSeats: lockedSeats,
-                mutedSeats: mutedSeats,
-                speakingSeats: speakingSeats,
-                diamonds: diamonds,
-                hostId: hostId,
-                emotes: emotes,
-                onSeatTap: onSeatTap,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _seatBtn(Icons.remove_rounded, 'Remove 4', onRemoveSeat),
-                  const SizedBox(width: 12),
-                  _seatBtn(Icons.add_rounded, 'Add 4', onAddSeat),
-                ],
-              ),
+              if (showSeats) ...[
+                SeatGrid(
+                  seatCount: seatCount,
+                  occupants: occupants,
+                  lockedSeats: lockedSeats,
+                  mutedSeats: mutedSeats,
+                  speakingSeats: speakingSeats,
+                  diamonds: diamonds,
+                  hostId: hostId,
+                  emotes: emotes,
+                  onSeatTap: onSeatTap,
+                ),
+                const SizedBox(height: 16),
+                // a Wrap: with the Requests button three of them can be wider than a small phone
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 10,
+                  children: [
+                    _seatBtn(Icons.remove_rounded, 'Remove 4', onRemoveSeat),
+                    _seatBtn(Icons.add_rounded, 'Add 4', onAddSeat),
+                    if (onRequests != null) _seatBtn(Icons.person_add_alt_1_rounded, 'Requests', onRequests, badge: requestCount),
+                  ],
+                ),
+              ],
             ],
       ],
     );
@@ -434,24 +449,39 @@ class SeatRoom extends StatelessWidget {
     );
   }
 
-  Widget _seatBtn(IconData icon, String label, VoidCallback? onTap) {
+  Widget _seatBtn(IconData icon, String label, VoidCallback? onTap, {int badge = 0}) {
     return Opacity(
       opacity: onTap == null ? 0.4 : 1,
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 16, color: Colors.white),
-            const SizedBox(width: 5),
-            Text(label,
-                style: const TextStyle(fontSize: 11.5, color: Colors.white)),
-          ]),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 16, color: Colors.white),
+                const SizedBox(width: 5),
+                Text(label,
+                    style: const TextStyle(fontSize: 11.5, color: Colors.white)),
+              ]),
+            ),
+            if (badge > 0)
+              Positioned(
+                right: -4,
+                top: -5,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
+                  child: Text('$badge', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white)),
+                ),
+              ),
+          ],
         ),
       ),
     );

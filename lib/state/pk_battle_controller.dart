@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/utils/errors.dart';
 import '../data/models.dart';
 import '../data/pk_battles_repository.dart';
 
@@ -128,6 +129,9 @@ class PkBattleController extends ChangeNotifier {
   /// Is a battle going on that blocks other actions (not idle, not over)?
   bool get inBattle => const {PkPhase.inviting, PkPhase.incoming, PkPhase.countdown, PkPhase.live}.contains(_phase);
 
+  /// The two rooms are face to face: the 3-2-1 or the battle itself (the arena is on screen, not just a "waiting" strip).
+  bool get fighting => _phase == PkPhase.countdown || _phase == PkPhase.live;
+
   DateTime _serverNow() => _clock().add(_skew);
 
   // ------------------------------------------------------------------------------------------------------ start / stop
@@ -236,6 +240,27 @@ class PkBattleController extends ChangeNotifier {
     await _run(() async {
       await api.cancel(b.id);
       _cancelled(b, 'The PK was cancelled.');
+    });
+  }
+
+  /// A host ends a live battle by giving up: they lose and the other host wins (reason 'forfeit', so both result screens explain it).
+  /// Only while it is live and only for a host of the battle. Needs the server's `pk_give_up_v2`: on a server without it the battle
+  /// goes on and [message] says so.
+  Future<void> giveUp() async {
+    final b = _battle;
+    if (_busy || b == null || _phase != PkPhase.live || !amHost) return;
+    await _run(() async {
+      try {
+        final row = await api.giveUp(b.id);
+        _finalizeSent = true;
+        _apply(row);
+      } catch (e) {
+        if (isMissingOnServer(e)) {
+          _message = friendlyError(e);
+        } else {
+          rethrow;
+        }
+      }
     });
   }
 

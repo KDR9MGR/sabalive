@@ -108,6 +108,41 @@ void main() {
     await s.sync('pk-b1');
     expect(seen, isNotNull);
   });
+test('reapply: in a battle channel the role is applied again (a viewer was seated), outside one nothing happens', () async {
+    var onSeat = false;
+    final s = make(broadcaster: (_) => onSeat);
+    expect(s.inSharedChannel, isFalse);
+    await s.reapply(); // in the live's own channel: the screen changes the role itself
+    expect(switches, isEmpty);
+
+    await s.sync('pk-b1');
+    expect(s.inSharedChannel, isTrue);
+    expect(switches, ['pk-b1']);
+    expect(roles, [false]);
+    onSeat = true; // the host said yes: the viewer holds a seat now
+    await s.reapply();
+    expect(switches, ['pk-b1', 'pk-b1'], reason: 'the same channel again, with the new role');
+    expect(roles, [false, true]);
+
+    await s.sync(null);
+    expect(s.inSharedChannel, isFalse);
+    await s.reapply();
+    expect(switches.length, 3, reason: 'back in its own channel: nothing more');
+  });
+
+  test('reapply before the first join does nothing, and a failure is reported', () async {
+    final errors = <Object>[];
+    final early = make(joined: false);
+    await early.reapply();
+    expect(switches, isEmpty);
+
+    final s = make(onError: errors.add);
+    await s.sync('pk-b1');
+    failWith = Exception('token');
+    await s.reapply();
+    expect(errors, hasLength(1));
+  });
+
 }
 
 class _FakeEngine implements RtcEngine {

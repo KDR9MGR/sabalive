@@ -52,6 +52,9 @@ abstract class PkBattlesApi {
   Future<void> cancel(String battleId);
   Future<PkBattleInfo> beginV2(String battleId);
   Future<PkBattleInfo> finalizeNow(String battleId);
+
+  /// The host ends a live battle by giving up: the other host wins (reason 'forfeit').
+  Future<PkBattleInfo> giveUp(String battleId);
   Future<void> sendGift(String battleId, String side, Gift gift);
   Future<void> setReady(String streamId, bool ready);
 
@@ -266,6 +269,15 @@ class PkBattlesRepository implements PkBattlesApi {
       'send_pk_gift',
       params: {'p_battle_id': battleId, 'p_side': side, 'p_gift_id': gift.id},
     );
+  }
+
+  @override
+  Future<PkBattleInfo> giveUp(String battleId) async {
+    final row = await supabase.rpc(
+      'pk_give_up_v2',
+      params: {'p_battle_id': battleId},
+    );
+    return PkBattleInfo.fromRow(row as Map<String, dynamic>);
   }
 
   @override

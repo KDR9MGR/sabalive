@@ -1087,18 +1087,23 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     final giftChoice = await showGiftSheet(
       context,
       hostName: widget.stream.host.name,
-      recipients: _giftRecipients(),
+      recipients: pkGiftSheetRecipients(_giftRecipients(), _pk),
     );
     if (giftChoice == null || !mounted) return;
     final gift = giftChoice.gift;
     final me = context.read<AuthController>().user ?? Mock.me;
     final pk = _pk;
-    if (pk != null &&
-        pk.phase == PkPhase.live &&
-        !giftChoice.sendToAll &&
-        (giftChoice.recipient == null || giftChoice.recipient!.id == widget.stream.host.id)) {
-      // a gift to the host during a battle must count for a side: ask which, and send it as a PK gift
-      final side = await sendPkGift(context, pk, gift, giftChoice.quantity, mineLabel: widget.stream.host.name);
+    final pkSide = pk == null
+        ? null
+        : pkGiftSideFor(
+            pk,
+            recipientId: giftChoice.recipient?.id,
+            myHostId: widget.stream.host.id,
+            sendToAll: giftChoice.sendToAll,
+          );
+    if (pk != null && pkSide != null) {
+      // a gift to either host of a battle counts for that host's side (the other host is a recipient in the sheet)
+      final side = await sendPkGift(context, pk, gift, giftChoice.quantity, to: pkSide);
       if (side != null && mounted) {
         _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity));
       }
