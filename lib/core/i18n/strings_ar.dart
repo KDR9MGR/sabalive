@@ -806,4 +806,13 @@ const Map<String, String> arStrings = {
   'Start Video PK': 'ابدأ PK بالفيديو',
   '{0}\'s room': 'غرفة {0}',
   'A PK battle is already on': 'معركة PK قائمة بالفعل',
+  'WIN': 'فوز',
+  'LOSE': 'خسارة',
+  'Remove seat': 'إزالة مقعد',
+  'Add seat': 'إضافة مقعد',
+  'End PK': 'إنهاء PK',
+  'End the PK now?': 'هل تنهي PK الآن؟',
+  'You give up and the other host wins. This cannot be undone.': 'ستستسلم ويفوز المضيف الآخر. لا يمكن التراجع عن ذلك.',
+  'Request sent. Waiting for the host to accept.': 'تم إرسال الطلب. بانتظار موافقة المضيف.',
+  'Ask before someone sits': 'اسألني قبل أن يجلس أحد',
 };

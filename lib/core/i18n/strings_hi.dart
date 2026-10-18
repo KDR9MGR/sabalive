@@ -806,4 +806,13 @@ const Map<String, String> hiStrings = {
   'Start Video PK': 'वीडियो PK शुरू करें',
   '{0}\'s room': '{0} का रूम',
   'A PK battle is already on': 'PK बैटल पहले से चल रही है',
+  'WIN': 'जीत',
+  'LOSE': 'हार',
+  'Remove seat': 'सीट हटाएँ',
+  'Add seat': 'सीट जोड़ें',
+  'End PK': 'PK खत्म करें',
+  'End the PK now?': 'PK अभी खत्म करें?',
+  'You give up and the other host wins. This cannot be undone.': 'आप हार मान लेते हैं और दूसरा होस्ट जीतता है। इसे वापस नहीं किया जा सकता।',
+  'Request sent. Waiting for the host to accept.': 'अनुरोध भेज दिया गया। होस्ट के स्वीकार करने का इंतज़ार है।',
+  'Ask before someone sits': 'किसी के बैठने से पहले पूछें',
 };

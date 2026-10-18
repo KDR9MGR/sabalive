@@ -806,4 +806,13 @@ const Map<String, String> ptBrStrings = {
   'Start Video PK': 'Iniciar PK de vídeo',
   '{0}\'s room': 'Sala de {0}',
   'A PK battle is already on': 'Já há uma batalha PK em andamento',
+  'WIN': 'VITÓRIA',
+  'LOSE': 'DERROTA',
+  'Remove seat': 'Remover assento',
+  'Add seat': 'Adicionar assento',
+  'End PK': 'Encerrar PK',
+  'End the PK now?': 'Encerrar a PK agora?',
+  'You give up and the other host wins. This cannot be undone.': 'Você desiste e o outro anfitrião vence. Isso não pode ser desfeito.',
+  'Request sent. Waiting for the host to accept.': 'Pedido enviado. Aguardando o anfitrião aceitar.',
+  'Ask before someone sits': 'Perguntar antes de alguém sentar',
 };

@@ -806,4 +806,13 @@ const Map<String, String> bnStrings = {
   'Start Video PK': 'ভিডিও PK শুরু করুন',
   '{0}\'s room': '{0}-এর রুম',
   'A PK battle is already on': 'একটি PK ব্যাটল আগে থেকেই চলছে',
+  'WIN': 'জয়',
+  'LOSE': 'হার',
+  'Remove seat': 'সিট সরান',
+  'Add seat': 'সিট যোগ করুন',
+  'End PK': 'PK শেষ করুন',
+  'End the PK now?': 'এখনই PK শেষ করবেন?',
+  'You give up and the other host wins. This cannot be undone.': 'আপনি হার মানছেন এবং অন্য হোস্ট জিতবে। এটি আর ফেরানো যাবে না।',
+  'Request sent. Waiting for the host to accept.': 'অনুরোধ পাঠানো হয়েছে। হোস্টের অনুমোদনের অপেক্ষা করা হচ্ছে।',
+  'Ask before someone sits': 'কেউ বসার আগে জিজ্ঞাসা করুন',
 };

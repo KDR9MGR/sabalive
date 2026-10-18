@@ -806,4 +806,13 @@ const Map<String, String> neStrings = {
   'Start Video PK': 'भिडियो PK सुरु गर्नुहोस्',
   '{0}\'s room': '{0} को रुम',
   'A PK battle is already on': 'PK ब्याटल पहिले नै चलिरहेको छ',
+  'WIN': 'जित',
+  'LOSE': 'हार',
+  'Remove seat': 'सिट हटाउनुहोस्',
+  'Add seat': 'सिट थप्नुहोस्',
+  'End PK': 'PK अन्त्य गर्नुहोस्',
+  'End the PK now?': 'PK अहिले नै अन्त्य गर्ने?',
+  'You give up and the other host wins. This cannot be undone.': 'तपाईंले हार मान्नुहुन्छ र अर्को होस्ट जित्छ। यो फिर्ता गर्न मिल्दैन।',
+  'Request sent. Waiting for the host to accept.': 'अनुरोध पठाइयो। होस्टले स्वीकार गर्ने प्रतीक्षा गर्दै।',
+  'Ask before someone sits': 'कोही बस्नु अघि सोध्नुहोस्',
 };

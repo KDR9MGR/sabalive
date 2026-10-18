@@ -806,4 +806,13 @@ const Map<String, String> filStrings = {
   'Start Video PK': 'Simulan ang Video PK',
   '{0}\'s room': 'Room ni {0}',
   'A PK battle is already on': 'May PK battle na ngayon',
+  'WIN': 'PANALO',
+  'LOSE': 'TALO',
+  'Remove seat': 'Alisin ang upuan',
+  'Add seat': 'Magdagdag ng upuan',
+  'End PK': 'Tapusin ang PK',
+  'End the PK now?': 'Tapusin na ang PK ngayon?',
+  'You give up and the other host wins. This cannot be undone.': 'Susuko ka at mananalo ang kabilang host. Hindi na ito mababawi.',
+  'Request sent. Waiting for the host to accept.': 'Naipadala na ang request. Hinihintay ang host na tanggapin ito.',
+  'Ask before someone sits': 'Magtanong bago may umupo',
 };

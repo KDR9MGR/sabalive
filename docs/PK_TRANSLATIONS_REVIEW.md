@@ -41,5 +41,14 @@ key number shown here), then run `python3 tool/i18n/gen.py`.
 | 815 | Start Video PK | वीडियो PK शुरू करें | ভিডিও PK শুরু করুন | भिडियो PK सुरु गर्नुहोस् | ویڈیو PK شروع کریں | ابدأ PK بالفيديو | Simulan ang Video PK | Iniciar PK de vídeo |
 | 816 | {0}'s room | {0} का रूम | {0}-এর রুম | {0} को रुम | {0} کا روم | غرفة {0} | Room ni {0} | Sala de {0} |
 | 817 | A PK battle is already on | PK बैटल पहले से चल रही है | একটি PK ব্যাটল আগে থেকেই চলছে | PK ब्याटल पहिले नै चलिरहेको छ | PK بیٹل پہلے سے جاری ہے | معركة PK قائمة بالفعل | May PK battle na ngayon | Já há uma batalha PK em andamento |
+| 818 | WIN | जीत | জয় | जित | جیت | فوز | PANALO | VITÓRIA |
+| 819 | LOSE | हार | হার | हार | ہار | خسارة | TALO | DERROTA |
+| 820 | Remove seat | सीट हटाएँ | সিট সরান | सिट हटाउनुहोस् | سیٹ ہٹائیں | إزالة مقعد | Alisin ang upuan | Remover assento |
+| 821 | Add seat | सीट जोड़ें | সিট যোগ করুন | सिट थप्नुहोस् | سیٹ شامل کریں | إضافة مقعد | Magdagdag ng upuan | Adicionar assento |
+| 822 | End PK | PK खत्म करें | PK শেষ করুন | PK अन्त्य गर्नुहोस् | PK ختم کریں | إنهاء PK | Tapusin ang PK | Encerrar PK |
+| 823 | End the PK now? | PK अभी खत्म करें? | এখনই PK শেষ করবেন? | PK अहिले नै अन्त्य गर्ने? | کیا PK ابھی ختم کریں؟ | هل تنهي PK الآن؟ | Tapusin na ang PK ngayon? | Encerrar a PK agora? |
+| 824 | You give up and the other host wins. This cannot be undone. | आप हार मान लेते हैं और दूसरा होस्ट जीतता है। इसे वापस नहीं किया जा सकता। | আপনি হার মানছেন এবং অন্য হোস্ট জিতবে। এটি আর ফেরানো যাবে না। | तपाईंले हार मान्नुहुन्छ र अर्को होस्ट जित्छ। यो फिर्ता गर्न मिल्दैन। | آپ ہار مان لیتے ہیں اور دوسرا ہوسٹ جیت جاتا ہے۔ اسے واپس نہیں کیا جا سکتا۔ | ستستسلم ويفوز المضيف الآخر. لا يمكن التراجع عن ذلك. | Susuko ka at mananalo ang kabilang host. Hindi na ito mababawi. | Você desiste e o outro anfitrião vence. Isso não pode ser desfeito. |
+| 825 | Request sent. Waiting for the host to accept. | अनुरोध भेज दिया गया। होस्ट के स्वीकार करने का इंतज़ार है। | অনুরোধ পাঠানো হয়েছে। হোস্টের অনুমোদনের অপেক্ষা করা হচ্ছে। | अनुरोध पठाइयो। होस्टले स्वीकार गर्ने प्रतीक्षा गर्दै। | درخواست بھیج دی گئی۔ ہوسٹ کی منظوری کا انتظار ہے۔ | تم إرسال الطلب. بانتظار موافقة المضيف. | Naipadala na ang request. Hinihintay ang host na tanggapin ito. | Pedido enviado. Aguardando o anfitrião aceitar. |
+| 826 | Ask before someone sits | किसी के बैठने से पहले पूछें | কেউ বসার আগে জিজ্ঞাসা করুন | कोही बस्नु अघि सोध्नुहोस् | کسی کے بیٹھنے سے پہلے پوچھیں | اسألني قبل أن يجلس أحد | Magtanong bago may umupo | Perguntar antes de alguém sentar |
 
 Notes: 'PK', 'Go Live' and the word 'battle' follow the wording the app already used for PK (for example Hindi "PK बैटल", Arabic "معركة PK"). Filipino keeps a few English terms ("PK battle", "Random"), as the older strings do.

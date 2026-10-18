@@ -44,6 +44,15 @@ void main() {
     'You are matched with another host who is live right now and looking for a PK. A random PK lasts 5 minutes.',
     'Audio PK: you go live in a voice room, then invite a host you follow or find a random opponent.',
     'Video PK: you go live on camera, then invite a host you follow or find a random opponent. Both cameras show side by side.',
+    'WIN',
+    'LOSE',
+    'Remove seat',
+    'Add seat',
+    'End PK',
+    'End the PK now?',
+    'You give up and the other host wins. This cannot be undone.',
+    'Ask before someone sits',
+    'Request sent. Waiting for the host to accept.',
   ];
 
   const sameInFilipino = {'PK battle', 'Random', 'Audio PK', 'Video PK', 'PK invite'};
