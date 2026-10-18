@@ -1,5 +1,5 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# Minimum iOS version for the app and every pod (the owner's choice, 2026-10-18: iOS 17).
+platform :ios, '17.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -45,6 +45,10 @@ post_install do |installer|
     # silently resolves to `denied` instead of showing the system dialog.
     # https://pub.dev/packages/permission_handler#ios
     target.build_configurations.each do |config|
+      # Many pods still declare iOS 9-14 in their podspecs (AppAuth, Agora, Firebase, ...);
+      # `platform` above does not override that, so pin every pod target to the app's minimum.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
+
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << '\'PERMISSION_CAMERA=1\''
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << '\'PERMISSION_MICROPHONE=1\''
