@@ -1,5 +1,7 @@
 # Promotion: staging work -> production (October 2026)
 
+> **2026-10-18: the time-of-day rule in this plan (the quiet window 21:00-04:00 UTC, `--any-hour`) was removed by the owner.** `promote_step.sh` no longer checks the hour and ignores `--any-hour`; everything else below still applies. See `DEPLOY_CHECKLIST.md`.
+
 Status: PLANNED, nothing of this is on production yet. Written 2026-10-12. Follows `DEPLOY_CHECKLIST.md` (read it first).
 Nothing below runs without the owner saying "go" for that step in chat; a past "go" covers one step.
 

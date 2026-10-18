@@ -6,14 +6,14 @@
 #   PROMOTE_CONFIRM=<version> scripts/prod/promote_step.sh <version> --apply
 #   PROMOTE_CONFIRM=<version> scripts/prod/promote_step.sh <version> --apply --record-only   # objects already there (hand-applied)
 #   ... --staging            rehearse on STAGING (its own link folder; production is never touched)
-#   ... --any-hour           allow outside the quiet window 21:00-04:00 UTC (only for additive "tier A" files)
+#   ... --any-hour           accepted and ignored: there is no time-of-day rule any more (owner's decision, 2026-10-18)
 #   ... --replay             also replay every migration on a scratch Postgres first (needs postgresql@15+)
 #
 # What it does, in order (and stops at the first problem):
 #   1. finds the migration and its down script (supabase/rollbacks/<version>*_down.sql); refuses if either is missing
 #   2. says WHICH project it will touch, and refuses production unless the link folder really is production
 #   3. checks the version is still pending on that project
-#   4. production only: inside the quiet window (unless --any-hour), and a backup less than 6 hours old exists
+#   4. production only: a backup less than 6 hours old exists (any hour of the day is allowed)
 #   5. baseline: scripts/prod/healthcheck.sh has no FAIL and scripts/prod/smoke_play_app.sh passes
 #   6. applies the file in ONE transaction with lock_timeout 5s (`supabase db query --linked -f`), then records it
 #      (`supabase migration repair --status applied`), exactly how the Lucky Box pull back was shipped
@@ -88,13 +88,9 @@ if grep -qiE '^[[:space:]]*(begin|commit)[[:space:]]*;' "$FILE" && [ "$RECORD_ON
   die "$FILE has its own begin/commit: run it by hand, this script wraps files in one transaction itself"
 fi
 
-# ---- 4. production only: quiet window and a fresh backup
+# ---- 4. production only: a fresh backup (no time-of-day rule: the owner runs migrations when they choose; 2026-10-18)
 if [ "$STAGING" -eq 0 ]; then
-  HOUR=$(date -u +%H); HOUR=$((10#$HOUR))
-  if [ "$HOUR" -ge 21 ] || [ "$HOUR" -lt 4 ]; then say "PASS  inside the quiet window (21:00-04:00 UTC), now $(date -u +%H:%M) UTC"
-  elif [ "$ANY_HOUR" -eq 1 ]; then say "WARN  outside the quiet window (now $(date -u +%H:%M) UTC): allowed by --any-hour"
-  else die "now is $(date -u +%H:%M) UTC, outside the quiet window 21:00-04:00 UTC (use --any-hour only for additive tier-A files)"; fi
-
+  say "INFO  time of day is not restricted, now $(date -u +%H:%M) UTC"
   ROOT="${SABALIVE_BACKUP_DIR:-$HOME/sabalive-backups}"
   LATEST=$(ls -1 "$ROOT" 2>/dev/null | grep -E '^[0-9]{8}T[0-9]{6}Z$' | sort | tail -1)
   [ -n "$LATEST" ] || die "no backup in $ROOT: run scripts/prod/backup.sh first"

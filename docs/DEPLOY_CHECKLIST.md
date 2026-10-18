@@ -10,7 +10,7 @@ Read the rules, then follow the steps. Every script lives in `scripts/`.
 
 **1. While an old app version is live, change the database only by adding to it.**
 
-| Safe (additive) | Needs care (do it off-peak, small steps, down script ready) | Never while an old app is live |
+| Safe (additive) | Needs care (small steps, down script ready; a quiet hour makes it cheaper) | Never while an old app is live |
 |---|---|---|
 | new table, new column with a default, new function with a NEW name, new index (`concurrently`), new Edge Function | `create or replace` of a function the app calls (the behaviour changes for everyone), a new trigger or RLS policy on a busy table, `alter column ... type` (rewrites the table, locks it), a bulk `update` (every changed row is a Realtime event for every phone) | renaming or dropping a column, table or function the app uses; changing a function's arguments or return type; making a column `not null`; tightening an RLS policy the app depends on |
 
@@ -33,8 +33,10 @@ you did not mean to ship, stop and ask.
 a login wave, and the Google sign-in error appeared for many people at exactly that moment. Use
 them for planned work (with auto-end ON) or after the other steps below have failed.
 
-**6. Push in the quiet window.** Traffic is lowest roughly 21:00-04:00 UTC (02:30-09:30 IST). Do not
-push at 14:00-20:00 UTC, the evening peak.
+**6. Run migrations at any hour, when the owner says so.** There is no quiet-window rule (the owner removed it on 2026-10-18).
+For information only: traffic is lowest roughly 21:00-04:00 UTC (02:30-09:30 IST) and highest around 14:00-20:00 UTC, so a
+change from the middle column of the table costs less in a quiet hour. Everything else in this list (backup, health check,
+smoke test, dry run, the owner's explicit go) still applies at every hour.
 
 ## Before a push
 
@@ -44,7 +46,7 @@ push at 14:00-20:00 UTC, the evening peak.
 - [ ] **Rehearse on staging:** `scripts/staging/db_push.sh --apply`, then `scripts/staging/check.sh` must end ALL PASSED
       (health + the 12-step Play-app smoke test). Try the change in a staging app build or the staging panel
       (`docs/STAGING.md`). Anything that fails there never reaches production.
-- [ ] Classify each migration with the table above. Anything in the middle column: plan the quiet hour
+- [ ] Classify each migration with the table above. Anything in the middle column: plan the steps
       and write the down script. Anything in the third column: stop, redesign.
 - [ ] `supabase/rollbacks/<version>_down.sql` exists for each new migration.
 - [ ] `supabase db push --dry-run` lists **only** the migrations you intend to ship.
