@@ -153,3 +153,22 @@ select '8 legacy invite on busy legacy lives is still refused (expect raised)' a
 select '8 no function is callable by anon (expect 0)' as check, count(*) as n
   from information_schema.routine_privileges
   where routine_schema = 'public' and grantee = 'anon' and routine_name in ('pk_set_ready','pk_invite_v2','pk_eligible_following','pk_random_join','pk_random_leave','pk_begin_v2','pk_forfeit_sweep','pk_stream_busy','pk_hosts_blocked','pk_now');
+
+-- 9. the panel's rules editor function (migration 20261018100000): staff only, validated, audited
+insert into auth.users (id, email) values ('9a000001-0000-0000-0000-000000000001', 'staffpk@x'), ('9b000001-0000-0000-0000-000000000001', 'plainpk@x');
+insert into public.staff_roles (user_id, role) values ('9a000001-0000-0000-0000-000000000001', 'admin') on conflict do nothing;
+select set_config('request.jwt.claim.sub', '9b000001-0000-0000-0000-000000000001', false);
+select '9 a plain user cannot change the rules (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{300,600}', 300, 60, 6, 20)$$) as result;
+select set_config('request.jwt.claim.sub', '9a000001-0000-0000-0000-000000000001', false);
+select '9 a Master can: lengths come back sorted (expect {300,600,1800,2400}, 300, 90 after the change below)' as check, invite_durations, random_duration from public.pk_config;
+select public.admin_set_pk_config('{2400,300,1800,600}', 420, 70, 8, 25);
+select '9 saved, sorted (expect {300,600,1800,2400}, 420, 70, 8, 25)' as check, invite_durations, random_duration, forfeit_grace_seconds, invites_per_minute, random_queue_seconds from public.pk_config;
+select '9 an audit line was written (expect 1)' as check, count(*) as n from public.audit_logs where action = 'PK rules changed';
+select '9 a grace of 30 s is refused (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{300}', 300, 30, 6, 20)$$) as result;
+select '9 a grace of 120 s is refused (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{300}', 300, 120, 6, 20)$$) as result;
+select '9 a length of 10 s is refused (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{10}', 300, 60, 6, 20)$$) as result;
+select '9 a duplicated length is refused (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{300,300}', 300, 60, 6, 20)$$) as result;
+select '9 nine lengths are refused (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{60,120,180,240,300,360,420,480,540}', 300, 60, 6, 20)$$) as result;
+select '9 a null is refused (expect raised)' as check, pg_temp.raises($$select public.admin_set_pk_config('{300}', null, 60, 6, 20)$$) as result;
+select '9 the refused calls changed nothing (expect 420)' as check, random_duration from public.pk_config;
+select '9 anon cannot call it (expect 0)' as check, count(*) as n from information_schema.routine_privileges where routine_schema = 'public' and grantee = 'anon' and routine_name = 'admin_set_pk_config';
