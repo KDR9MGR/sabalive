@@ -815,4 +815,9 @@ const Map<String, String> arStrings = {
   'You give up and the other host wins. This cannot be undone.': 'ستستسلم ويفوز المضيف الآخر. لا يمكن التراجع عن ذلك.',
   'Request sent. Waiting for the host to accept.': 'تم إرسال الطلب. بانتظار موافقة المضيف.',
   'Ask before someone sits': 'اسألني قبل أن يجلس أحد',
+  'Go to {0}\'s room': 'الانتقال إلى غرفة {0}',
+  'Join their room to chat, send gifts and take a seat there.': 'انتقل إلى غرفتهم للدردشة وإرسال الهدايا وحجز مقعد هناك.',
+  'That live is not available any more.': 'هذا البث لم يعد متاحًا.',
+  '{0} won!': 'فاز {0}!',
+  'The other host gave up.': 'استسلم المضيف الآخر.',
 };

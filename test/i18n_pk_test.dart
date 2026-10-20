@@ -53,6 +53,9 @@ void main() {
     'You give up and the other host wins. This cannot be undone.',
     'Ask before someone sits',
     'Request sent. Waiting for the host to accept.',
+    'Join their room to chat, send gifts and take a seat there.',
+    'That live is not available any more.',
+    'The other host gave up.',
   ];
 
   const sameInFilipino = {'PK battle', 'Random', 'Audio PK', 'Video PK', 'PK invite'};
@@ -79,6 +82,9 @@ void main() {
       expect(tr('10 min'), contains('10'), reason: l.code);
       expect(tr('Waiting for Asha…'), contains('Asha'), reason: l.code);
       expect(tr("Asha's room"), allOf(contains('Asha'), isNot(contains('{0}'))), reason: l.code);
+      expect(tr('Asha won!'), allOf(contains('Asha'), isNot(contains('{0}')), isNot('Asha won!')), reason: l.code);
+      final go = tr("Go to Asha's room");
+      expect(go, allOf(contains('Asha'), isNot(contains('{0}')), isNot("Go to Asha's room")), reason: l.code);
     }
   });
 

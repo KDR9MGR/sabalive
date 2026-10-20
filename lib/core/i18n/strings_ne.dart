@@ -815,4 +815,9 @@ const Map<String, String> neStrings = {
   'You give up and the other host wins. This cannot be undone.': 'तपाईंले हार मान्नुहुन्छ र अर्को होस्ट जित्छ। यो फिर्ता गर्न मिल्दैन।',
   'Request sent. Waiting for the host to accept.': 'अनुरोध पठाइयो। होस्टले स्वीकार गर्ने प्रतीक्षा गर्दै।',
   'Ask before someone sits': 'कोही बस्नु अघि सोध्नुहोस्',
+  'Go to {0}\'s room': '{0} को रुममा जानुहोस्',
+  'Join their room to chat, send gifts and take a seat there.': 'च्याट गर्न, उपहार पठाउन र सिट लिन उनको रुममा जानुहोस्।',
+  'That live is not available any more.': 'त्यो लाइभ अब उपलब्ध छैन।',
+  '{0} won!': '{0} जित्नुभयो!',
+  'The other host gave up.': 'अर्को होस्टले हार मान्यो।',
 };

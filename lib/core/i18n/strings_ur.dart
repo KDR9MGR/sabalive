@@ -815,4 +815,9 @@ const Map<String, String> urStrings = {
   'You give up and the other host wins. This cannot be undone.': 'آپ ہار مان لیتے ہیں اور دوسرا ہوسٹ جیت جاتا ہے۔ اسے واپس نہیں کیا جا سکتا۔',
   'Request sent. Waiting for the host to accept.': 'درخواست بھیج دی گئی۔ ہوسٹ کی منظوری کا انتظار ہے۔',
   'Ask before someone sits': 'کسی کے بیٹھنے سے پہلے پوچھیں',
+  'Go to {0}\'s room': '{0} کے روم میں جائیں',
+  'Join their room to chat, send gifts and take a seat there.': 'چیٹ کرنے، تحائف بھیجنے اور سیٹ لینے کے لیے ان کے روم میں جائیں۔',
+  'That live is not available any more.': 'وہ لائیو اب دستیاب نہیں ہے۔',
+  '{0} won!': '{0} جیت گئے!',
+  'The other host gave up.': 'دوسرے ہوسٹ نے ہار مان لی۔',
 };

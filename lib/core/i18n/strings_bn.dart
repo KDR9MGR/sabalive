@@ -815,4 +815,9 @@ const Map<String, String> bnStrings = {
   'You give up and the other host wins. This cannot be undone.': 'আপনি হার মানছেন এবং অন্য হোস্ট জিতবে। এটি আর ফেরানো যাবে না।',
   'Request sent. Waiting for the host to accept.': 'অনুরোধ পাঠানো হয়েছে। হোস্টের অনুমোদনের অপেক্ষা করা হচ্ছে।',
   'Ask before someone sits': 'কেউ বসার আগে জিজ্ঞাসা করুন',
+  'Go to {0}\'s room': '{0}-এর রুমে যান',
+  'Join their room to chat, send gifts and take a seat there.': 'চ্যাট করতে, উপহার পাঠাতে ও সিট নিতে তাদের রুমে যান।',
+  'That live is not available any more.': 'ওই লাইভ আর পাওয়া যাচ্ছে না।',
+  '{0} won!': '{0} জিতেছেন!',
+  'The other host gave up.': 'অন্য হোস্ট হার মেনেছেন।',
 };

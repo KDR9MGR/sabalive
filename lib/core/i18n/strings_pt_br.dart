@@ -815,4 +815,9 @@ const Map<String, String> ptBrStrings = {
   'You give up and the other host wins. This cannot be undone.': 'Você desiste e o outro anfitrião vence. Isso não pode ser desfeito.',
   'Request sent. Waiting for the host to accept.': 'Pedido enviado. Aguardando o anfitrião aceitar.',
   'Ask before someone sits': 'Perguntar antes de alguém sentar',
+  'Go to {0}\'s room': 'Ir para a sala de {0}',
+  'Join their room to chat, send gifts and take a seat there.': 'Entre na sala deles para conversar, enviar presentes e pegar um assento lá.',
+  'That live is not available any more.': 'Essa live não está mais disponível.',
+  '{0} won!': '{0} venceu!',
+  'The other host gave up.': 'O outro anfitrião desistiu.',
 };

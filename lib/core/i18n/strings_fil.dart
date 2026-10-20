@@ -815,4 +815,9 @@ const Map<String, String> filStrings = {
   'You give up and the other host wins. This cannot be undone.': 'Susuko ka at mananalo ang kabilang host. Hindi na ito mababawi.',
   'Request sent. Waiting for the host to accept.': 'Naipadala na ang request. Hinihintay ang host na tanggapin ito.',
   'Ask before someone sits': 'Magtanong bago may umupo',
+  'Go to {0}\'s room': 'Pumunta sa room ni {0}',
+  'Join their room to chat, send gifts and take a seat there.': 'Pumunta sa room nila para mag-chat, magpadala ng regalo at kumuha ng upuan doon.',
+  'That live is not available any more.': 'Hindi na available ang live na iyon.',
+  '{0} won!': 'Nanalo si {0}!',
+  'The other host gave up.': 'Sumuko ang kabilang host.',
 };

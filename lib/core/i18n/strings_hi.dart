@@ -815,4 +815,9 @@ const Map<String, String> hiStrings = {
   'You give up and the other host wins. This cannot be undone.': 'आप हार मान लेते हैं और दूसरा होस्ट जीतता है। इसे वापस नहीं किया जा सकता।',
   'Request sent. Waiting for the host to accept.': 'अनुरोध भेज दिया गया। होस्ट के स्वीकार करने का इंतज़ार है।',
   'Ask before someone sits': 'किसी के बैठने से पहले पूछें',
+  'Go to {0}\'s room': '{0} के रूम में जाएँ',
+  'Join their room to chat, send gifts and take a seat there.': 'चैट करने, गिफ़्ट भेजने और सीट लेने के लिए उनके रूम में जाएँ।',
+  'That live is not available any more.': 'वह लाइव अब उपलब्ध नहीं है।',
+  '{0} won!': '{0} जीत गए!',
+  'The other host gave up.': 'दूसरे होस्ट ने हार मान ली।',
 };
