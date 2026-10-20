@@ -54,6 +54,22 @@ class ActiveLiveSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Moves from the live on screen to another one (a viewer of a PK battle goes to the other host's room). The current screen is
+  /// removed FIRST (it leaves its room and lets go of Agora in its own dispose) and the new one is mounted on the next frame: starting
+  /// the new session in the same frame would keep the old screen alive with the old room, because the overlay would never see "no live".
+  Future<void> replaceWith({
+    required String roomId,
+    required WidgetBuilder builder,
+    required String hostName,
+    String? hostAvatarUrl,
+  }) async {
+    if (isActive) {
+      end();
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    start(roomId: roomId, builder: builder, hostName: hostName, hostAvatarUrl: hostAvatarUrl);
+  }
+
   void minimize() {
     if (!isActive || _minimized) return;
     _minimized = true;

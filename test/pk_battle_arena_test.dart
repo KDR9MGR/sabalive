@@ -12,6 +12,7 @@ import 'helpers/pk_fakes.dart';
 /// Which seats the PK arena draws (four guest seats a side, like the old PK screen), when the room's own grid steps aside, and that
 /// a room only redraws when a battle starts or ends, not on every gift.
 void main() {
+  usePlainPkLook();
   AppUser user(String id) => AppUser(id: id, name: 'U$id', username: '@$id');
   List<int> seatsOf(PkArenaSeats s) => [for (final x in s.shown) x.seat];
 

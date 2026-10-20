@@ -2,7 +2,7 @@ name: sabalive
 description: "SABALIVE - Social live-streaming, video/audio chat and virtual-gifting app."
 publish_to: 'none'
 
-version: 1.0.0+14
+version: 1.0.0+15
 
 environment:
   sdk: ^3.11.3
@@ -80,6 +80,7 @@ flutter:
   assets:
     - assets/images/
     - assets/video/
+    - assets/pk/
 
   fonts:
     - family: Poppins

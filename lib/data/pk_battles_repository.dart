@@ -42,6 +42,9 @@ abstract class PkBattleWatch {
 /// What the PK battle layer needs from the server. [PkBattlesRepository] is the real one; tests use a fake.
 abstract class PkBattlesApi {
   Future<PkBattleInfo?> currentBattleFor(String streamId);
+
+  /// One battle by its id, whatever its state (the closing row of a finished one included). Null = no such battle.
+  Future<PkBattleInfo?> battleById(String battleId);
   Future<PkBattleInfo> inviteV2(String myStreamId, String targetStreamId, int durationSeconds);
   Future<List<PkCandidate>> eligibleFollowing(String myStreamId);
 
@@ -302,6 +305,12 @@ class PkBattlesRepository implements PkBattlesApi {
         .order('invited_at', ascending: false)
         .limit(1)
         .maybeSingle();
+    return row == null ? null : PkBattleInfo.fromRow(row);
+  }
+
+  @override
+  Future<PkBattleInfo?> battleById(String battleId) async {
+    final row = await supabase.from('pk_battles').select().eq('id', battleId).maybeSingle();
     return row == null ? null : PkBattleInfo.fromRow(row);
   }
 

@@ -12,6 +12,7 @@ import 'helpers/pk_fakes.dart';
 /// The PK arena replaces the seat grid of an audio room during a battle. On small phones, with both rooms full, it must not overflow
 /// and must leave the lower part of the screen to the chat and the input bar.
 void main() {
+  usePlainPkLook();
   final me = AppUser(id: pkMe, name: 'Me Host', username: '@me');
 
   Future<PkBattleController> liveBattle(WidgetTester t, DateTime now) async {
@@ -89,7 +90,7 @@ void main() {
   }
 
   for (final size in [const Size(320, 640), const Size(360, 740), const Size(412, 915)]) {
-    testWidgets('video PK stage on a ${size.width.toInt()} x ${size.height.toInt()} phone: no overflow, and it leaves room for the chat', (t) async {
+    testWidgets('video PK stage on a ${size.width.toInt()} x ${size.height.toInt()} phone: frames fill the stage, the score block is under them, no overflow', (t) async {
       t.view.physicalSize = size;
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
@@ -97,10 +98,10 @@ void main() {
       final c = await liveBattle(t, now);
       await t.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: Align(
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 96), // below the host's top bar, as on the live screens
+          body: Builder(
+            // placed the way the live screens place it: below the top bar, ending at kPkVideoStageBottom of the screen
+            builder: (context) => Padding(
+              padding: pkVideoStagePadding(context),
               child: PkVideoStage(controller: c, me: me, left: const ColoredBox(color: Colors.red), right: const PkVideoWaiting()),
             ),
           ),
@@ -108,8 +109,16 @@ void main() {
       ));
       await t.pump();
       expect(t.takeException(), isNull);
-      final bottom = t.getRect(find.byKey(const ValueKey('pk-pane-left'))).bottom;
-      expect(bottom, lessThan(size.height * 0.75), reason: 'the lower quarter stays free for the chat and the input bar');
+      final left = t.getRect(find.byKey(const ValueKey('pk-pane-left')));
+      final right = t.getRect(find.byKey(const ValueKey('pk-pane-right')));
+      final score = t.getRect(find.byKey(const ValueKey('pk-score-block')));
+      expect(score.bottom, closeTo(size.height * kPkVideoStageBottom, 1), reason: 'the stage ends at the line the owner marked (64 % of the height)');
+      expect(score.top, greaterThanOrEqualTo(left.bottom - 0.5), reason: 'the score block is UNDER the videos');
+      expect(score.height, lessThan(80), reason: 'a slim block: the videos get the room');
+      expect(right.bottom, closeTo(left.bottom, 0.5));
+      expect(left.height, greaterThan(left.width), reason: 'a tall frame, so a portrait video is seen whole');
+      expect(left.height / left.width, lessThan(2.4), reason: 'but not a thin strip');
+      expect(size.height - score.bottom, greaterThan(size.height * 0.3), reason: 'the lower third stays free for the chat and the input bar');
       await t.pumpWidget(const SizedBox());
       c.dispose();
     });

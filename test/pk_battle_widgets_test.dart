@@ -10,6 +10,7 @@ import 'package:sabalive/state/pk_battle_controller.dart';
 import 'helpers/pk_fakes.dart';
 
 void main() {
+  usePlainPkLook();
   late DateTime now;
   late PkFakeApi api;
   late PkBattleController c;
@@ -64,13 +65,15 @@ void main() {
     await t.pump();
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: Align(
-          alignment: Alignment.topCenter,
-          child: PkVideoStage(
-            controller: c,
-            me: me,
-            left: const ColoredBox(key: ValueKey('my-video'), color: Colors.red),
-            right: const PkVideoWaiting(),
+        body: Builder(
+          builder: (context) => Padding(
+            padding: pkVideoStagePadding(context),
+            child: PkVideoStage(
+              controller: c,
+              me: me,
+              left: const ColoredBox(key: ValueKey('my-video'), color: Colors.red),
+              right: const PkVideoWaiting(),
+            ),
           ),
         ),
       ),
@@ -87,7 +90,11 @@ void main() {
     final right = t.getRect(find.byKey(const ValueKey('pk-pane-right')));
     expect(left.left, lessThan(right.left));
     expect((left.width - right.width).abs(), lessThan(0.5), reason: 'two equal halves');
-    expect(left.height / left.width, closeTo(4 / 3, 0.01), reason: 'each pane is 3:4');
+    final scoreBlock = t.getRect(find.byKey(const ValueKey('pk-score-block')));
+    expect(scoreBlock.bottom, closeTo(844 * kPkVideoStageBottom, 1), reason: 'the stage ends at the marked line: 64 % of the screen');
+    expect(scoreBlock.top, greaterThanOrEqualTo(left.bottom - 0.5), reason: 'the scores and the clock sit under the videos, not above them');
+    expect(t.getRect(find.byKey(const ValueKey('pk-clock'))).top, greaterThan(left.bottom - 0.5));
+    expect(left.height, greaterThan(left.width * 1.4), reason: 'tall frames, taller than the old 3:4');
     expect(find.byKey(const ValueKey('my-video')), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget, reason: 'the opponent is still joining');
     expect(find.text('Me Host'), findsWidgets);
@@ -201,6 +208,46 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('The other host left, so you win.'), findsOneWidget);
     await unmount(t);
+  });
+
+  testWidgets('a VIEWER is told the result as a spectator: who won, never "You won!"', (t) async {
+    t.view.physicalSize = const Size(390, 844);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    now = DateTime.utc(2026, 10, 19, 12);
+    api = PkFakeApi(() => now);
+    final viewer = PkBattleController(api: api, streamId: pkMyStream, myHostId: 'a-viewer', clock: () => now);
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(body: Stack(children: [Positioned.fill(child: PkBattleEvents(controller: viewer, watchedHostName: 'Riya Live'))])),
+    ));
+    viewer.start();
+    await t.pump();
+    api.emit(pkRow(status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    await t.pump();
+    // the watched room's host (side A) wins 90 - 40
+    api.emit(pkRow(status: 'finished', scoreA: 90, scoreB: 40, winner: 'a'));
+    await t.pump();
+    await t.pump();
+    expect(find.text('Riya Live won!'), findsOneWidget);
+    expect(find.text('You won!'), findsNothing);
+    expect(find.text('Final score: 90 – 40'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('pk-result-ok')));
+    await t.pumpAndSettle();
+
+    // the same watcher, a battle the OTHER side wins (a forfeit): the other host is named, the reason is told neutrally
+    api.emit(pkRow(id: 'b2', status: 'live', startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+    await t.pump();
+    await t.pump();
+    api.emit(pkRow(id: 'b2', status: 'finished', scoreA: 90, scoreB: 10, winner: 'b', endReason: 'forfeit'));
+    await t.pump();
+    await t.pump();
+    expect(find.text('Opponent won!'), findsOneWidget, reason: 'the profile of the other host is "Opponent" in the fake');
+    expect(find.text('The other host gave up.'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('pk-result-ok')));
+    await t.pumpAndSettle();
+    await t.pumpWidget(const SizedBox());
+    viewer.dispose();
   });
 
   testWidgets('a declined invite is explained in a snackbar and the host is free again', (t) async {

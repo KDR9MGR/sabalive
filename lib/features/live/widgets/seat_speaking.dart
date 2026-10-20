@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Text;
@@ -218,3 +220,32 @@ class _MarqueeTextState extends State<MarqueeText>
     );
   }
 }
+
+/// A one-line name for a chip: it takes only the room it needs, up to [maxWidth] (or the width its parent gives it), and when the
+/// name is longer it scrolls slowly to the end and back, the same slow scroll the seat names use ([MarqueeText]). A name that fits
+/// just sits there.
+class ScrollingName extends StatelessWidget {
+  const ScrollingName(this.text, {super.key, required this.style, this.maxWidth});
+
+  final String text;
+  final TextStyle style;
+  final double? maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final own = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final room = math.min(maxWidth ?? double.infinity, box.maxWidth);
+        // +1: a name that fits exactly must not be measured as overflowing by a rounding error
+        final width = room.isFinite ? math.min(own.width.ceilToDouble() + 1, room) : own.width.ceilToDouble() + 1;
+        return MarqueeText(text, width: width, style: style);
+      },
+    );
+  }
+}
+

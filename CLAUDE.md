@@ -71,6 +71,10 @@ Production is shared with the live Play app: follow "Production safety" in the r
 - Look and controls: audio PK = `PkBattleArena` (`pk_battle_arena.dart`: red / blue halves, up to 7 guest seats a side, the host's Add / Remove seat,
   Requests and End PK); video PK = `PkVideoStage`. End PK = the host gives up (`pk_give_up_v2`: the other host wins). Seat requests
   (`request_seat_v2`, `live_streams.seat_requests`) are a courtesy, not a lock: `claim_seat` stays self-serve for builds that do not know the setting.
+- Look: the owner's SVGA pack is in `assets/pk/` (`tool/pk_assets/README.md`; played by `PkSvga`, never directly) and the panel sets the
+  colours and switches through `app_config.pk_theme` -> `PkThemeStore` (`lib/state/pk_theme_store.dart`; fails open; animations off = the plain old
+  look). Draw PK colours from `PkThemeStore.instance.theme`, not from `AppColors.live` / `diamond`; the score bar is `PkTugBar` for audio and video.
+  Tests that render PK widgets call `usePlainPkLook()` (`test/helpers/pk_fakes.dart`). See `docs/PK_BATTLES.md`.
 - New SQL objects are `pk_*_v2` / new names only; `invite_pk_opponent` and the other legacy functions serve the old screens.
 
 ## Translations (9 languages)

@@ -148,6 +148,25 @@ class AppNav {
     );
   }
 
+  /// A viewer of a PK battle goes to the OTHER host's live: this live is left and that one is opened (the same kind: audio to audio,
+  /// video to video). Not for hosts: a host is in the middle of their own live.
+  static Future<void> switchToLive(BuildContext context, LiveStream target) async {
+    if (target.mode == LiveMode.pk) return;
+    if (await _blockedByLiveBan(context)) return;
+    if (!context.mounted) return;
+    final session = context.read<ActiveLiveSessionController>();
+    await session.replaceWith(
+      roomId: target.id,
+      hostName: target.host.name,
+      hostAvatarUrl: target.host.avatarUrl,
+      builder: (_) => switch (target.mode) {
+        LiveMode.video => WatchLiveScreen(stream: target),
+        LiveMode.audio => WatchAudioRoomScreen(stream: target),
+        LiveMode.pk => WatchPkBattleScreen(stream: target),
+      },
+    );
+  }
+
   /// Routes through the agency-request gate; only lands on go-live setup once
   /// the user has host access — i.e. an agency approved their request (they
   /// enter that agency's ID; the agency sees it in the admin panel). No host

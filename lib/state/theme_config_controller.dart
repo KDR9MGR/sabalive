@@ -10,6 +10,7 @@ import '../core/utils/rebuild_everything.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_font.dart';
 import '../theme/app_palette.dart';
+import 'pk_theme_store.dart';
 
 /// The branding the admin panel sets (Site / Branding): brand colour, accent colour, font.
 class Branding {
@@ -126,6 +127,9 @@ class ThemeConfigController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _load() async {
     if (_loading) return;
     _loading = true;
+    // the PK look rides the same app_config row and the same triggers (launch, resume, a panel save); its own read, so a database
+    // that does not have the column yet can never hold back the branding
+    unawaited(PkThemeStore.instance.refresh());
     try {
       final row = await supabase
           .from('app_config')

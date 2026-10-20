@@ -54,6 +54,8 @@ import 'widgets/live_chat_bubble.dart';
 import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/pk_battle_widgets.dart';
+import 'widgets/pk_video_uids.dart';
+import 'widgets/pk_visit_opponent.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
@@ -133,7 +135,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     if (on == _pkStage || !mounted) return;
     setState(() {
       _pkStage = on;
+      if (!on) {
+        _opponentUidTimer?.cancel();
+        _opponentHostUid = null;
+      }
       if (on) {
+        unawaited(_readOpponentUid());
         // both halves are small: take the hosts' small streams (what the hosts send for the battle)
         final engine = _engine;
         if (engine != null) {
@@ -150,16 +157,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   Widget _pkVideoStage(RtcEngine engine) {
     final pk = _pk!;
     final channel = pk.battle?.agoraChannel;
-    final mine = _hostAgoraUid;
-    final others = _joinedUids.where((u) => u != mine).toList()..sort();
-    int? leftUid = mine != null && _joinedUids.contains(mine) ? mine : null;
-    int? rightUid = others.isEmpty ? null : others.first;
-    if (mine == null && _joinedUids.length >= 2) {
-      // this live's host uid has not arrived yet: the two joined hosts fill the halves in a fixed order until it does
-      final sorted = _joinedUids.toList()..sort();
-      leftUid = sorted.first;
-      rightUid = sorted.last;
-    }
+    // both hosts' uids are known from the database (this live's, and the other live's read below); see pkVideoUids
+    final uids = pkVideoUids(mine: _hostAgoraUid, theirs: _opponentHostUid, joined: _joinedUids);
+    final leftUid = uids.left;
+    final rightUid = uids.right;
     Widget view(int? uid) => uid == null || channel == null
         ? const PkVideoWaiting()
         : AgoraVideoView(
@@ -172,11 +173,15 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           );
     return ColoredBox(
       color: Colors.black,
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 96),
-          child: PkVideoStage(controller: pk, me: widget.stream.host, left: view(leftUid), right: view(rightUid)),
+      child: Padding(
+        padding: pkVideoStagePadding(context),
+        child: PkVideoStage(
+          controller: pk,
+          me: widget.stream.host,
+          left: view(leftUid),
+          right: view(rightUid),
+          // tap the other host's frame: leave this room and go to theirs
+          onTapTheirs: () => unawaited(visitOpponentRoom(context, pk)),
         ),
       ),
     );
@@ -186,6 +191,32 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   // currently joined and pick the host's uid out of that set once known.
   final Set<int> _joinedUids = {};
   int? _hostAgoraUid;
+
+  /// The OTHER host's Agora uid in a battle (`live_streams.host_agora_uid` of the other live), so each video is put on the right
+  /// host's side even while this host's own new uid is still on its way.
+  int? _opponentHostUid;
+  Timer? _opponentUidTimer;
+
+  /// Reads it now and again later: quickly (3 s) until both hosts are recognised, then rarely (20 s: only a host who re-joins changes it).
+  Future<void> _readOpponentUid() async {
+    final id = _pk?.opponentStreamId;
+    if (id != null) {
+      try {
+        final row = await supabase.from('live_streams').select('host_agora_uid').eq('id', id).maybeSingle();
+        final uid = row?['host_agora_uid'] as int?;
+        if (mounted && uid != _opponentHostUid) setState(() => _opponentHostUid = uid);
+      } catch (_) {
+        // the next read tries again
+      }
+    }
+    _opponentUidTimer?.cancel();
+    if (!mounted || !_pkStage) return;
+    final both = _hostAgoraUid != null &&
+        _opponentHostUid != null &&
+        _joinedUids.contains(_hostAgoraUid) &&
+        _joinedUids.contains(_opponentHostUid);
+    _opponentUidTimer = Timer(Duration(seconds: both ? 20 : 3), () => unawaited(_readOpponentUid()));
+  }
   RealtimeChannel? _chatChannel;
   String? _joinError;
   bool _reconnecting = false;
@@ -955,6 +986,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   /// a seat stuck occupied until the stale-presence cron sweep.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // back from the background: the PK battle may have moved on while this phone heard nothing
+    if (state == AppLifecycleState.resumed) unawaited(_pk?.refresh(resync: true));
     if (state == AppLifecycleState.resumed) unawaited(_reconcileSeats());
     if (_isReal &&
         _mySeat != null &&
@@ -1005,6 +1038,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _showCloseDialog) _session.backHandler = null;
     _stopEndWatch?.call();
+    _opponentUidTimer?.cancel();
     _mod.dispose();
     _chatFocus.dispose();
     _waitTimer?.cancel();
@@ -1384,6 +1418,9 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           ),
           // gift animation, for everyone in the room
           Positioned.fill(child: RoomEffectLayer(controller: _effects)),
+
+          // PK battle: the 3-2-1 and the result, the same layer the hosts and the audio room's viewers have
+          if (_pk != null) Positioned.fill(child: PkBattleEvents(controller: _pk!, watchedHostName: widget.stream.host.name)),
         ],
       ),
     );
@@ -1441,7 +1478,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           ConnectionBanner(reconnecting: _reconnecting, failure: _connectionFailure),
           Row(
             children: [
-              Container(
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
                 padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.4),
@@ -1450,7 +1490,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    GestureDetector(
+                    Flexible(
+                      child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: isRealId(widget.stream.host.id)
                           ? () =>
@@ -1477,11 +1518,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Column(
+                          Flexible(
+                            child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
+                              ScrollingName(
                                 widget.stream.host.name,
                                 style: const TextStyle(
                                   fontFamily: 'Poppins',
@@ -1510,8 +1552,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                               ),
                             ],
                           ),
+                          ),
                         ],
                       ),
+                    ),
                     ),
                     const SizedBox(width: 8),
                     if (!_ghost)
@@ -1543,7 +1587,9 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                   ],
                 ),
               ),
-              const Spacer(),
+                ),
+              ),
+              const SizedBox(width: 8),
               const LiveBadge(),
               const SizedBox(width: 8),
               GestureDetector(

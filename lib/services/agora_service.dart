@@ -28,7 +28,13 @@ class AgoraService {
   bool _asBroadcaster = false;
   String? _channelName;
 
+  /// The release that is still finishing, if any. A viewer who goes from one live straight to another (the PK battle's "go to their
+  /// room") starts the next screen while the last one is still closing its engine: the next engine waits for that, so there are never two.
+  Future<void>? _releasing;
+
   Future<RtcEngine> ensureEngine() async {
+    final closing = _releasing;
+    if (closing != null) await closing;
     final existing = _engine;
     if (existing != null) return existing;
     final engine = createAgoraRtcEngine();
@@ -270,12 +276,20 @@ class AgoraService {
     );
   }
 
-  Future<void> release() async {
+  Future<void> release() {
     final engine = _engine;
     _engine = null;
-    if (engine != null) {
+    if (engine == null) return _releasing ?? Future<void>.value();
+    final done = () async {
       await engine.leaveChannel();
       await engine.release();
-    }
+    }();
+    // ensureEngine only needs to know that it has finished, not whether it went well
+    final tracked = done.then<void>((_) {}, onError: (Object _) {});
+    _releasing = tracked;
+    tracked.whenComplete(() {
+      if (identical(_releasing, tracked)) _releasing = null;
+    });
+    return done;
   }
 }

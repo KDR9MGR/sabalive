@@ -1,5 +1,15 @@
+import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/data/pk_battles_repository.dart';
+import 'package:sabalive/state/pk_theme_store.dart';
+
+/// The PK animations are bundled SVGA files and a layout / text test is not about them: it runs with them off, which is the plain
+/// look the screens had before the animations existed (and the look a phone gets when the panel switches them off). Call it first
+/// thing in `main()`: it registers a setUp / tearDown pair. A test of the animated look sets its own theme.
+void usePlainPkLook() {
+  setUp(() => PkThemeStore.instance.use(const PkTheme(animations: false)));
+  tearDown(() => PkThemeStore.instance.use(const PkTheme()));
+}
 
 const pkMe = 'host-me';
 const pkOther = 'host-other';
@@ -72,7 +82,21 @@ class PkFakeApi implements PkBattlesApi {
   );
 
   @override
-  Future<PkBattleInfo?> currentBattleFor(String streamId) async => current;
+  Future<PkBattleInfo?> currentBattleFor(String streamId) async {
+    calls.add('current');
+    return current;
+  }
+
+  /// What the server has stored for a battle id (a test sets it); the closing row of a finished battle is read through here.
+  final byId = <String, PkBattleInfo>{};
+  Object? readError;
+
+  @override
+  Future<PkBattleInfo?> battleById(String battleId) async {
+    calls.add('read:$battleId');
+    if (readError != null) throw readError!;
+    return byId[battleId] ?? current;
+  }
 
   @override
   Future<PkBattleInfo> inviteV2(String myStreamId, String targetStreamId, int durationSeconds) async {

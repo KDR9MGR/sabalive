@@ -34,7 +34,59 @@ The panel's **PK Battles** page (`/admin/pk`) shows the switches, the rules, dai
   to taking the seat at once (and hides the setting).
 - **End PK** = giving up: after a confirmation the host who taps it loses and the other host wins (`pk_give_up_v2`, reason forfeit, even when
   the host is ahead). The final bell still decides by score. On a server without the migration the battle goes on and a message says why.
+- **Viewers can switch sides**: in a battle a viewer taps the OTHER host's side (the right frame of a video battle, the blue half of an audio one; a small
+  switch mark shows it can be tapped), sees a card with that host's name and picks "Go to <name>'s room". This room is left (its screen is taken down first,
+  and the Agora engine of the old screen is closed before the next one is created) and the other host's live opens; there the sides swap (its own host is on
+  the left), so tapping the other side takes the viewer back. Same kind only (the other live of the battle), hosts never get it (`visitOpponentRoom`,
+  `ActiveLiveSessionController.replaceWith`, `AppNav.switchToLive`).
 - **Room skin**: Tools -> Room skin works as in any audio live; the two halves are see-through when the room has a skin.
+
+## Do all phones see the same battle? (checked 2026-10-19, `test/pk_sync_test.dart`)
+Four simulated phones (host A, host B, a viewer of each room) with four different wrong clocks and one shared server row pass through a whole
+battle: invite, 3-2-1, live, gifts from both rooms, final bell, result; also a draw, a give-up, a phone that drops off, a viewer joining in the
+middle, and old / repeated rows. What is the SAME on every phone: the phase and its moment, the two scores, the clock (within a second,
+counted against the server's clock, not the phone's), who the opponent is, the move into the battle's shared channel and back, and the
+result (a win for A is a win for A's host and for A's viewers, a loss for B's, with the same two numbers mirrored). What is PER ROOM by design:
+the room's own host is on the left, so B's room shows the same battle mirrored; chat, seats and guests belong to the room; the OTHER room's seats
+in an audio battle are read every 8 s (not live). What recovers by itself: a phone that missed a row (a dropped connection, the background)
+asks the server for the battle when the app returns, once a minute while live, and a few seconds after the final bell if no closing row has
+come (`PkBattleController.refresh`).
+Known difference from an ordinary live: a gift sent from room B to host A shows its animation in room A (where it lands) and to the sender; the
+other viewers of room B see only the score change.
+
+## The PK look: animations and colours (2026-10-20; set from the panel's PK Battles page, "Look and colours")
+The owner's PK animation pack is bundled in `assets/pk/` (18 SVGA files, 3.3 MB; `tool/pk_assets/README.md` says what each is). Audio and
+video PK share every one of them, because they are drawn by the shared layer:
+
+| Moment | Animation | Code |
+|---|---|---|
+| looking for an opponent / waiting for the other host | `pk_matching` (looping, above the status strip) | `PkBattleHeader._setup` |
+| an invite to me | `pk_svga` crossed swords, on the Accept / Decline card | `PkBattleEvents._showIncoming` |
+| the Invite PK sheet | `pk_start_anim` "PK" logo | `_PkInviteSheet` |
+| the countdown | `pk_anim` gloves clash, then `pk_count_down` 3-2-1 (exactly the 3 s), over a light dim | `PkBattleEvents.build` |
+| the bell (countdown -> live) | `room_battle_start_animator` "VS" burst, full screen, 2 s; only for the moment the countdown ends | `PkBattleEvents._startBurst` |
+| optional intro | `live_pk` full-screen splash behind the 3-2-1 (replaces the VS burst); off by default | panel switch |
+| the score bar (audio arena AND the video stage) | `pk_progress_red` / `pk_progress_blue` bars clipped to each side's share, `pk_progress_battle` shield where they meet, `pk_mic_red` / `pk_mic_blue` swords at the ends (the `_rtl` files in right-to-left languages) | `PkTugBar` (`pk_tug_bar.dart`) |
+| the result | `live_pk_win_icon` / `live_pk_lose_icon` / `live_pk_draw_icon`, or `lose` (crying face) when the panel picks that for losses | `PkBattleEvents._showResult` |
+
+`pk_progress_blue.svga` is not in the pack: `tool/pk_assets/make_progress_blue.py` makes it from the red one (hue turned, the bar's vector fill set to the
+blue sword's hue).
+
+**Panel control.** `app_config.pk_theme` (migration `20261020100000_pk_theme.sql`, additive, nullable, check-constrained; rollback
+`supabase/rollbacks/20261020100000_down.sql`) is one small JSON object: `mine`, `theirs` and `accent` (each `#rrggbb`), `animations` and `hero_intro`
+(true / false) and `lose_style` (`shield` or `emoji`). Every key is optional, and an empty value means the built-in look (the red / blue / gold the
+app always had). `PkThemeStore` (`lib/state/pk_theme_store.dart`) loads it with the branding (launch, resume, a panel save through the same Realtime update), keeps the
+last one on the phone, and FAILS OPEN (an unreachable server or a database without the column changes nothing). A side's colour drives the arena
+halves, the plain bars, the score panels' borders, the video frames, the confetti and, for the animations, a hue turn of the red / blue art
+(`PkTheme.hueShift`, the art sits at hue 3 and 203; vivid colours work best, pale or grey ones cannot be shown by turning a hue).
+
+**Switching the animations off** (`animations: false`, for weak phones or lag reports) gives the plain look every screen had before: gradient bars, a
+diamond, the big countdown number, text results with confetti for a win. A file that cannot be played falls back to the same plain visual for that
+piece only. Never shown while a file is still loading (it would flash).
+
+Cost to know: during a battle five small animations loop (two bars, two swords, the shield), each in its own repaint layer (the live screen's lag
+rule); the panel switch turns them all off. Tests: `test/pk_look_test.dart` (theme, store, widget fallbacks, bar, the moments), `test/pk_assets_test.dart`
+(every file decodes in the real player at the expected size and length).
 
 ## Code
 - App: `lib/state/pk_battle_controller.dart` (state machine over the server row), `lib/data/pk_battles_repository.dart` (`PkBattlesApi`),

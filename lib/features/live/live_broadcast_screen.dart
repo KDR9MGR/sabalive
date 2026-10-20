@@ -906,6 +906,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // back from the background: the PK battle may have moved on while this phone heard nothing
+    if (state == AppLifecycleState.resumed) unawaited(_pk?.refresh(resync: true));
     if (state == AppLifecycleState.resumed) unawaited(_reconcileSeats());
   }
 
@@ -1119,28 +1121,25 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     final opponentUid = _pkUids.isEmpty ? null : _pkUids.first;
     return ColoredBox(
       color: Colors.black,
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 96),
-          child: PkVideoStage(
-            controller: pk,
-            me: widget.stream.host,
-            left: AgoraVideoView(
-              key: const ValueKey('pk-local-video'),
-              controller: VideoViewController(rtcEngine: engine, canvas: const VideoCanvas(uid: 0)),
-            ),
-            right: opponentUid == null || channel == null
-                ? const PkVideoWaiting()
-                : AgoraVideoView(
-                    key: ValueKey('pk-remote-video-$opponentUid'),
-                    controller: VideoViewController.remote(
-                      rtcEngine: engine,
-                      canvas: VideoCanvas(uid: opponentUid),
-                      connection: RtcConnection(channelId: channel),
-                    ),
-                  ),
+      child: Padding(
+        padding: pkVideoStagePadding(context),
+        child: PkVideoStage(
+          controller: pk,
+          me: widget.stream.host,
+          left: AgoraVideoView(
+            key: const ValueKey('pk-local-video'),
+            controller: VideoViewController(rtcEngine: engine, canvas: const VideoCanvas(uid: 0)),
           ),
+          right: opponentUid == null || channel == null
+              ? const PkVideoWaiting()
+              : AgoraVideoView(
+                  key: ValueKey('pk-remote-video-$opponentUid'),
+                  controller: VideoViewController.remote(
+                    rtcEngine: engine,
+                    canvas: VideoCanvas(uid: opponentUid),
+                    connection: RtcConnection(channelId: channel),
+                  ),
+                ),
         ),
       ),
     );
@@ -2341,18 +2340,14 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 110),
-                child: Text(
-                  widget.stream.host.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w600,
-                    fontSize: 11,
-                    color: Colors.white,
-                  ),
+              ScrollingName(
+                widget.stream.host.name,
+                maxWidth: 110,
+                style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  color: Colors.white,
                 ),
               ),
               Text(

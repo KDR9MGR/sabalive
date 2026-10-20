@@ -56,6 +56,7 @@ import 'widgets/live_minimized_bubble.dart';
 import 'widgets/pk_battle_arena.dart';
 import 'widgets/seat_requests.dart';
 import 'widgets/pk_battle_widgets.dart';
+import 'widgets/pk_visit_opponent.dart';
 import 'widgets/seat_room.dart';
 import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
@@ -788,6 +789,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   /// stops actually publishing anyway.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // back from the background: the PK battle may have moved on while this phone heard nothing
+    if (state == AppLifecycleState.resumed) unawaited(_pk?.refresh(resync: true));
     if (state == AppLifecycleState.resumed) unawaited(_reconcileSeats());
     if (_isReal &&
         _mySeat != null &&
@@ -1419,7 +1422,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           Positioned.fill(child: RoomEffectLayer(controller: _effects)),
 
           // PK battle: invite / result dialogs and the 3-2-1
-          if (_pk != null) Positioned.fill(child: PkBattleEvents(controller: _pk!)),
+          if (_pk != null) Positioned.fill(child: PkBattleEvents(controller: _pk!, watchedHostName: widget.stream.host.name)),
         ],
       ),
     );
@@ -1460,6 +1463,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
               controller: _pk!,
               me: widget.stream.host,
               skinned: _skinUrl != null,
+              // tap the other host's half: leave this room and go to theirs
+              onTapTheirs: () => unawaited(visitOpponentRoom(context, _pk!)),
               mine: PkSeatsData(
                 hostId: widget.stream.host.id,
                 seatCount: _seatCount,
@@ -1509,7 +1514,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           ConnectionBanner(reconnecting: _reconnecting, failure: _connectionFailure),
           Row(
             children: [
-              Container(
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
                 padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.4),
@@ -1518,7 +1526,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    GestureDetector(
+                    Flexible(
+                      child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: isRealId(widget.stream.host.id)
                           ? () =>
@@ -1534,11 +1543,12 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                             size: 32,
                           ),
                           const SizedBox(width: 8),
-                          Column(
+                          Flexible(
+                            child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
+                              ScrollingName(
                                 widget.stream.host.name,
                                 style: const TextStyle(
                                   fontFamily: 'Poppins',
@@ -1567,8 +1577,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                               ),
                             ],
                           ),
+                          ),
                         ],
                       ),
+                    ),
                     ),
                     const SizedBox(width: 8),
                     if (!_ghost)
@@ -1600,7 +1612,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                   ],
                 ),
               ),
-              const Spacer(),
+                ),
+              ),
+              const SizedBox(width: 8),
               const LiveBadge(),
               const SizedBox(width: 8),
               GestureDetector(

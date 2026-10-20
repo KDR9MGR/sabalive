@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/utils/formatters.dart';
+import '../../../state/pk_theme_store.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
+import 'pk_tug_bar.dart';
 
 /// "04:12" for a number of seconds (never negative).
 String pkClock(int seconds) {
@@ -12,48 +14,15 @@ String pkClock(int seconds) {
   return '$m:$s';
 }
 
-/// The slim two-colour bar of the video PK stage: my share of the points in red, theirs in blue, a diamond where they meet.
+/// The slim two-colour bar of the video PK stage: my share of the points on one side, theirs on the other, the shield where they meet
+/// (the same [PkTugBar] the audio arena shows, only thinner).
 class PkThinBar extends StatelessWidget {
   const PkThinBar({super.key, required this.scoreA, required this.scoreB});
   final int scoreA;
   final int scoreB;
 
   @override
-  Widget build(BuildContext context) {
-    final total = (scoreA + scoreB).clamp(1, 1 << 30);
-    final ratioA = scoreA == 0 && scoreB == 0 ? 0.5 : scoreA / total;
-    return LayoutBuilder(builder: (context, c) {
-      final w = c.maxWidth;
-      return SizedBox(
-        height: 14,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Row(children: [
-              Expanded(
-                flex: (ratioA * 1000).round().clamp(1, 999),
-                child: Container(
-                  height: 6,
-                  decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFFFF2D55), Color(0xFFFF7A9C)])),
-                ),
-              ),
-              Expanded(
-                flex: ((1 - ratioA) * 1000).round().clamp(1, 999),
-                child: Container(
-                  height: 6,
-                  decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF9CC6FF), Color(0xFF2D6BFF)])),
-                ),
-              ),
-            ]),
-            Positioned(
-              left: (w * ratioA - 7).clamp(0.0, w - 14),
-              child: Icon(Icons.diamond_rounded, color: AppColors.primaryBright, size: 14),
-            ),
-          ],
-        ),
-      );
-    });
-  }
+  Widget build(BuildContext context) => PkTugBar(scoreA: scoreA, scoreB: scoreB, barHeight: 9, badgeSize: 28);
 }
 
 /// The tug-of-war bar + score panels + VS badge + countdown clock. Shared by
@@ -76,71 +45,28 @@ class PkScoreBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = (scoreA + scoreB).clamp(1, 1 << 30);
-    final ratioA = scoreA / total;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _tugBar(ratioA),
-        const SizedBox(height: 8),
-        _scoreRow(),
-      ],
+    return ListenableBuilder(
+      listenable: PkThemeStore.instance,
+      builder: (context, _) {
+        final theme = PkThemeStore.instance.theme;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PkTugBar(scoreA: scoreA, scoreB: scoreB, barHeight: 14, badgeSize: 40),
+            const SizedBox(height: 2),
+            _scoreRow(theme),
+          ],
+        );
+      },
     );
   }
 
-  Widget _tugBar(double ratioA) {
-    return LayoutBuilder(builder: (context, c) {
-      final w = c.maxWidth;
-      return SizedBox(
-        height: 26,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Row(children: [
-              Expanded(
-                flex: (ratioA * 1000).round().clamp(1, 999),
-                child: Container(
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                        colors: [Color(0xFFFF2D55), Color(0xFFFF7A9C)]),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: ((1 - ratioA) * 1000).round().clamp(1, 999),
-                child: Container(
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                        colors: [Color(0xFF9CC6FF), Color(0xFF2D6BFF)]),
-                  ),
-                ),
-              ),
-            ]),
-            const Positioned(
-                left: 4,
-                child: Text('🥊', style: TextStyle(fontSize: 18))),
-            const Positioned(
-                right: 4,
-                child: Text('🥊', style: TextStyle(fontSize: 18))),
-            Positioned(
-              left: (w * ratioA - 9).clamp(0.0, w - 18),
-              child: Icon(Icons.diamond_rounded,
-                  color: AppColors.primaryBright, size: 18),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _scoreRow() {
+  Widget _scoreRow(PkTheme theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
-          Expanded(child: _scorePanel(scoreA, AppColors.live)),
+          Expanded(child: _scorePanel(scoreA, theme.mine)),
           const SizedBox(width: 8),
           Column(
             children: [
@@ -148,7 +74,7 @@ class PkScoreBar extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  gradient: AppColors.goldGradient,
+                  gradient: theme.accentGradient,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text('VS',
@@ -163,7 +89,7 @@ class PkScoreBar extends StatelessWidget {
             ],
           ),
           const SizedBox(width: 8),
-          Expanded(child: _scorePanel(scoreB, AppColors.diamond)),
+          Expanded(child: _scorePanel(scoreB, theme.theirs)),
         ],
       ),
     );
@@ -179,7 +105,7 @@ class PkScoreBar extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: tint.withValues(alpha: 0.45)),
         ),
         child: Row(
           children: [

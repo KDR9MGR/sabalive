@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -63,8 +64,12 @@ class PkBattleController extends ChangeNotifier {
     this.countdown = const Duration(seconds: 3),
     this.searchEvery = const Duration(seconds: 5),
     this.searchTimeout = const Duration(seconds: 60),
+    this.recheckEvery = const Duration(seconds: 60),
+    this.finalBellWait = const Duration(seconds: 4),
+    Duration? jitter,
     DateTime Function()? clock,
-  }) : _clock = clock ?? (() => DateTime.now().toUtc());
+  }) : _clock = clock ?? (() => DateTime.now().toUtc()),
+       _jitter = jitter ?? Duration(milliseconds: math.Random().nextInt(15000));
 
   final PkBattlesApi api;
 
@@ -77,7 +82,17 @@ class PkBattleController extends ChangeNotifier {
   final Duration countdown;
   final Duration searchEvery;
   final Duration searchTimeout;
+
+  /// Realtime tells every phone about every change, but a dropped connection can lose one. So a phone that is live asks the server
+  /// for the battle itself: every [recheckEvery] (plus its own random spread, so a room of hundreds does not ask in the same second),
+  /// and when [finalBellWait] has passed after the clock reached zero with no closing row (without this a viewer who missed it would
+  /// sit at 00:00 for ever).
+  final Duration recheckEvery;
+  final Duration finalBellWait;
+  final Duration _jitter;
   final DateTime Function() _clock;
+  DateTime _lastRead = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  DateTime? _lateRead;
 
   PkPhase _phase = PkPhase.idle;
   PkBattleInfo? _battle;
@@ -138,15 +153,7 @@ class PkBattleController extends ChangeNotifier {
   /// Learns the server's time, picks up a battle that already exists for this live (a viewer joining mid-battle, a host coming
   /// back) and starts listening for changes.
   Future<void> start() async {
-    try {
-      final before = _clock();
-      final server = await api.serverNow();
-      final after = _clock();
-      // half the round trip is the time the answer spent on the way
-      _skew = server.difference(before.add(after.difference(before) ~/ 2));
-    } catch (_) {
-      _skew = Duration.zero; // the phone's clock is the best guess left
-    }
+    await _syncClock(fallbackToPhone: true);
     if (_disposed) return;
     _watch = api.watchStream(streamId, _onRow);
     try {
@@ -154,6 +161,34 @@ class PkBattleController extends ChangeNotifier {
       if (current != null && !_disposed) _apply(current);
     } catch (_) {
       // Realtime will still deliver changes; the first one fills the state in
+    }
+  }
+
+  Future<void> _syncClock({bool fallbackToPhone = false}) async {
+    try {
+      final before = _clock();
+      final server = await api.serverNow();
+      final after = _clock();
+      // half the round trip is the time the answer spent on the way
+      _skew = server.difference(before.add(after.difference(before) ~/ 2));
+    } catch (_) {
+      if (fallbackToPhone) _skew = Duration.zero; // the phone's clock is the best guess left
+    }
+  }
+
+  /// Asks the server for this battle (or, with none yet, for the one this live is in) and applies it: the same rows Realtime would
+  /// have sent, safe to apply twice or late. For a phone that may have missed one: back from the background ([resync] also measures
+  /// the server's clock again), after a reconnect, and the safety reads described at [recheckEvery].
+  Future<void> refresh({bool resync = false}) async {
+    if (_disposed) return;
+    _lastRead = _clock();
+    try {
+      if (resync) await _syncClock();
+      final known = _battle;
+      final row = known == null ? await api.currentBattleFor(streamId) : await api.battleById(known.id);
+      if (row != null && !_disposed) _apply(row);
+    } catch (_) {
+      // offline: Realtime or the next read will fill it in
     }
   }
 
@@ -322,6 +357,7 @@ class PkBattleController extends ChangeNotifier {
   /// Takes a row from the server (an answer to my own call, or Realtime). Safe to call twice with the same row, or with an older
   /// row after a newer one.
   void _apply(PkBattleInfo b) {
+    _lastRead = _clock();
     if (_acknowledged.contains(b.id)) return;
     final current = _battle;
     if (current != null && current.id == b.id) {
@@ -343,7 +379,8 @@ class PkBattleController extends ChangeNotifier {
     switch (b.status) {
       case 'invited':
         _searchTimer?.cancel();
-        _phase = b.hostAId == myHostId ? PkPhase.inviting : PkPhase.incoming;
+        // only the invited host (side B) is asked; the inviter, and everybody who just watches, sees "waiting"
+        _phase = b.hostBId == myHostId ? PkPhase.incoming : PkPhase.inviting;
       case 'accepted':
         _searchTimer?.cancel();
         if (_phase != PkPhase.countdown) {
@@ -401,6 +438,16 @@ class PkBattleController extends ChangeNotifier {
     if (b == null || b.endsAt == null || _phase != PkPhase.live) return;
     final left = b.endsAt!.difference(_serverNow()).inSeconds;
     secondsLeft.value = left < 0 ? 0 : left;
+    final now = _clock();
+    if (left <= -(finalBellWait + Duration(milliseconds: _jitter.inMilliseconds % 2500)).inSeconds) {
+      // past the final bell and the closing row has not come: ask for it, then again every few seconds
+      if (_lateRead == null || now.difference(_lateRead!) >= const Duration(seconds: 8)) {
+        _lateRead = now;
+        unawaited(refresh());
+      }
+    } else if (now.difference(_lastRead) >= recheckEvery + _jitter) {
+      unawaited(refresh());
+    }
     // the time is up: a host asks the server to close it at once (the server also does it within a minute, whoever asks)
     if (left <= 0 && amHost && !_finalizeSent) {
       _finalizeSent = true;
@@ -451,8 +498,16 @@ class PkBattleController extends ChangeNotifier {
     }
   }
 
+  /// The host of the OTHER live of the battle. Decided from which side THIS live is on, never from [myHostId]: a viewer's id is neither
+  /// host's, so comparing with it made a viewer of side A "see" host A as the opponent (the same person on both halves).
+  String _otherHostId(PkBattleInfo b) => switch (b.sideFor(streamId)) {
+    'a' => b.hostBId,
+    'b' => b.hostAId,
+    _ => b.hostAId == myHostId ? b.hostBId : b.hostAId,
+  };
+
   Future<void> _loadOpponent(PkBattleInfo b) async {
-    final otherId = b.hostAId == myHostId ? b.hostBId : b.hostAId;
+    final otherId = _otherHostId(b);
     if (_opponent?.id == otherId) return;
     try {
       final profile = await api.profile(otherId);

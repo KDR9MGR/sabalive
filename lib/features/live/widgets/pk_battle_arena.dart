@@ -5,9 +5,11 @@ import 'package:flutter/material.dart' hide Text;
 import '../../../core/i18n/text.dart';
 import '../../../data/models.dart';
 import '../../../state/pk_battle_controller.dart';
+import '../../../state/pk_theme_store.dart';
 import '../../../theme/app_colors.dart';
 import 'emote_overlay.dart';
 import 'pk_score_bar.dart';
+import 'pk_visit_opponent.dart';
 import 'seat_room.dart';
 import 'seat_snapshot.dart';
 
@@ -279,6 +281,7 @@ class PkBattleArena extends StatelessWidget {
     required this.me,
     required this.mine,
     this.skinned = false,
+    this.onTapTheirs,
     this.fetchSeats = fetchSeatSnapshot,
     this.every = const Duration(seconds: 8),
   });
@@ -289,6 +292,10 @@ class PkBattleArena extends StatelessWidget {
   final AppUser me;
   final PkSeatsData mine;
 
+  /// A viewer's way to go to the other host's room: tapping the blue half calls this (and shows a small switch mark). Null on a
+  /// host's screen.
+  final VoidCallback? onTapTheirs;
+
   /// The room has a skin: the two halves become see-through so it shows behind them.
   final bool skinned;
   final Future<SeatSnapshot?> Function(String streamId) fetchSeats;
@@ -297,7 +304,7 @@ class PkBattleArena extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: Listenable.merge([controller, PkThemeStore.instance]),
       builder: (context, _) {
         if (!controller.fighting) return const SizedBox.shrink();
         final starting = controller.phase == PkPhase.countdown;
@@ -329,7 +336,7 @@ class PkBattleArena extends StatelessWidget {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                             decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(12)),
-                            child: const Text('Starting…', style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w700)),
+                            child: Text('Starting…', style: TextStyle(color: PkThemeStore.instance.theme.accent, fontSize: 11, fontWeight: FontWeight.w700)),
                           ),
                         ),
                       ),
@@ -457,6 +464,7 @@ class PkBattleArena extends StatelessWidget {
         final hostSeat = them == null ? null : snap?.seatOf(them.id);
         return _ArenaSide(
           skinned: skinned,
+          onTap: onTapTheirs,
           left: false,
           host: them,
           hostSeat: hostSeat,
@@ -477,6 +485,7 @@ class _ArenaSide extends StatelessWidget {
     required this.left,
     required this.host,
     required this.seats,
+    this.onTap,
     this.hostSeat,
     this.hostSpeaking = false,
     this.hostMuted = false,
@@ -489,6 +498,9 @@ class _ArenaSide extends StatelessWidget {
 
   final bool left;
   final bool skinned;
+
+  /// Tapping the half (a viewer going to this host's room). Null = nothing to tap.
+  final VoidCallback? onTap;
   final AppUser? host;
   final int? hostSeat;
   final bool hostSpeaking;
@@ -502,7 +514,9 @@ class _ArenaSide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final glow = left ? AppColors.live : AppColors.diamond;
+    final theme = PkThemeStore.instance.theme;
+    final team = left ? PkTeam.mine : PkTeam.theirs;
+    final glow = theme.colorOf(team);
     final wallpaper = host?.pkWallpaper;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -510,17 +524,13 @@ class _ArenaSide extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            for (final c in wallpaper != null
-                ? AppColors.tints[wallpaper % AppColors.tints.length]
-                : left
-                ? const [Color(0xFFB1122B), Color(0xFF3A0A16)]
-                : const [Color(0xFF11489B), Color(0xFF0A1B3A)])
+            for (final c in wallpaper != null ? AppColors.tints[wallpaper % AppColors.tints.length] : theme.halfColors(team))
               // with a room skin the halves keep their red / blue but let the skin through
               skinned ? c.withValues(alpha: 0.58) : c,
           ],
         ),
       ),
-      child: Padding(
+      child: _tappable(Padding(
         padding: const EdgeInsets.fromLTRB(6, 10, 6, 6),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -559,7 +569,20 @@ class _ArenaSide extends StatelessWidget {
               ),
           ],
         ),
-      ),
+      )),
+    );
+  }
+
+  /// With [onTap] (a viewer on the other host's half) the whole half is a button, marked by a small switch icon in its corner.
+  Widget _tappable(Widget child) {
+    final tap = onTap;
+    if (tap == null) return child;
+    return Stack(
+      children: [
+        child,
+        Positioned.fill(child: GestureDetector(key: const ValueKey('pk-visit-tap'), behavior: HitTestBehavior.translucent, onTap: tap)),
+        const Positioned(top: 6, right: 6, child: PkSwitchMark()),
+      ],
     );
   }
 
