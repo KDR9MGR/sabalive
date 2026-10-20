@@ -82,9 +82,35 @@ void main() {
     });
 
     test('it survives a round trip through the JSON the panel stores', () {
-      const t = PkTheme(mine: Color(0xFF123456), theirs: Color(0xFFABCDEF), accent: Color(0xFF010203), animations: false, heroIntro: true, loseStyle: PkLoseStyle.emoji);
+      const t = PkTheme(
+        mine: Color(0xFF123456),
+        theirs: Color(0xFFABCDEF),
+        accent: Color(0xFF010203),
+        bgTop: Color(0xFF111111),
+        bgBottom: Color(0xFF222222),
+        animations: false,
+        heroIntro: true,
+        loseStyle: PkLoseStyle.emoji,
+      );
       expect(PkTheme.fromJson(t.toJson()), t);
       expect(t.toJson()['mine'], '#123456');
+      expect(t.toJson()['bg_top'], '#111111');
+      expect(t.toJson()['bg_bottom'], '#222222');
+    });
+
+    test('the video stage has a gradient behind it, violet into navy by default, and the panel can change both ends', () {
+      const t = PkTheme();
+      expect(t.bgTop, const Color(0xFF33104F));
+      expect(t.bgBottom, const Color(0xFF0B1636));
+      expect(t.backdrop.colors, [t.bgTop, t.bgBottom]);
+      expect(t.backdrop.begin, Alignment.topCenter);
+      expect(t.backdrop.end, Alignment.bottomCenter);
+      final custom = PkTheme.fromJson({'bg_top': '#112233', 'bg_bottom': '#445566'});
+      expect(custom.bgTop, const Color(0xFF112233));
+      expect(custom.bgBottom, const Color(0xFF445566));
+      expect(PkTheme.fromJson({'bg_top': 'blue', 'bg_bottom': 7}).bgTop, PkTheme.defaultBgTop, reason: 'unreadable = the default');
+      expect(PkTheme.fromJson({'bg_top': 'blue', 'bg_bottom': 7}).bgBottom, PkTheme.defaultBgBottom);
+      expect(PkTheme.fromJson({'mine': '#00ff00'}).bgTop, PkTheme.defaultBgTop, reason: 'a saved look from before the backdrop existed keeps the default');
     });
 
     test('a chosen colour has halves, bars and an accent of its own; the built-in ones are untouched', () {
@@ -293,6 +319,103 @@ void main() {
       PkThemeStore.instance.use(const PkTheme(animations: false));
       await t.pumpWidget(const MaterialApp(home: Scaffold(body: Column(children: [PkScoreBar(scoreA: 3, scoreB: 1, secondsLeft: 60), PkThinBar(scoreA: 3, scoreB: 1)]))));
       expect(find.byType(PkTugBar), findsNWidgets(2));
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------- the video stage
+  group('the video PK stage: the VS between the frames and the gradient behind', () {
+    late DateTime now;
+    late PkFakeApi api;
+    late PkBattleController c;
+    final me = AppUser(id: pkMe, name: 'Me Host', username: '@me');
+    var taps = 0;
+
+    Future<void> mountStage(WidgetTester t) async {
+      t.view.physicalSize = const Size(390, 844);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      now = DateTime.utc(2026, 10, 20, 12);
+      api = PkFakeApi(() => now);
+      c = PkBattleController(api: api, streamId: pkMyStream, myHostId: pkMe, clock: () => now);
+      c.start();
+      await t.pump(); // the controller subscribes first: a row emitted before that is lost
+      api.emit(pkRow(status: 'live', scoreA: 5, scoreB: 9, startedAt: now, endsAt: now.add(const Duration(seconds: 300))));
+      await t.pump();
+      taps = 0;
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => PkVideoBackdrop(
+              child: Padding(
+                padding: pkVideoStagePadding(context),
+                child: PkVideoStage(
+                  controller: c,
+                  me: me,
+                  left: const ColoredBox(color: Colors.red),
+                  right: const ColoredBox(color: Colors.blue),
+                  onTapTheirs: () => taps++,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await t.pump();
+    }
+
+    Future<void> unmount(WidgetTester t) async {
+      await t.pumpWidget(const SizedBox());
+      c.dispose();
+    }
+
+    testWidgets('the VS sits on the gap between the two frames, level with their middle, and never takes a tap', (t) async {
+      loadingForever();
+      await mountStage(t);
+      final left = t.getRect(find.byKey(const ValueKey('pk-pane-left')));
+      final right = t.getRect(find.byKey(const ValueKey('pk-pane-right')));
+      final vs = t.getRect(find.byKey(const ValueKey('pk-vs')));
+      expect((vs.center.dx - (left.right + right.left) / 2).abs(), lessThan(1.5), reason: 'centred on the gap');
+      expect((vs.center.dy - left.center.dy).abs(), lessThan(1.5), reason: 'at the height of the frames\' middle');
+      expect(vs.width, 160, reason: 'the animation is laid out 160 wide: its letters come to about 60');
+      expect(find.ancestor(of: find.byKey(const ValueKey('pk-vs')), matching: find.byType(IgnorePointer)), findsWidgets);
+      // a tap right next to the middle goes through to the frame under it
+      await t.tapAt(vs.center + const Offset(24, 0));
+      expect(taps, 1, reason: 'the VS does not catch the viewer\'s tap on the other host\'s frame');
+      await unmount(t);
+    });
+
+    testWidgets('with the animations off the VS is a small gold pill with the letters', (t) async {
+      PkThemeStore.instance.use(const PkTheme(animations: false));
+      await mountStage(t);
+      final vs = find.byKey(const ValueKey('pk-vs'));
+      expect(vs, findsOneWidget);
+      expect(find.descendant(of: vs, matching: find.text('VS')), findsOneWidget);
+      final left = t.getRect(find.byKey(const ValueKey('pk-pane-left')));
+      final right = t.getRect(find.byKey(const ValueKey('pk-pane-right')));
+      expect((t.getCenter(vs).dx - (left.right + right.left) / 2).abs(), lessThan(1.5));
+      expect(t.getSize(vs).width, lessThan(70), reason: 'small');
+      await unmount(t);
+    });
+
+    testWidgets('if the VS file cannot be played the pill takes its place', (t) async {
+      broken();
+      await mountStage(t);
+      await t.pump();
+      await t.pump();
+      expect(find.text('VS'), findsWidgets);
+      await unmount(t);
+    });
+
+    testWidgets('the space around the frames is the panel\'s gradient, not black, and follows a change at once', (t) async {
+      loadingForever();
+      await mountStage(t);
+      BoxDecoration decoration() => t.widget<DecoratedBox>(find.byKey(const ValueKey('pk-backdrop'))).decoration as BoxDecoration;
+      expect((decoration().gradient! as LinearGradient).colors, [PkTheme.defaultBgTop, PkTheme.defaultBgBottom]);
+      expect(t.getSize(find.byKey(const ValueKey('pk-backdrop'))), const Size(390, 844), reason: 'it fills the whole screen');
+      PkThemeStore.instance.use(const PkTheme(bgTop: Color(0xFF004400), bgBottom: Color(0xFF440000)));
+      await t.pump();
+      expect((decoration().gradient! as LinearGradient).colors, [const Color(0xFF004400), const Color(0xFF440000)]);
+      await unmount(t);
     });
   });
 

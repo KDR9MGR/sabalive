@@ -13,6 +13,7 @@ import 'services/deep_link_service.dart';
 import 'services/device_identity_service.dart';
 import 'services/maintenance_http_client.dart';
 import 'state/maintenance_controller.dart';
+import 'state/live_warning_store.dart';
 import 'state/pk_theme_store.dart';
 import 'state/remote_config_controller.dart';
 import 'state/theme_config_controller.dart';
@@ -27,6 +28,7 @@ void main() async {
   // the colours and font the panel last set, so the very first frame already wears them
   await ThemeConfigController.restore();
   await PkThemeStore.instance.restore(); // the PK look the panel last set (colours, animations)
+  await LiveWarningStore.instance.restore(); // the welcome warning's text and switch the panel last set
   // screenshots / screen recording stay blocked from the first screen if the panel last switched that on
   await ScreenProtection.restore();
   SystemChrome.setSystemUIOverlayStyle(

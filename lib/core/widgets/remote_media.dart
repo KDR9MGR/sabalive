@@ -52,6 +52,7 @@ class RemoteMedia extends StatelessWidget {
     super.key,
     this.fit = BoxFit.cover,
     this.loop = true,
+    this.loopFrom = 0,
     this.animate = true,
     this.muted = true,
     this.onFinished,
@@ -67,6 +68,10 @@ class RemoteMedia extends StatelessWidget {
   final String url;
   final BoxFit fit;
   final bool loop;
+
+  /// An SVGA that loops: 0 = the whole file every time; 0.55 = play it once from the start, then keep repeating only from 55% of
+  /// the way on (an opening flash that should not come back every cycle). Only for [loop]ed SVGA.
+  final double loopFrom;
 
   /// False for small thumbnails (a grid of gifts): an SVGA shows its first
   /// frame without playing, an MP4 shows its first frame paused (a few at a
@@ -105,6 +110,7 @@ class RemoteMedia extends StatelessWidget {
           url: url,
           fit: fit,
           loop: loop,
+          loopFrom: loopFrom,
           animate: animate,
           onFinished: onFinished,
           onError: onError,
@@ -168,6 +174,7 @@ class _SvgaMedia extends StatefulWidget {
     required this.url,
     required this.fit,
     required this.loop,
+    required this.loopFrom,
     required this.animate,
     required this.onFinished,
     required this.onError,
@@ -180,6 +187,7 @@ class _SvgaMedia extends StatefulWidget {
   final String url;
   final BoxFit fit;
   final bool loop;
+  final double loopFrom;
   final bool animate;
   final VoidCallback? onFinished;
   final VoidCallback? onError;
@@ -239,7 +247,7 @@ class _SvgaMediaState extends State<_SvgaMedia>
       setState(() => _ready = true);
       if (!widget.animate) return; // first frame only
       if (widget.loop) {
-        _ctl.repeat();
+        _startLooping();
       } else {
         final total = _ctl.duration;
         widget.onPlaying?.call(total == null || total == Duration.zero ? null : total);
@@ -251,6 +259,22 @@ class _SvgaMediaState extends State<_SvgaMedia>
       widget.onError?.call();
       _done(); // a one-shot effect must never wait forever on a bad file
     }
+  }
+
+  /// Repeats forever. With [_SvgaMedia.loopFrom] it plays up to the end once, then repeats only the part from there on. (It stops a hair
+  /// short of the end: a finished SVGA clears itself, which would blink the picture before the repeat took over.)
+  void _startLooping() {
+    final from = widget.loopFrom;
+    final own = _ctl.duration;
+    if (from <= 0 || from >= 1 || own == null || own <= Duration.zero) {
+      _ctl.repeat();
+      return;
+    }
+    _ctl.animateTo(0.999, duration: own).whenComplete(() {
+      if (!mounted) return;
+      final period = Duration(microseconds: (own.inMicroseconds * (1 - from)).round());
+      _ctl.repeat(min: from, max: 1.0, period: period);
+    });
   }
 
   void _done() {
@@ -268,7 +292,8 @@ class _SvgaMediaState extends State<_SvgaMedia>
   @override
   Widget build(BuildContext context) {
     if (_failed || !_ready) return widget.fallback;
-    return SVGAImage(_ctl, fit: widget.fit);
+    // a finished SVGA clears itself by default; one that plays once and then repeats its steady part must not, or the repeat has nothing to draw
+    return SVGAImage(_ctl, fit: widget.fit, clearsAfterStop: !(widget.loop && widget.loopFrom > 0));
   }
 }
 

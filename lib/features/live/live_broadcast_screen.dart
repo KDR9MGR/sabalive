@@ -1119,8 +1119,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     final pk = _pk!;
     final channel = pk.battle?.agoraChannel;
     final opponentUid = _pkUids.isEmpty ? null : _pkUids.first;
-    return ColoredBox(
-      color: Colors.black,
+    // the stage sits on the PK gradient (set in the panel), not on plain black
+    return PkVideoBackdrop(
       child: Padding(
         padding: pkVideoStagePadding(context),
         child: PkVideoStage(

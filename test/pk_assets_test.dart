@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_svga/flutter_svga.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/features/live/widgets/pk_svga.dart';
@@ -77,6 +78,29 @@ void main() {
       red.dispose();
       blue.dispose();
     });
+  });
+
+  testWidgets('a loop that skips its opening (the VS between the frames) must not let the player clear itself when the first pass ends', (t) async {
+    Future<void> mountVs(bool partial) async {
+      await t.pumpWidget(MaterialApp(
+        home: SizedBox(width: 160, height: 284, child: PkSvga(PkAsset.versus, loop: true, loopFrom: partial ? 0.55 : 0)),
+      ));
+      // decoding is two real-time steps with a fake-clock step between them
+      for (var i = 0; i < 12; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 250)));
+        await t.pump();
+      }
+    }
+
+    await mountVs(true);
+    expect(find.byType(SVGAImage), findsOneWidget, reason: 'the file loaded');
+    expect(t.widget<SVGAImage>(find.byType(SVGAImage)).clearsAfterStop, isFalse, reason: 'a finished first pass would otherwise clear the animation and leave nothing to repeat');
+    await t.pump(const Duration(seconds: 3)); // past the first pass (2 s): still playing, nothing thrown
+    expect(find.byType(SVGAImage), findsOneWidget);
+
+    await mountVs(false);
+    expect(t.widget<SVGAImage>(find.byType(SVGAImage)).clearsAfterStop, isTrue, reason: 'an ordinary loop keeps the player\'s default');
+    await t.pumpWidget(const SizedBox());
   });
 }
 

@@ -38,10 +38,12 @@ import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
 import '../../state/blocks_controller.dart';
+import '../../state/live_warning_store.dart';
 import '../../state/pk_battle_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
+import 'widgets/arrival_lines.dart';
 import 'widgets/entry_catch_up.dart';
 import 'widgets/emote_overlay.dart';
 import 'widgets/room_effect.dart';
@@ -171,8 +173,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               connection: RtcConnection(channelId: channel),
             ),
           );
-    return ColoredBox(
-      color: Colors.black,
+    // the stage sits on the PK gradient (set in the panel), not on plain black
+    return PkVideoBackdrop(
       child: Padding(
         padding: pkVideoStagePadding(context),
         child: PkVideoStage(
@@ -906,6 +908,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     // own join row (its entry effect can land before the channel is up, and Realtime never replays).
     // No lines are shown from that read.
     final meId = context.read<AuthController>().user?.id;
+    // the first lines of my own chat: my "joined" notice and the house-rules warning under it (the panel can switch it off or change it)
+    _chat.addAll(arrivalLines(me: context.read<AuthController>().user, warning: LiveWarningStore.instance.warning));
     _chatChannel = supabase
         .channel('live-chat-${widget.stream.id}')
         .onPostgresChanges(
@@ -937,6 +941,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 loadItems: StoreRepository().itemsByIds,
               ),
             );
+            // my own "joined" line is already the first line of my chat (arrivalLines): the shared one is not shown to its author
+            if (senderId == meId &&
+                payload.newRecord['kind'] == 'system' &&
+                '${payload.newRecord['body']}'.startsWith('joined') &&
+                LiveWarningStore.instance.warning.enabled) {
+              return;
+            }
             // someone the user blocked: no chat line
             if (BlocksController.instance.isBlocked(senderId)) return;
             // an emote from the host or someone on a seat plays over their picture circle, not as a chat line

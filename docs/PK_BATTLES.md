@@ -67,18 +67,26 @@ video PK share every one of them, because they are drawn by the shared layer:
 | the bell (countdown -> live) | `room_battle_start_animator` "VS" burst, full screen, 2 s; only for the moment the countdown ends | `PkBattleEvents._startBurst` |
 | optional intro | `live_pk` full-screen splash behind the 3-2-1 (replaces the VS burst); off by default | panel switch |
 | the score bar (audio arena AND the video stage) | `pk_progress_red` / `pk_progress_blue` bars clipped to each side's share, `pk_progress_battle` shield where they meet, `pk_mic_red` / `pk_mic_blue` swords at the ends (the `_rtl` files in right-to-left languages) | `PkTugBar` (`pk_tug_bar.dart`) |
+| video PK only: between the two frames | `room_battle_start_animator` again, small (laid out 160 x 284, its letters about 60 px across), centred on the gap: it plays its opening flash once and then repeats only its steady shimmer (`PkSvga(loopFrom: 0.55)`); with animations off, or if the file fails, a small gold "VS" pill. It never takes a tap | `PkVideoStage._versus` |
 | the result | `live_pk_win_icon` / `live_pk_lose_icon` / `live_pk_draw_icon`, or `lose` (crying face) when the panel picks that for losses | `PkBattleEvents._showResult` |
 
 `pk_progress_blue.svga` is not in the pack: `tool/pk_assets/make_progress_blue.py` makes it from the red one (hue turned, the bar's vector fill set to the
 blue sword's hue).
 
 **Panel control.** `app_config.pk_theme` (migration `20261020100000_pk_theme.sql`, additive, nullable, check-constrained; rollback
-`supabase/rollbacks/20261020100000_down.sql`) is one small JSON object: `mine`, `theirs` and `accent` (each `#rrggbb`), `animations` and `hero_intro`
+`supabase/rollbacks/20261020100000_down.sql`) is one small JSON object: `mine`, `theirs`, `accent`, `bg_top` and `bg_bottom` (each `#rrggbb`; the last two are the gradient behind the VIDEO PK stage, a deep violet into a dark navy by default, where it used to be plain black: `PkVideoBackdrop` around the stage in both video screens), `animations` and `hero_intro`
 (true / false) and `lose_style` (`shield` or `emoji`). Every key is optional, and an empty value means the built-in look (the red / blue / gold the
 app always had). `PkThemeStore` (`lib/state/pk_theme_store.dart`) loads it with the branding (launch, resume, a panel save through the same Realtime update), keeps the
 last one on the phone, and FAILS OPEN (an unreachable server or a database without the column changes nothing). A side's colour drives the arena
 halves, the plain bars, the score panels' borders, the video frames, the confetti and, for the animations, a hue turn of the red / blue art
 (`PkTheme.hueShift`, the art sits at hue 3 and 203; vivid colours work best, pale or grey ones cannot be shown by turning a hue).
+
+**Video live welcome warning** (2026-10-21). A new arrival in a VIDEO live or a video PK battle gets, in their OWN chat only, their "joined" line and under it
+a house-rules warning (`arrivalLines`, called from `_loadRealChat` in `watch_live_screen.dart`; nobody else's chat gets it, ghosts see nothing, audio
+rooms and the host's own screen are unchanged; the shared server line "joined the live stream" is not shown to its own author because the local one
+replaces it). The text and the on / off switch are `app_config.video_warning_text` / `video_warning_enabled` (migration `20261020110000`, set from the
+panel's Application Configuration -> Live welcome); `LiveWarningStore` loads them with the branding and FAILS OPEN (on, built-in text) when the columns are
+not there. The built-in text is a translation key (9 languages); a text typed in the panel is shown exactly as written, to everyone, untranslated.
 
 **Switching the animations off** (`animations: false`, for weak phones or lag reports) gives the plain look every screen had before: gradient bars, a
 diamond, the big countdown number, text results with confetti for a win. A file that cannot be played falls back to the same plain visual for that

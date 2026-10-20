@@ -35,6 +35,7 @@ class LiveChatLineBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (line.notice) return _WarningNotice(text: line.text);
     if (line.isJoin) return _JoinNotice(line: line);
     if (line.isLeave) return _JoinNotice(line: line, verb: 'left');
     if (line.isSticker) {
@@ -147,6 +148,29 @@ class _StickerBubble extends StatelessWidget {
 
 /// "Riya joined" / "Riya left": the same bold, level-badged, glowing notice for
 /// both — leaving looks exactly like arriving, only the word differs.
+/// The house-rules warning at the start of a new arrival's chat: a paragraph in gold, no name.
+class _WarningNotice extends StatelessWidget {
+  const _WarningNotice({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('live-warning'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(fontFamily: 'Poppins', fontSize: 11.5, height: 1.35, fontWeight: FontWeight.w600, color: AppColors.gold),
+      ),
+    );
+  }
+}
+
 class _JoinNotice extends StatelessWidget {
   const _JoinNotice({required this.line, this.verb = 'joined'});
   final LiveChatLine line;

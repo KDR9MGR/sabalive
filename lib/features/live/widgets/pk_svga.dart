@@ -41,10 +41,13 @@ abstract final class PkAsset {
 /// [RemoteMedia] puts the moving picture in its own repaint layer, so it never makes whatever is around it paint again (the live
 /// screen's lag fix: an SVGA repaints on every display refresh).
 class PkSvga extends StatefulWidget {
-  const PkSvga(this.asset, {super.key, this.loop = false, this.fit = BoxFit.contain, this.team, this.onFinished, this.fallback, this.speed = 1});
+  const PkSvga(this.asset, {super.key, this.loop = false, this.loopFrom = 0, this.fit = BoxFit.contain, this.team, this.onFinished, this.fallback, this.speed = 1});
 
   final String asset;
   final bool loop;
+
+  /// See [RemoteMedia.loopFrom]: with [loop], play once, then repeat only from this share of the file on.
+  final double loopFrom;
   final BoxFit fit;
   final PkTeam? team;
   final VoidCallback? onFinished;
@@ -88,6 +91,7 @@ class _PkSvgaState extends State<PkSvga> {
           widget.asset,
           svgaLoader: PkSvga.loader,
           loop: widget.loop,
+          loopFrom: widget.loopFrom,
           fit: widget.fit,
           speed: widget.speed,
           onFinished: widget.onFinished,

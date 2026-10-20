@@ -317,6 +317,7 @@ class LiveChatLine {
     this.gift = false,
     this.pinned = false,
     this.system = false,
+    this.notice = false,
     this.stickerUrl,
   });
   final AppUser user;
@@ -332,6 +333,10 @@ class LiveChatLine {
   /// Server-generated notices (`live_chat_messages.kind = 'system'`): the
   /// "joined the live stream" / "left the live stream" lines.
   final bool system;
+
+  /// The house-rules warning a new arrival is shown in their own chat (a [system] line made on the phone, not a database row): drawn as a
+  /// notice paragraph, with no name in front of it.
+  final bool notice;
 
   /// An entry notice — the one that gets the bold, shiny, level-badged look.
   bool get isJoin => system && text.startsWith('joined');

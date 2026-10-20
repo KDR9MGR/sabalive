@@ -223,6 +223,23 @@ EdgeInsets pkVideoStagePadding(BuildContext context) {
   return EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 96, bottom: size.height * (1 - kPkVideoStageBottom));
 }
 
+/// What fills the screen behind the video PK stage: the gradient the panel sets (a deep violet into a dark navy by default) instead of the
+/// plain black the stage used to sit on, so the space above and below the two frames is part of the picture.
+class PkVideoBackdrop extends StatelessWidget {
+  const PkVideoBackdrop({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: PkThemeStore.instance,
+    builder: (context, _) => DecoratedBox(
+      key: const ValueKey('pk-backdrop'),
+      decoration: BoxDecoration(gradient: PkThemeStore.instance.theme.backdrop),
+      child: child,
+    ),
+  );
+}
+
 /// A VIDEO PK battle's picture: the scores and the clock over a slim red / blue bar, then two videos side by side in a red and a
 /// blue frame, mine on the left and the opponent's on the right; whoever leads carries WIN, the other LOSE. The score block (the slim
 /// bar, the scores and the clock) sits UNDER the videos, between them and the chat. [left] and [right] are the two video views (or
@@ -257,7 +274,10 @@ class PkVideoStage extends StatelessWidget {
               return Column(
                 children: [
                   Expanded(
-                    child: Row(
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                    Row(
                       children: [
                         Expanded(
                           child: _pane(left, me.name, theme.mine, mine > theirs ? 'WIN' : (mine < theirs ? 'LOSE' : null),
@@ -269,6 +289,10 @@ class PkVideoStage extends StatelessWidget {
                               theirs > mine ? 'WIN' : (theirs < mine ? 'LOSE' : null),
                               winning: theirs > mine, accent: theme.accent, key: const ValueKey('pk-pane-right'), onTap: onTapTheirs),
                         ),
+                      ],
+                    ),
+                        // the VS between the two frames; a tap goes through it to the frame under it
+                        IgnorePointer(child: _versus(theme)),
                       ],
                     ),
                   ),
@@ -288,6 +312,29 @@ class PkVideoStage extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// The "VS" between the two frames: the pack's VS animation (its opening flash once, then the steady shimmer), about 60 px across the
+  /// letters; with the PK animations off, or if the file can't be played, a small gold VS pill.
+  Widget _versus(PkTheme theme) {
+    final pill = Container(
+      key: const ValueKey('pk-vs'),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        gradient: theme.accentGradient,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
+      ),
+      child: const Text('VS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF3A1A5E))),
+    );
+    if (!theme.animations) return pill;
+    // the art is 450 x 800 with the letters in the middle, about 37% of its width
+    return SizedBox(
+      key: const ValueKey('pk-vs'),
+      width: 160,
+      height: 284,
+      child: PkSvga(PkAsset.versus, loop: true, loopFrom: 0.55, fallback: pill),
     );
   }
 

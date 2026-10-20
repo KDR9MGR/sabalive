@@ -16,6 +16,7 @@ enum PkLoseStyle { shield, emoji }
 
 /// How PK looks, as the admin panel sets it (PK Battles -> Look and colours; the `app_config.pk_theme` JSON):
 ///  * the colour of each side and an accent (the clock pill, the labels);
+///  * the two colours of the gradient behind the VIDEO PK stage (it used to be plain black);
 ///  * whether the PK animations play at all (off = the plain bars and text; for weak phones);
 ///  * an optional big full-screen intro behind the 3-2-1;
 ///  * the style of the lose badge.
@@ -27,6 +28,8 @@ class PkTheme {
     this.mine = defaultMine,
     this.theirs = defaultTheirs,
     this.accent = defaultAccent,
+    this.bgTop = defaultBgTop,
+    this.bgBottom = defaultBgBottom,
     this.animations = true,
     this.heroIntro = false,
     this.loseStyle = PkLoseStyle.shield,
@@ -36,6 +39,10 @@ class PkTheme {
   static const Color defaultTheirs = Color(0xFF2D6BFF);
   static const Color defaultAccent = AppColors.gold;
 
+  /// The gradient behind the video PK stage, top to bottom: a deep violet into a dark navy, so the two red / blue frames stand out.
+  static const Color defaultBgTop = Color(0xFF33104F);
+  static const Color defaultBgBottom = Color(0xFF0B1636);
+
   /// The hue (degrees) of the red and of the blue animation art in `assets/pk/` (measured; `tool/pk_assets/README.md`). A side
   /// colour is shown by turning that hue to the chosen colour's hue.
   static const double mineArtHue = 3;
@@ -44,6 +51,8 @@ class PkTheme {
   final Color mine;
   final Color theirs;
   final Color accent;
+  final Color bgTop;
+  final Color bgBottom;
   final bool animations;
   final bool heroIntro;
   final PkLoseStyle loseStyle;
@@ -64,6 +73,8 @@ class PkTheme {
       mine: colour('mine', defaultMine),
       theirs: colour('theirs', defaultTheirs),
       accent: colour('accent', defaultAccent),
+      bgTop: colour('bg_top', defaultBgTop),
+      bgBottom: colour('bg_bottom', defaultBgBottom),
       animations: json['animations'] is bool ? json['animations'] as bool : true,
       heroIntro: json['hero_intro'] is bool ? json['hero_intro'] as bool : false,
       loseStyle: json['lose_style'] == 'emoji' ? PkLoseStyle.emoji : PkLoseStyle.shield,
@@ -76,12 +87,17 @@ class PkTheme {
     'mine': _hex(mine),
     'theirs': _hex(theirs),
     'accent': _hex(accent),
+    'bg_top': _hex(bgTop),
+    'bg_bottom': _hex(bgBottom),
     'animations': animations,
     'hero_intro': heroIntro,
     'lose_style': loseStyle.name,
   };
 
   Color colorOf(PkTeam team) => team == PkTeam.mine ? mine : theirs;
+
+  /// What fills the screen behind the video PK stage.
+  LinearGradient get backdrop => LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [bgTop, bgBottom]);
 
   /// The two colours of a side's half of the audio arena, top and bottom. The built-in colours are kept exactly as they were; a
   /// chosen colour gets a deep and a darker shade of its own hue.
@@ -128,12 +144,14 @@ class PkTheme {
       other.mine == mine &&
       other.theirs == theirs &&
       other.accent == accent &&
+      other.bgTop == bgTop &&
+      other.bgBottom == bgBottom &&
       other.animations == animations &&
       other.heroIntro == heroIntro &&
       other.loseStyle == loseStyle;
 
   @override
-  int get hashCode => Object.hash(mine, theirs, accent, animations, heroIntro, loseStyle);
+  int get hashCode => Object.hash(mine, theirs, accent, bgTop, bgBottom, animations, heroIntro, loseStyle);
 }
 
 /// The 4 x 5 colour matrix that turns every colour by [degrees] around the colour wheel (the SVG `hueRotate`), for a
