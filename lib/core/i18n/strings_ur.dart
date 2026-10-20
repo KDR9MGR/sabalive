@@ -820,4 +820,5 @@ const Map<String, String> urStrings = {
   'That live is not available any more.': 'وہ لائیو اب دستیاب نہیں ہے۔',
   '{0} won!': '{0} جیت گئے!',
   'The other host gave up.': 'دوسرے ہوسٹ نے ہار مان لی۔',
+  'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'SABALIVE Live میں خوش آمدید! انتباہ: لائیو کے دوران کیمرے یا مائیک پر برہنگی، فحاشی، تشدد یا بچوں کی اجازت نہیں ہے۔ لائیوز کی نگرانی کی جاتی ہے اور خلاف ورزی پر سزا دی جائے گی!',
 };

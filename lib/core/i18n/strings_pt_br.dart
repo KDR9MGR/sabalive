@@ -820,4 +820,5 @@ const Map<String, String> ptBrStrings = {
   'That live is not available any more.': 'Essa live não está mais disponível.',
   '{0} won!': '{0} venceu!',
   'The other host gave up.': 'O outro anfitrião desistiu.',
+  'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'Bem-vindo ao SABALIVE Live! Aviso: proibido nudez, vulgaridade, violência ou crianças na câmera ou no microfone durante a live. As lives são monitoradas e as violações serão punidas!',
 };

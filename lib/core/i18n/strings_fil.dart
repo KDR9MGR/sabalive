@@ -820,4 +820,5 @@ const Map<String, String> filStrings = {
   'That live is not available any more.': 'Hindi na available ang live na iyon.',
   '{0} won!': 'Nanalo si {0}!',
   'The other host gave up.': 'Sumuko ang kabilang host.',
+  'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'Maligayang pagdating sa SABALIVE Live! Babala: bawal ang kahubaran, bastos na salita, karahasan o mga bata sa camera o mic habang nasa live. Binabantayan ang mga live at paparusahan ang lalabag!',
 };

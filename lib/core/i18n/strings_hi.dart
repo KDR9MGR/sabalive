@@ -820,4 +820,5 @@ const Map<String, String> hiStrings = {
   'That live is not available any more.': 'वह लाइव अब उपलब्ध नहीं है।',
   '{0} won!': '{0} जीत गए!',
   'The other host gave up.': 'दूसरे होस्ट ने हार मान ली।',
+  'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'SABALIVE Live में आपका स्वागत है! चेतावनी: लाइव के दौरान कैमरे या माइक पर नग्नता, अश्लीलता, हिंसा या बच्चों की अनुमति नहीं है। लाइव की निगरानी की जाती है और उल्लंघन करने वालों को सज़ा दी जाएगी!',
 };

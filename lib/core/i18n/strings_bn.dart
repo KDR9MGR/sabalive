@@ -820,4 +820,5 @@ const Map<String, String> bnStrings = {
   'That live is not available any more.': 'ওই লাইভ আর পাওয়া যাচ্ছে না।',
   '{0} won!': '{0} জিতেছেন!',
   'The other host gave up.': 'অন্য হোস্ট হার মেনেছেন।',
+  'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'SABALIVE Live-এ স্বাগতম! সতর্কতা: লাইভের সময় ক্যামেরা বা মাইকে নগ্নতা, অশ্লীলতা, সহিংসতা বা শিশুদের অনুমতি নেই। লাইভ পর্যবেক্ষণ করা হয় এবং নিয়ম ভাঙলে শাস্তি দেওয়া হবে!',
 };

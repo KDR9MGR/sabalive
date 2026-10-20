@@ -820,4 +820,5 @@ const Map<String, String> neStrings = {
   'That live is not available any more.': 'त्यो लाइभ अब उपलब्ध छैन।',
   '{0} won!': '{0} जित्नुभयो!',
   'The other host gave up.': 'अर्को होस्टले हार मान्यो।',
+  'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'SABALIVE Live मा स्वागत छ! चेतावनी: लाइभको बेला क्यामेरा वा माइकमा नग्नता, अश्लीलता, हिंसा वा बालबालिकालाई अनुमति छैन। लाइभहरू निगरानीमा छन् र नियम उल्लङ्घन गर्नेलाई सजाय हुनेछ!',
 };
