@@ -77,9 +77,30 @@ void main() {
       expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 20, aspect: 1.6), kGamePanelHeader + 640 + 20);
     });
 
-    test('never more than 90% of the screen (a room is always visible), never uselessly short', () {
-      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 2.5), 700 * kGamePanelMaxShare);
+    test('a tall game gets the height its layout asks for, up to the whole screen below the status bar; never uselessly short', () {
+      // 750 x 1334 on a 400 x 800 screen needs 44 + 400 x 1.78 = 756: more than the old 90% cap (720), which cut the game's top off
+      expect(gamePanelHeight(screen: const Size(400, 800), bottomInset: 0, aspect: kEngineDefaultAspect), closeTo(kGamePanelHeader + 400 * kEngineDefaultAspect, 0.001));
+      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 2.5), 700); // capped by the screen, not by a share of it
+      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, topInset: 24, aspect: 2.5), 676); // the status bar stays clear
       expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 0, aspect: 0.1), kGamePanelHeader + 160);
+    });
+  });
+
+  group('game width', () {
+    test('the full width while the game fits', () {
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 444, bottomInset: 0, aspect: 1.0), 400);
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 0, aspect: 1.6), 400);
+    });
+
+    test('narrower, at its own proportions, when even the whole screen is too short (so the top is not cut off)', () {
+      // 400 x 700 screen, a game 2.5 times as tall as wide: 700 - 44 header = 656 of height -> 262.4 wide
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 0, aspect: 2.5), closeTo(262.4, 0.001));
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 20, aspect: 2.5), closeTo(254.4, 0.001)); // the system bar takes 20
+    });
+
+    test('nonsense inputs never shrink the game to nothing', () {
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 30, bottomInset: 0, aspect: 1.0), 400);
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 0, aspect: 0), 400);
     });
   });
 
@@ -120,6 +141,20 @@ void main() {
       expect(find.text('Teen Patti Gold'), findsOneWidget);
       // the room is above the panel, not under it
       expect(t.getCenter(find.text('THE LIVE ROOM')).dy, lessThan(t.getTopLeft(panel).dy));
+    });
+
+    testWidgets('a tall game on a short screen keeps its whole layout: full height, narrowed at its own proportions, nothing cut off', (t) async {
+      t.view.physicalSize = const Size(360, 640); // an old 16:9 phone
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        home: GamePanelFrame(title: 'Fishing', aspect: kEngineDefaultAspect, onClose: () {}, child: const ColoredBox(color: Colors.green)),
+      ));
+      await t.pumpAndSettle();
+      expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, 640); // all of the screen, not 90% of it
+      final area = t.getSize(find.byKey(const ValueKey('game-area')));
+      expect(area.width, lessThan(360)); // narrowed instead of cropped
+      expect(area.height / area.width, closeTo(kEngineDefaultAspect, 0.01)); // the game's own proportions: its top is on screen
     });
 
     testWidgets('a taller game gets a taller panel, and a correction animates (the page answers after the first guess)', (t) async {

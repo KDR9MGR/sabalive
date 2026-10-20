@@ -13,9 +13,6 @@ import '../../core/i18n/text.dart';
 /// The strip above the game: its name and the close button. The game's own exit button sits at its top left, so ours is on the right.
 const double kGamePanelHeader = 44;
 
-/// The panel never covers more than this share of the screen, so a room is always visible above it.
-const double kGamePanelMaxShare = 0.9;
-
 /// What the games looked like on a measuring run (1.0 = a square), as a first guess before the page answers; the page's own
 /// answer replaces it a moment later.
 const Map<String, double> _knownAspect = {
@@ -78,11 +75,24 @@ const String kDesignSizeScript =
     "try{p=cc.view.getResolutionPolicy()._contentStrategy.name}catch(e){}"
     "return s.width+'x'+s.height+'x'+p}catch(e){return ''}})()";
 
-/// How tall the panel is: the header, the game at the screen's width x [aspect], and the system bar's inset; never more than
-/// [kGamePanelMaxShare] of the screen and never so short that nothing is usable.
-double gamePanelHeight({required Size screen, required double bottomInset, required double aspect}) {
+/// How tall the panel is: the header, the game at the screen's width x [aspect], and the system bar's inset. A game gets the
+/// height its own layout asks for, up to the whole screen below the status bar (a tall game designed for a full phone screen, such as
+/// 750 x 1334, must not have its top, where its table, info and buttons sit, cut off by an arbitrary cap); never so short that nothing
+/// is usable. When even the whole screen is not tall enough, see [gamePanelGameWidth].
+double gamePanelHeight({required Size screen, required double bottomInset, required double aspect, double topInset = 0}) {
   final wanted = kGamePanelHeader + screen.width * aspect + bottomInset;
-  return wanted.clamp(kGamePanelHeader + 160, screen.height * kGamePanelMaxShare).toDouble();
+  final room = screen.height - topInset;
+  return wanted.clamp(kGamePanelHeader + 160, room < kGamePanelHeader + 160 ? kGamePanelHeader + 160 : room).toDouble();
+}
+
+/// How wide the game is drawn. These games keep the width they are given and hang from the bottom edge, so a panel shorter than
+/// width x [aspect] would cut the TOP of the game off. On a short or wide screen where even [gamePanelHeight]'s whole-screen height is
+/// not enough, the game is made narrower instead, centred with black sides, so its full layout stays on screen at its own proportions.
+double gamePanelGameWidth({required double screenWidth, required double panelHeight, required double bottomInset, required double aspect}) {
+  final room = panelHeight - kGamePanelHeader - bottomInset;
+  if (aspect <= 0 || room <= 0) return screenWidth;
+  final fit = room / aspect;
+  return fit < screenWidth ? fit : screenWidth;
 }
 
 /// The route a game panel is shown with. It is an [OverlayRoute], not a ModalRoute, so it can leave everything above the panel
@@ -155,7 +165,8 @@ class GamePanelFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final height = gamePanelHeight(screen: mq.size, bottomInset: mq.viewPadding.bottom, aspect: aspect);
+    final height = gamePanelHeight(screen: mq.size, bottomInset: mq.viewPadding.bottom, aspect: aspect, topInset: mq.viewPadding.top);
+    final gameWidth = gamePanelGameWidth(screenWidth: mq.size.width, panelHeight: height, bottomInset: mq.viewPadding.bottom, aspect: aspect);
     return Material(
       type: MaterialType.transparency,
       child: Align(
@@ -196,7 +207,12 @@ class GamePanelFrame extends StatelessWidget {
                   ],
                 ),
               ),
-              Expanded(child: Padding(padding: EdgeInsets.only(bottom: mq.viewPadding.bottom), child: child)),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: mq.viewPadding.bottom),
+                  child: Center(child: SizedBox(key: const ValueKey('game-area'), width: gameWidth, height: double.infinity, child: child)),
+                ),
+              ),
             ],
           ),
         ),
