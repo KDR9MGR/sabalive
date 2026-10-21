@@ -821,4 +821,5 @@ const Map<String, String> filStrings = {
   '{0} won!': 'Nanalo si {0}!',
   'The other host gave up.': 'Sumuko ang kabilang host.',
   'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'Maligayang pagdating sa SABALIVE Live! Babala: bawal ang kahubaran, bastos na salita, karahasan o mga bata sa camera o mic habang nasa live. Binabantayan ang mga live at paparusahan ang lalabag!',
+  'Welcome to the SABALIVE audio room! Please be respectful: no abuse, vulgarity, hate speech or harassment, and no children on the mic. Rooms are monitored and violations are punished!': 'Maligayang pagdating sa audio room ng SABALIVE! Maging magalang: bawal ang pang-aabuso, bastos na salita, hate speech o panliligalig, at bawal ang mga bata sa mic. Binabantayan ang mga room at paparusahan ang lalabag!',
 };

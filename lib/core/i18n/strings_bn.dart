@@ -821,4 +821,5 @@ const Map<String, String> bnStrings = {
   '{0} won!': '{0} জিতেছেন!',
   'The other host gave up.': 'অন্য হোস্ট হার মেনেছেন।',
   'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'SABALIVE Live-এ স্বাগতম! সতর্কতা: লাইভের সময় ক্যামেরা বা মাইকে নগ্নতা, অশ্লীলতা, সহিংসতা বা শিশুদের অনুমতি নেই। লাইভ পর্যবেক্ষণ করা হয় এবং নিয়ম ভাঙলে শাস্তি দেওয়া হবে!',
+  'Welcome to the SABALIVE audio room! Please be respectful: no abuse, vulgarity, hate speech or harassment, and no children on the mic. Rooms are monitored and violations are punished!': 'SABALIVE অডিও রুমে স্বাগতম! অনুগ্রহ করে সম্মান বজায় রাখুন: গালিগালাজ, অশ্লীলতা, বিদ্বেষমূলক কথা বা হয়রানি নয়, এবং মাইকে কোনো শিশু নয়। রুমগুলো পর্যবেক্ষণ করা হয় এবং নিয়ম ভাঙলে শাস্তি দেওয়া হবে!',
 };

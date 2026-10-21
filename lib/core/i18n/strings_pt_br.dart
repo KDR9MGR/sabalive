@@ -821,4 +821,5 @@ const Map<String, String> ptBrStrings = {
   '{0} won!': '{0} venceu!',
   'The other host gave up.': 'O outro anfitrião desistiu.',
   'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'Bem-vindo ao SABALIVE Live! Aviso: proibido nudez, vulgaridade, violência ou crianças na câmera ou no microfone durante a live. As lives são monitoradas e as violações serão punidas!',
+  'Welcome to the SABALIVE audio room! Please be respectful: no abuse, vulgarity, hate speech or harassment, and no children on the mic. Rooms are monitored and violations are punished!': 'Bem-vindo à sala de áudio do SABALIVE! Seja respeitoso: sem xingamentos, vulgaridade, discurso de ódio ou assédio, e sem crianças no microfone. As salas são monitoradas e as violações serão punidas!',
 };

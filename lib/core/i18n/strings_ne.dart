@@ -821,4 +821,5 @@ const Map<String, String> neStrings = {
   '{0} won!': '{0} जित्नुभयो!',
   'The other host gave up.': 'अर्को होस्टले हार मान्यो।',
   'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'SABALIVE Live मा स्वागत छ! चेतावनी: लाइभको बेला क्यामेरा वा माइकमा नग्नता, अश्लीलता, हिंसा वा बालबालिकालाई अनुमति छैन। लाइभहरू निगरानीमा छन् र नियम उल्लङ्घन गर्नेलाई सजाय हुनेछ!',
+  'Welcome to the SABALIVE audio room! Please be respectful: no abuse, vulgarity, hate speech or harassment, and no children on the mic. Rooms are monitored and violations are punished!': 'SABALIVE अडियो रुममा स्वागत छ! कृपया सम्मान गर्नुहोस्: गाली, अश्लीलता, घृणायुक्त भाषा वा उत्पीडन छैन, र माइकमा बालबालिका छैन। रुमहरू निगरानीमा छन् र नियम उल्लङ्घन गर्नेलाई सजाय हुनेछ!',
 };
