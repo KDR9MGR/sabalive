@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources that are looked up BY NAME at run time (Resources.getIdentifier), which the resource shrinker cannot see in the code.
+     With R8's optimized resource shrinking (android.r8.optimizedShrinking in gradle.properties) a name-only resource is removed unless it
+     is listed here.
+       - fcm_fallback_notification_channel_label: Firebase Messaging names its fallback notification channel with it (without it the
+         channel is called "Misc"; nothing breaks, but the name people see in Android's notification settings would change).
+       - ic_launcher_foreground: the small notification icon, named from Dart (push_notifications_service.dart).
+     Add a line here for any new resource that only a plugin or the Dart side names. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/fcm_fallback_notification_channel_label,@drawable/ic_launcher_foreground,@mipmap/ic_launcher" />
