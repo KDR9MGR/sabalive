@@ -122,6 +122,20 @@ select '5e a second run adds nothing (expect 0, 3)' as check,
 select '5f the report now shows the payslip status (expect processing)' as check, payslip_status from public.salary_report('2026-09') where host_id = 'c1000000-0000-0000-0000-000000000001';
 select '5g audited (expect 2 rows)' as check, count(*) as n from public.audit_logs where action = 'salary.assign_rewards';
 
+-- 5h. the month-by-month summary (a Master): Sep 2026 = the 3 payslips just assigned
+select '5h summary Sep 2026: 6 hosts earned 2950900 diamonds, 3 reached a slab worth 37000, 3 payslips of 37000, none paid (expect 6, 2950900, 3, 37000, 3, 37000, 0)' as check,
+       hosts_earning, diamonds_earned, hosts_with_slab, reward_total, payslips, payslips_inr, paid_inr
+  from public.salary_month_summary(24) where month = '2026-09';
+update public.salary_payments set status = 'paid' where payee_id = 'c1000000-0000-0000-0000-000000000001';
+select '5i marking host1 paid moves paid_inr (expect 25000)' as check, paid_inr as n from public.salary_month_summary(24) where month = '2026-09';
+select '5j newest first, the current month is not ended, older ones are, at most 24 rows (expect 24, f, t)' as check,
+       count(*) as n, (array_agg(month_ended order by month desc))[1] as current_ended, (array_agg(month_ended order by month desc))[2] as previous_ended
+  from public.salary_month_summary(100);
+select set_config('request.jwt.claim.sub', 'd1000000-0000-0000-0000-000000000001', false);
+select '5k a normal user cannot read it (expect t)' as check,
+       (select pg_temp.refused('select * from public.salary_month_summary()', 'Staff only%')) as ok;
+select set_config('request.jwt.claim.sub', 'b1000000-0000-0000-0000-000000000001', false);
+
 -- 6. an agency manager can assign for their own agency only
 delete from public.salary_payments;
 select set_config('request.jwt.claim.sub', 'b2000000-0000-0000-0000-000000000002', false);
@@ -131,6 +145,8 @@ select '6 the agency manager assigning gets only Agency A hosts: host1 + host2 (
        (select sum(base_amount) from public.salary_payments) as total,
        (select count(*) from public.salary_payments where agency_id = 'a0000000-0000-0000-0000-00000000000b') as from_b
   from a6;
+select '6b the agency manager summary only counts Agency A (expect 5 hosts, 2150900)' as check, hosts_earning, diamonds_earned
+  from public.salary_month_summary(24) where month = '2026-09';
 select set_config('request.jwt.claim.sub', '', false);
 
 -- 7. grants
