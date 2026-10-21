@@ -5,11 +5,11 @@
 --   hosts_earning      hosts that received gift diamonds in the month
 --   diamonds_earned    their gift diamonds in total
 --   hosts_with_slab    hosts that reached a slab and are not blocked (banned / not active)
---   reward_total       what those hosts' slab rewards add up to (ₓ the rewards "Assign Salary Reward" would create or already created)
+--   payment_total       what those hosts' slab payments add up to in USD (the payments "Assign Salary Payment" would create, or already created)
 --   payslips           payslips that exist for the month (assigned by the button or typed by hand)
---   payslips_inr       their net pay, and paid_inr the part already marked paid
+--   payslips_usd       their net pay in USD, and paid_usd the part already marked paid
 --   month_ended        false for the current month (still a live preview, cannot be assigned yet)
--- Read-only. A new function with a new name: nothing existing changes. Rollback: supabase/rollbacks/20261021140000_down.sql.
+-- Read-only. A new function with a new name: nothing existing changes. Needs 20261021130000 (salary_report returns payment_usd). Rollback: supabase/rollbacks/20261021140000_down.sql.
 create or replace function public.salary_month_summary(p_months integer default 12, p_agency uuid default null)
 returns table (
   month text,
@@ -18,10 +18,10 @@ returns table (
   hosts_earning integer,
   diamonds_earned bigint,
   hosts_with_slab integer,
-  reward_total numeric,
+  payment_total numeric,
   payslips integer,
-  payslips_inr numeric,
-  paid_inr numeric
+  payslips_usd numeric,
+  paid_usd numeric
 )
 language plpgsql stable security definer set search_path = public
 as $$
@@ -42,7 +42,7 @@ begin
            (count(*) filter (where r.diamonds_earned > 0))::int,
            coalesce(sum(r.diamonds_earned), 0)::bigint,
            (count(*) filter (where r.slab_id is not null and r.blocked_reason is null))::int,
-           coalesce(sum(r.reward_inr) filter (where r.slab_id is not null and r.blocked_reason is null), 0)::numeric,
+           coalesce(sum(r.payment_usd) filter (where r.slab_id is not null and r.blocked_reason is null), 0)::numeric,
            (count(r.payslip_id))::int,
            coalesce(sum(sp.net_amount), 0)::numeric,
            coalesce(sum(sp.net_amount) filter (where sp.status = 'paid'), 0)::numeric

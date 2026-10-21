@@ -1,7 +1,7 @@
 -- Run with: scripts/db/replay_migrations.sh scripts/db/tests/salary_report_test.sql
 -- Proves (20261021120000): the monthly report counts only gift diamonds in the IST month; a host gets the best slab they qualify for
--- (diamonds, live hours, live days); an agency manager sees only their own agency; blocked hosts are flagged; Assign Salary Reward
--- refuses an unfinished month and a month with no slabs, creates one processing payslip per qualifying host at the slab reward, never twice,
+-- (diamonds, live hours, live days); an agency manager sees only their own agency; blocked hosts are flagged; Assign Salary Payment
+-- refuses an unfinished month and a month with no slabs, creates one processing payslip per qualifying host at the slab payment, never twice,
 -- skips blocked hosts, and is audit-logged; only a Master can edit the slabs.
 insert into auth.users (id, email) values
   ('b1000000-0000-0000-0000-000000000001', 'master@x'),
@@ -62,9 +62,9 @@ select '1 a normal user cannot see the report (expect t)' as check, pg_temp.refu
 
 -- 2. slabs (row-level security applies: run as the signed-in role, not the superuser)
 select set_config('request.jwt.claim.sub', 'b1000000-0000-0000-0000-000000000001', false);
-select '2 no slabs yet: assigning is refused (expect t)' as check, pg_temp.refused('select public.salary_assign_rewards(''2026-09'')', 'No salary slabs are set up yet%') as ok;
+select '2 no slabs yet: assigning is refused (expect t)' as check, pg_temp.refused('select public.salary_assign_payments(''2026-09'')', 'No salary slabs are set up yet%') as ok;
 set role authenticated;
-insert into public.salary_slabs (name, min_diamonds, min_live_hours, min_live_days, reward_inr) values
+insert into public.salary_slabs (name, min_diamonds, min_live_hours, min_live_days, payment_usd) values
   ('Bronze', 100000, 0, 0, 2000),
   ('Silver', 500000, 0, 0, 10000),
   ('Gold', 500000, 10, 10, 25000),     -- needs the live time as well
@@ -74,12 +74,12 @@ select '2b a Master added 4 slabs (expect 4)' as check, count(*) as n from publi
 select set_config('request.jwt.claim.sub', 'b2000000-0000-0000-0000-000000000002', false);
 select '2c an agency manager can read the slabs (expect 4)' as check, count(*) as n from public.salary_slabs;
 select '2d an agency manager cannot add a slab (expect t)' as check,
-       pg_temp.refused('insert into public.salary_slabs (name, min_diamonds, reward_inr) values (''x'', 1000, 100)', '%row-level security%') as ok;
-update public.salary_slabs set reward_inr = 1;
+       pg_temp.refused('insert into public.salary_slabs (name, min_diamonds, payment_usd) values (''x'', 1000, 100)', '%row-level security%') as ok;
+update public.salary_slabs set payment_usd = 1;
 delete from public.salary_slabs;
 reset role;
 select '2e an agency manager cannot change or delete a slab (expect 0 changed, 4 left)' as check,
-       (select count(*) from public.salary_slabs where reward_inr = 1) as changed, (select count(*) from public.salary_slabs) as left_n;
+       (select count(*) from public.salary_slabs where payment_usd = 1) as changed, (select count(*) from public.salary_slabs) as left_n;
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'd1000000-0000-0000-0000-000000000001', false);
 select '2f a normal user sees no slabs (expect 0)' as check, count(*) as n from public.salary_slabs;
@@ -88,10 +88,10 @@ reset role;
 -- 3. the report for a Master (everyone)
 select set_config('request.jwt.claim.sub', 'b1000000-0000-0000-0000-000000000001', false);
 select '3 host1: 600000 earned (the Oct, grant and edge rows do not count), 18 live hours, 12 days, Gold 25000 (expect 600000, 18.0, 12, Gold, 25000)' as check,
-       diamonds_earned, live_hours, live_days, slab_name, reward_inr
+       diamonds_earned, live_hours, live_days, slab_name, payment_usd
   from public.salary_report('2026-09') where host_name is not null and host_id = 'c1000000-0000-0000-0000-000000000001';
 select '3b host1 withdrew 10000 in the month (expect 10000)' as check, withdrawn_diamonds as n from public.salary_report('2026-09') where host_id = 'c1000000-0000-0000-0000-000000000001';
-select '3c host2 has 150000 but little live time: Bronze 2000 (expect 150000, Bronze, 2000)' as check, diamonds_earned, slab_name, reward_inr
+select '3c host2 has 150000 but little live time: Bronze 2000 (expect 150000, Bronze, 2000)' as check, diamonds_earned, slab_name, payment_usd
   from public.salary_report('2026-09') where host_id = 'c2000000-0000-0000-0000-000000000002';
 select '3d host3 (suspended) and host5 (banned) are flagged (expect Host is suspended, Account is banned)' as check,
        (select blocked_reason from public.salary_report('2026-09') where host_id = 'c3000000-0000-0000-0000-000000000003') as host3,
@@ -106,28 +106,28 @@ select '4 the agency manager sees A hosts only (expect 5 rows, none from B)' as 
 select '4b asking for agency B returns nothing (expect 0)' as check, count(*) as n from public.salary_report('2026-09', 'a0000000-0000-0000-0000-00000000000b');
 
 -- 5. assigning
-select '5 an unfinished month is refused (expect t)' as check, pg_temp.refused('select public.salary_assign_rewards(''2099-01'')', '% has not ended yet%') as ok;
-select '5b a bad month is refused (expect t)' as check, pg_temp.refused('select public.salary_assign_rewards(''Sep'')', 'Pick a month as YYYY-MM%') as ok;
+select '5 an unfinished month is refused (expect t)' as check, pg_temp.refused('select public.salary_assign_payments(''2099-01'')', '% has not ended yet%') as ok;
+select '5b a bad month is refused (expect t)' as check, pg_temp.refused('select public.salary_assign_payments(''Sep'')', 'Pick a month as YYYY-MM%') as ok;
 select set_config('request.jwt.claim.sub', 'b1000000-0000-0000-0000-000000000001', false);
-create temp table a1 as select public.salary_assign_rewards('2026-09') as j;
+create temp table a1 as select public.salary_assign_payments('2026-09') as j;
 select '5c assigned: host1 25000 + host2 2000 + host4 10000 = 3 payslips, 37000; host3 and host5 blocked; host6 has no slab (expect 3, 37000, 0, 2)' as check,
-       (j ->> 'assigned')::int as assigned, (j ->> 'total_inr')::numeric as total, (j ->> 'already_had_payslip')::int as existing, (j ->> 'blocked')::int as blocked from a1;
-select '5d payslips are processing host payslips for Sep 2026 with the slab reward as base (expect 3, t, 25000)' as check,
+       (j ->> 'assigned')::int as assigned, (j ->> 'total_usd')::numeric as total, (j ->> 'already_had_payslip')::int as existing, (j ->> 'blocked')::int as blocked from a1;
+select '5d payslips are processing host payslips for Sep 2026 with the slab payment as base (expect 3, t, 25000)' as check,
        count(*) as n, bool_and(status = 'processing' and role = 'host' and period = 'Sep 2026') as ok,
        (select base_amount from public.salary_payments where payee_id = 'c1000000-0000-0000-0000-000000000001') as host1_base
   from public.salary_payments;
 select '5e a second run adds nothing (expect 0, 3)' as check,
-       (public.salary_assign_rewards('2026-09') ->> 'assigned')::int as assigned,
+       (public.salary_assign_payments('2026-09') ->> 'assigned')::int as assigned,
        (select count(*) from public.salary_payments) as payslips;
 select '5f the report now shows the payslip status (expect processing)' as check, payslip_status from public.salary_report('2026-09') where host_id = 'c1000000-0000-0000-0000-000000000001';
-select '5g audited (expect 2 rows)' as check, count(*) as n from public.audit_logs where action = 'salary.assign_rewards';
+select '5g audited (expect 2 rows)' as check, count(*) as n from public.audit_logs where action = 'salary.assign_payments';
 
 -- 5h. the month-by-month summary (a Master): Sep 2026 = the 3 payslips just assigned
 select '5h summary Sep 2026: 6 hosts earned 2950900 diamonds, 3 reached a slab worth 37000, 3 payslips of 37000, none paid (expect 6, 2950900, 3, 37000, 3, 37000, 0)' as check,
-       hosts_earning, diamonds_earned, hosts_with_slab, reward_total, payslips, payslips_inr, paid_inr
+       hosts_earning, diamonds_earned, hosts_with_slab, payment_total, payslips, payslips_usd, paid_usd
   from public.salary_month_summary(24) where month = '2026-09';
 update public.salary_payments set status = 'paid' where payee_id = 'c1000000-0000-0000-0000-000000000001';
-select '5i marking host1 paid moves paid_inr (expect 25000)' as check, paid_inr as n from public.salary_month_summary(24) where month = '2026-09';
+select '5i marking host1 paid moves paid_usd (expect 25000)' as check, paid_usd as n from public.salary_month_summary(24) where month = '2026-09';
 select '5j newest first, the current month is not ended, older ones are, at most 24 rows (expect 24, f, t)' as check,
        count(*) as n, (array_agg(month_ended order by month desc))[1] as current_ended, (array_agg(month_ended order by month desc))[2] as previous_ended
   from public.salary_month_summary(100);
@@ -139,7 +139,7 @@ select set_config('request.jwt.claim.sub', 'b1000000-0000-0000-0000-000000000001
 -- 6. an agency manager can assign for their own agency only
 delete from public.salary_payments;
 select set_config('request.jwt.claim.sub', 'b2000000-0000-0000-0000-000000000002', false);
-create temp table a6 as select public.salary_assign_rewards('2026-09') as j;
+create temp table a6 as select public.salary_assign_payments('2026-09') as j;
 select '6 the agency manager assigning gets only Agency A hosts: host1 + host2 (expect 2, 27000, 0 from B)' as check,
        (j ->> 'assigned')::int as assigned,
        (select sum(base_amount) from public.salary_payments) as total,
@@ -152,6 +152,6 @@ select set_config('request.jwt.claim.sub', '', false);
 -- 7. grants
 select '7 anon cannot run either (expect f, f, t, t)' as check,
        has_function_privilege('anon', 'public.salary_report(text,uuid)', 'execute') as anon_report,
-       has_function_privilege('anon', 'public.salary_assign_rewards(text,uuid)', 'execute') as anon_assign,
+       has_function_privilege('anon', 'public.salary_assign_payments(text,uuid)', 'execute') as anon_assign,
        has_function_privilege('authenticated', 'public.salary_report(text,uuid)', 'execute') as authed_report,
-       has_function_privilege('authenticated', 'public.salary_assign_rewards(text,uuid)', 'execute') as authed_assign;
+       has_function_privilege('authenticated', 'public.salary_assign_payments(text,uuid)', 'execute') as authed_assign;
