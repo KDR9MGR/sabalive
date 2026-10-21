@@ -8,6 +8,8 @@ insert into auth.users (id, email) values
   ('c8000000-0000-0000-0000-000000000003', 'hostC@x'),   -- paid 26 h ago
   ('d8000000-0000-0000-0000-000000000004', 'hostD@x'),   -- reward pulled back
   ('e8000000-0000-0000-0000-000000000005', 'viewer@x');
+-- the rolling-hours rule is what this file tests; the IST-day rule is tested in lucky_box_ist_day_test.sql
+update public.lucky_box_config set cooldown_mode = 'hours';
 select '0 default cooldown is 24 (expect 24)' as check, cooldown_hours as n from public.lucky_box_config;
 
 -- host A: live 1 started 2 h ago -> paid; it ends; live 2 started 1 h ago (the quick restart)
