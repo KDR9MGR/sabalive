@@ -56,7 +56,6 @@ import 'widgets/live_chat_bubble.dart';
 import 'widgets/room_chat_state.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/pk_battle_arena.dart';
-import 'widgets/seat_requests.dart';
 import 'widgets/pk_battle_widgets.dart';
 import 'widgets/pk_visit_opponent.dart';
 import 'widgets/seat_room.dart';
@@ -140,14 +139,6 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   /// without letting go), shown to everyone with my face until the sweep removed it, and it left me
   /// "seated" without a microphone. Such a seat is released instead (see [_dropLeftoverSeat]).
   int? _mySeat;
-
-  /// When I asked the host for a seat during a PK battle. While it is recent, a seat that shows up in my name is the host's answer
-  /// (a yes), not a leftover.
-  DateTime? _seatRequestedAt;
-
-  /// The host asks before someone sits (read from the room, null = an older server without the setting).
-  bool? _roomAsks;
-  bool get _seatRequested => _seatRequestedAt != null && DateTime.now().difference(_seatRequestedAt!) < const Duration(minutes: 10);
 
   /// Bumped whenever a seat changes hands, so a profile lookup that finishes late cannot paint the
   /// previous occupant over the current one.
@@ -316,14 +307,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     final occupants = Map<int, AppUser>.of(snap.occupants);
     // a seat in my name that this screen did not claim (and is not mid-claim) is a leftover
     if (mine != null && _mySeat == null && !_seatBusy) {
-      if (_seatRequested) {
-        unawaited(_becomeSeated(mine)); // the host said yes to my request
-      } else {
-        occupants.remove(mine);
-        _speaking.unbindSeat(mine);
-        _dropLeftoverSeat();
-        mine = null;
-      }
+      occupants.remove(mine);
+      _speaking.unbindSeat(mine);
+      _dropLeftoverSeat();
+      mine = null;
     }
     // hidden-because-gone seats stay hidden only while the same person is still on them
     _goneSeats.removeWhere((seat, id) => occupants[seat]?.id != id);
@@ -362,7 +349,6 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       }
       if (snap.locked != null) _lockedSeats = snap.locked!;
       if (snap.seatCount != null) _seatCount = snap.seatCount!;
-      _roomAsks = snap.seatRequests;
       if (snap.hostAgoraUid != null) _speaking.hostUid = snap.hostAgoraUid;
       // a seat I hold stays mine; a seat in my name that I did not claim was dropped above
       if (mine != null && _mySeat != null) _mySeat = mine;
@@ -446,12 +432,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             final occupantId = payload.newRecord['occupant_id'] as String;
             // a seat in my name that this screen is not claiming (another device, or a leftover)
             if (occupantId == supabase.auth.currentUser?.id && _mySeat == null && !_seatBusy) {
-              if (_seatRequested) {
-                unawaited(_becomeSeated(seat)); // the host said yes to my request
-              } else {
-                _dropLeftoverSeat();
-                return;
-              }
+              _dropLeftoverSeat();
+              return;
             }
             _speaking.bindSeat(seat, payload.newRecord['agora_uid'] as int?);
             final gen = _bumpSeat(seat);
@@ -1017,13 +999,6 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       return;
     }
 
-    // in a PK battle, or where the host asked to be asked first, ask instead of taking the seat (an older server has no request: take
-    // it as before)
-    if (shouldAskForSeat(pkFighting: _pk?.fighting ?? false, roomAsks: _roomAsks, iAmModerator: _mod.iAmModerator) &&
-        await _requestSeat()) {
-      return;
-    }
-
     setState(() => _seatBusy = true);
     try {
       await supabase.rpc(
@@ -1056,44 +1031,6 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     } finally {
       if (mounted) setState(() => _seatBusy = false);
     }
-  }
-
-  /// Asks the host for a seat (PK battle). True = handled (sent, or the reason shown); false = this server has no request function yet,
-  /// so the caller takes the seat the way it always did.
-  Future<bool> _requestSeat() async {
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _seatBusy = true);
-    try {
-      await supabase.rpc('request_seat_v2', params: {'p_stream_id': widget.stream.id});
-      _seatRequestedAt = DateTime.now();
-      if (mounted) messenger.showSnackBar(const SnackBar(content: Text('Request sent. Waiting for the host to accept.')));
-      return true;
-    } catch (e) {
-      if (isMissingOnServer(e)) return false;
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
-      return true;
-    } finally {
-      if (mounted) setState(() => _seatBusy = false);
-    }
-  }
-
-  /// The host accepted my request: I hold the seat now, so start publishing my microphone (in whichever channel I am in).
-  Future<void> _becomeSeated(int seat) async {
-    _seatRequestedAt = null;
-    if (_mySeat == seat || !mounted) return;
-    setState(() => _mySeat = seat);
-    try {
-      final engine = _engine;
-      if (_pkSwitcher?.inSharedChannel ?? false) {
-        await _pkSwitcher!.reapply();
-      } else if (engine != null) {
-        await AgoraService.instance.switchRole(engine, channelName: widget.stream.id, asBroadcaster: true);
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
-    _syncMySeatUid();
-    supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id}).catchError((e) => debugPrint('heartbeat_seat failed: $e'));
   }
 
   Future<void> _toggleMyMute() async {

@@ -32,13 +32,9 @@ int pkNextSeatCount(int current, {required bool more}) {
 
 /// What the HOST of a room can do from the arena. A null callback greys that button out. A viewer's arena has none of this.
 class PkHostControls {
-  const PkHostControls({this.onAddSeat, this.onRemoveSeat, this.onRequests, this.requestCount = 0});
+  const PkHostControls({this.onAddSeat, this.onRemoveSeat});
   final VoidCallback? onAddSeat;
   final VoidCallback? onRemoveSeat;
-
-  /// Opens the list of people who asked for a seat.
-  final VoidCallback? onRequests;
-  final int requestCount;
 }
 
 /// Asks the host to confirm ending the battle: it is giving up, so the other host wins. Then ends it; if the server cannot (it has no
@@ -361,7 +357,7 @@ class PkBattleArena extends StatelessWidget {
   }
 
   Widget _controls(BuildContext context, PkHostControls c) {
-    Widget chip(IconData icon, String label, VoidCallback? onTap, {Key? key, int badge = 0, Color? tint}) {
+    Widget chip(IconData icon, String label, VoidCallback? onTap, {Key? key, Color? tint}) {
       final color = tint ?? Colors.white;
       return Opacity(
         opacity: onTap == null ? 0.4 : 1,
@@ -369,32 +365,17 @@ class PkBattleArena extends StatelessWidget {
           key: key,
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 14, color: color),
-                    const SizedBox(width: 4),
-                    Text(label, style: TextStyle(fontSize: 11, color: color)),
-                  ],
-                ),
-              ),
-              if (badge > 0)
-                Positioned(
-                  right: -4,
-                  top: -5,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
-                    child: Text('$badge', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white)),
-                  ),
-                ),
-            ],
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: 4),
+                Text(label, style: TextStyle(fontSize: 11, color: color)),
+              ],
+            ),
           ),
         ),
       );
@@ -410,7 +391,6 @@ class PkBattleArena extends StatelessWidget {
         children: [
           chip(Icons.remove_rounded, 'Remove seat', c.onRemoveSeat, key: const ValueKey('pk-remove-seat')),
           chip(Icons.add_rounded, 'Add seat', c.onAddSeat, key: const ValueKey('pk-add-seat')),
-          chip(Icons.person_add_alt_1_rounded, 'Requests', c.onRequests, key: const ValueKey('pk-requests'), badge: c.requestCount),
           if (controller.phase == PkPhase.live && controller.amHost)
             chip(Icons.stop_circle_outlined, 'End PK', () => confirmEndPk(context, controller),
                 key: const ValueKey('pk-end'), tint: AppColors.danger),

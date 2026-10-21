@@ -25,13 +25,12 @@ The panel's **PK Battles** page (`/admin/pk`) shows the switches, the rules, dai
 - **Gifts**: the normal gift sheet; the other host is one more person in its list (a gift to either host counts for that host's side, no
   extra question), a gift to a guest is an ordinary gift, "send to all" never includes the other host.
 - **Seats**: each half shows up to 7 guest seats. The host has Add seat / Remove seat (one at a time, 4 to 8 seats in total; the normal
-  Add 4 / Remove 4 come back after the battle), can lock only the seats of their own room (the other half is read-only) and sees Requests.
-- **Seat requests** (audio rooms, in a battle and outside one): a viewer who taps a free seat asks the host (`request_seat_v2`) when the room is in a
-  battle or the host has "Ask before someone sits" on (`live_streams.seat_requests`; a new audio room starts with it ON, the host switches it in
-  the Requests list, and the Requests button sits next to Add 4 / Remove 4). The host accepts or declines (`approve_pk_seat_request`, which already
-  worked for any live); open requests are closed when asking stops (`clear_seat_requests_v2`). It is a courtesy, not a lock: `claim_seat` is
-  unchanged, so app builds that do not know the setting still sit at once. A server without migration `20261019100000` makes the app fall back
-  to taking the seat at once (and hides the setting).
+  Add 4 / Remove 4 come back after the battle), can lock only the seats of their own room (the other half is read-only).
+- **No seat requests in audio** (owner's decision, 2026-10-21): in an audio room, in a battle or not, anyone taps a free seat and sits on
+  THAT seat at once (`claim_seat`); there is no Requests button and no "Ask before someone sits". Seat requests exist for VIDEO lives only
+  (the guest flow, `request_pk_seat` / `approve_pk_seat_request`). An earlier build of the app asked in audio PK and (by default) in new audio
+  rooms (`request_seat_v2` / `set_seat_requests_v2` / `clear_seat_requests_v2`, `live_streams.seat_requests`); that was removed before it
+  shipped. Those database objects from migration `20261019100000` stay (only add while old apps are live) but no app calls them.
 - **End PK** = giving up: after a confirmation the host who taps it loses and the other host wins (`pk_give_up_v2`, reason forfeit, even when
   the host is ahead). The final bell still decides by score. On a server without the migration the battle goes on and a message says why.
 - **Viewers can switch sides**: in a battle a viewer taps the OTHER host's side (the right frame of a video battle, the blue half of an audio one; a small
@@ -113,6 +112,6 @@ rule); the panel switch turns them all off. Tests: `test/pk_look_test.dart` (the
 Invite lengths {300, 600, 1800, 2400} s, random 300 s, forfeit grace 60 s (45-85), 6 invites a minute per host, random search expiry 20 s.
 
 ## Rollout order
-Migrations on production (one per `scripts/prod/promote_step.sh` run; the seat-request one, `20261019100000_pk_seat_requests_v2.sql`, is optional for the rest and can follow later) -> deploy `agora-token` -> switch `pk_battles` on in the panel for the test
+Migrations on production (one per `scripts/prod/promote_step.sh` run; the seat-request one, `20261019100000_pk_seat_requests_v2.sql`, is optional and no app uses it now) -> deploy `agora-token` -> switch `pk_battles` on in the panel for the test
 phones -> two-phone test -> Play bundle with PK off -> switch on after production validation. Video PK later, after measuring Agora minutes.
 See `HANDOFF.md` (not in git) for the checklist and status.

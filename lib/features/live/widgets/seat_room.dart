@@ -328,8 +328,6 @@ class SeatRoom extends StatelessWidget {
     this.onRemoveSeat,
     this.header,
     this.showSeats = true,
-    this.onRequests,
-    this.requestCount = 0,
     this.occupants = const {},
     this.mutedSeats = const {},
     this.speakingSeats = const {},
@@ -357,9 +355,6 @@ class SeatRoom extends StatelessWidget {
   /// False while the PK arena (in [header]) draws the seats of both rooms itself: the grid and the Add / Remove buttons wait.
   final bool showSeats;
 
-  /// The host's list of people who asked for a seat (null = this room has no such list), and how many are waiting.
-  final VoidCallback? onRequests;
-  final int requestCount;
   /// Who's actually sitting where, keyed by seat number (1-based). Empty by
   /// default so callers that don't track occupancy render exactly as before.
   final Map<int, AppUser> occupants;
@@ -434,7 +429,6 @@ class SeatRoom extends StatelessWidget {
                   children: [
                     _seatBtn(Icons.remove_rounded, 'Remove 4', onRemoveSeat),
                     _seatBtn(Icons.add_rounded, 'Add 4', onAddSeat),
-                    if (onRequests != null) _seatBtn(Icons.person_add_alt_1_rounded, 'Requests', onRequests, badge: requestCount),
                   ],
                 ),
               ],

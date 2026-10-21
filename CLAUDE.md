@@ -69,8 +69,9 @@ Production is shared with the live Play app: follow "Production safety" in the r
   `pk_layer` (default ON; OFF falls back to the old standalone PK screens). Old app builds are never offered as opponents
   (`live_streams.pk_ready`). A Realtime watch must be FILTERED to one live (`watchStream`); never subscribe to every battle.
 - Look and controls: audio PK = `PkBattleArena` (`pk_battle_arena.dart`: red / blue halves, up to 7 guest seats a side, the host's Add / Remove seat,
-  Requests and End PK); video PK = `PkVideoStage`. End PK = the host gives up (`pk_give_up_v2`: the other host wins). Seat requests
-  (`request_seat_v2`, `live_streams.seat_requests`) are a courtesy, not a lock: `claim_seat` stays self-serve for builds that do not know the setting.
+  and End PK); video PK = `PkVideoStage`. End PK = the host gives up (`pk_give_up_v2`: the other host wins). Audio lives and audio PK have NO seat
+  requests (owner's decision, 2026-10-21): tap a free seat and sit on it (`claim_seat`); requests are for VIDEO lives only (`request_pk_seat`).
+  `request_seat_v2` / `live_streams.seat_requests` stay in the database but no app calls them.
 - Look: the owner's SVGA pack is in `assets/pk/` (`tool/pk_assets/README.md`; played by `PkSvga`, never directly) and the panel sets the
   colours and switches through `app_config.pk_theme` -> `PkThemeStore` (`lib/state/pk_theme_store.dart`; fails open; animations off = the plain old
   look). Draw PK colours from `PkThemeStore.instance.theme`, not from `AppColors.live` / `diamond`; the score bar is `PkTugBar` for audio and video.

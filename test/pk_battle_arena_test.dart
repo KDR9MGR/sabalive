@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/features/live/widgets/pk_battle_arena.dart';
-import 'package:sabalive/features/live/widgets/seat_requests.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:sabalive/features/live/widgets/seat_room.dart';
 import 'package:sabalive/state/pk_battle_controller.dart';
@@ -193,18 +192,17 @@ void main() {
       c.dispose();
     });
 
-    testWidgets('the host: Add seat, Remove seat and Requests call back; a missing callback greys the button out', (t) async {
+    testWidgets('the host: Add seat and Remove seat call back, a missing callback greys the button out, and there is no Requests button (audio PK has no seat requests)', (t) async {
       phone(t);
       final (c, _) = await live(t);
       final taps = <String>[];
-      await t.pumpWidget(arena(c, controls: PkHostControls(onAddSeat: () => taps.add('add'), onRemoveSeat: null, onRequests: () => taps.add('requests'), requestCount: 3)));
+      await t.pumpWidget(arena(c, controls: PkHostControls(onAddSeat: () => taps.add('add'), onRemoveSeat: null)));
       await t.pump();
       await t.tap(find.byKey(const ValueKey('pk-add-seat')));
       await t.tap(find.byKey(const ValueKey('pk-remove-seat')));
-      await t.tap(find.byKey(const ValueKey('pk-requests')));
-      expect(taps, ['add', 'requests'], reason: 'Remove seat had no callback');
-      expect(find.descendant(of: find.byKey(const ValueKey('pk-requests')), matching: find.text('3')), findsOneWidget,
-          reason: 'the number of people waiting is on the Requests button');
+      expect(taps, ['add'], reason: 'Remove seat had no callback');
+      expect(find.byKey(const ValueKey('pk-requests')), findsNothing);
+      expect(find.text('Requests'), findsNothing, reason: 'anyone takes a free seat at once: nothing to approve');
       await t.pumpWidget(const SizedBox());
       c.dispose();
     });
@@ -290,16 +288,6 @@ void main() {
     });
   });
 
-  group('shouldAskForSeat', () {
-    test('asks in a PK battle, or where the host switched asking on; never for the host or a room admin', () {
-      expect(shouldAskForSeat(pkFighting: true, roomAsks: null, iAmModerator: false), isTrue, reason: 'a battle always asks');
-      expect(shouldAskForSeat(pkFighting: false, roomAsks: true, iAmModerator: false), isTrue, reason: 'the host asked to be asked');
-      expect(shouldAskForSeat(pkFighting: false, roomAsks: false, iAmModerator: false), isFalse, reason: 'switched off: self-serve');
-      expect(shouldAskForSeat(pkFighting: false, roomAsks: null, iAmModerator: false), isFalse, reason: 'an older server has no setting: self-serve');
-      expect(shouldAskForSeat(pkFighting: true, roomAsks: true, iAmModerator: true), isFalse, reason: 'moderators sit down');
-    });
-  });
-
   group('SeatRoom', () {
     Widget room({required bool showSeats}) => MaterialApp(
       home: Scaffold(
@@ -336,32 +324,21 @@ void main() {
       expect(find.byKey(const ValueKey('hdr')), findsOneWidget);
     });
 
-    testWidgets('the host\'s Requests button is there only when the room has a list, with the number waiting', (t) async {
+    testWidgets('the audio room\'s host controls are Remove 4 and Add 4 only: no Requests button (audio rooms have no seat requests)', (t) async {
       t.view.physicalSize = const Size(390, 844);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
-      var opened = 0;
-      Widget withRequests(VoidCallback? onRequests, int count) => MaterialApp(
+      var added = 0;
+      await t.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: SeatRoom(
-            hostId: 'host',
-            seatCount: 8,
-            lockedSeats: const {},
-            onSeatTap: (_) {},
-            onAddSeat: () {},
-            onRemoveSeat: () {},
-            onRequests: onRequests,
-            requestCount: count,
-          ),
+          body: SeatRoom(hostId: 'host', seatCount: 8, lockedSeats: const {}, onSeatTap: (_) {}, onAddSeat: () => added++, onRemoveSeat: () {}),
         ),
-      );
-      await t.pumpWidget(withRequests(null, 0));
-      expect(find.text('Requests'), findsNothing, reason: 'an older server: no list');
-      await t.pumpWidget(withRequests(() => opened++, 3));
-      expect(find.text('Requests'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
-      await t.tap(find.text('Requests'));
-      expect(opened, 1);
+      ));
+      expect(find.text('Remove 4'), findsOneWidget);
+      expect(find.text('Add 4'), findsOneWidget);
+      expect(find.text('Requests'), findsNothing);
+      await t.tap(find.text('Add 4'));
+      expect(added, 1);
     });
   });
 }

@@ -216,7 +216,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _subscribeSeats();
     if (!widget.audioOnly) _subscribeSeatRequests();
     _startPk();
-    unawaited(_startSeatRequests());
     if (widget.audioOnly) {
       // Audio rooms no longer give the host a seat of their own outside the
       // numbered grid — the host just occupies seat 1 like anyone else,
@@ -897,7 +896,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _seatsChannel?.unsubscribe();
     _seatRequestsChannel?.unsubscribe();
     _pk?.removeListener(_pkStageChanged);
-    _pk?.removeListener(_pkAudioChanged);
     _pk?.dispose();
     AgoraService.instance.release();
     super.dispose();
@@ -1009,7 +1007,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       },
     );
     if (!widget.audioOnly) pk.addListener(_pkStageChanged);
-    if (widget.audioOnly) pk.addListener(_pkAudioChanged);
     unawaited(pk.start());
     // opponents must be on a build that can answer an invite: this live says so
     unawaited(api.setReady(widget.stream.id, true).catchError((_) {}));
@@ -1020,54 +1017,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     }
   }
 
-  /// The room asks before someone sits (live_streams.seat_requests, migration 20261019100000). Null = this server does not have the
-  /// setting, so seats stay self-serve; true / false = the setting. A new audio room starts with it ON; the host can switch it off in
-  /// the Requests list.
-  bool? _seatRequestsOn;
+  /// Guest seat requests are for VIDEO lives only. Audio rooms and audio PK have no requests: anyone takes a free seat at once.
   bool _subscribingRequests = false;
-
-  Future<void> _startSeatRequests() async {
-    if (!widget.audioOnly || !isRealId(widget.stream.id)) return;
-    try {
-      await supabase.rpc('set_seat_requests_v2', params: {'p_stream_id': widget.stream.id, 'p_on': true});
-      if (mounted) setState(() => _seatRequestsOn = true);
-    } catch (_) {
-      // an older server (or the call failed): seats stay self-serve, there is nothing to switch
-      if (mounted) setState(() => _seatRequestsOn = null);
-    }
-    _syncSeatRequests();
-  }
-
-  /// The host switched "ask before someone sits" on or off (from the Requests list).
-  Future<void> _setSeatRequests(bool on) async {
-    try {
-      await supabase.rpc('set_seat_requests_v2', params: {'p_stream_id': widget.stream.id, 'p_on': on});
-      if (mounted) setState(() => _seatRequestsOn = on);
-      _syncSeatRequests();
-    } catch (e) {
-      if (mounted) _snack(friendlyError(e));
-    }
-  }
-
-  /// Listens to the requests only while they can come: the room asks, or its battle is on. When that stops, the open ones are closed.
-  void _syncSeatRequests() {
-    if (!widget.audioOnly || !mounted) return;
-    final want = (_seatRequestsOn ?? false) || (_pk?.fighting ?? false);
-    final channel = _seatRequestsChannel;
-    if (want && channel == null && !_subscribingRequests) {
-      unawaited(_subscribeSeatRequests());
-    } else if (!want && channel != null) {
-      _seatRequestsChannel = null;
-      unawaited(supabase.removeChannel(channel));
-      setState(_pendingSeatRequests.clear);
-      unawaited(
-        supabase.rpc('clear_seat_requests_v2', params: {'p_stream_id': widget.stream.id}).then((_) {}, onError: (_) {}),
-      );
-    }
-  }
-
-  /// Audio PK: a battle starting or ending can turn the requests on or off.
-  void _pkAudioChanged() => _syncSeatRequests();
 
   /// Add seat / Remove seat during a battle: one at a time, between 4 and 8 seats (the host and up to seven guests).
   Future<void> _changePkSeats({required bool more}) async {
@@ -1939,18 +1890,6 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                     fontSize: 15,
                   ),
                 ),
-                if (widget.audioOnly && _seatRequestsOn != null)
-                  SwitchListTile(
-                    key: const ValueKey('seat-requests-switch'),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    value: _seatRequestsOn ?? false,
-                    title: const Text('Ask before someone sits', style: TextStyle(fontSize: 13)),
-                    onChanged: (on) async {
-                      await _setSeatRequests(on);
-                      setSheetState(() {});
-                    },
-                  ),
                 const SizedBox(height: 16),
                 if (_pendingSeatRequests.isEmpty) ...[
                   Icon(
@@ -2092,16 +2031,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                           controls: PkHostControls(
                             onAddSeat: _seatCount >= kPkMaxSeats ? null : () => _changePkSeats(more: true),
                             onRemoveSeat: _seatCount <= kPkMinSeats ? null : () => _changePkSeats(more: false),
-                            onRequests: _openRequests,
-                            requestCount: _pendingSeatRequests.length,
                           ),
                         ),
                       ),
                 showSeats: !fighting,
                 onAddSeat: _seatCount >= kMaxAudioSeats ? null : () => _changeSeatCount(kSeatStep),
                 onRemoveSeat: _seatCount <= kMinAudioSeats ? null : () => _changeSeatCount(-kSeatStep),
-                onRequests: _seatRequestsOn == null ? null : _openRequests,
-                requestCount: _pendingSeatRequests.length,
               ),
             )
           else if (_engine != null && _pkStage)
