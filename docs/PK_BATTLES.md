@@ -89,13 +89,6 @@ author because the local one replaces it). Each kind has its own text and on / o
 (both on, each with its own built-in wording) when the columns are not there. The built-in texts are translation keys 832 (video) and 833 (audio); a text typed in the
 panel is shown exactly as written, to everyone, untranslated, at most 600 characters.
 
-**Audio seat requests are OFF by default** (2026-10-21, migration `20261021110000_audio_seat_requests_switch`). The owner does not want approval for seats in audio lives and audio PK (video keeps
-its own requests, a different function). The switch is `audio_seat_requests` in `app_config.feature_flags` (panel: Release controls -> "Audio seat requests"), default OFF. While it is OFF: `request_seat_v2`
-seats the viewer at once on the first free seat the host has not locked (through `claim_seat`) and answers with an already-approved record, so even builds that always ask in a battle sit straight away; and
-`set_seat_requests_v2(true)` is refused, which makes the host's app (it calls it at the start of every audio room) treat the server as one without requests and hide its "Ask before someone sits" switch.
-Known roughness until the app cleanup (decided for the next bundle): a viewer may land on a different seat than the one tapped (the call carries no seat), the old "Request sent. Waiting for the host to accept."
-snackbar still flashes in a battle, the host's "Requests" chip stays but greyed, and a viewer's microphone starts when the app's periodic seat check notices the seat (a few seconds at most).
-
 **The viewer's tap on the other host's frame** (the swap mark) was swallowed by the viewer screen's gradient scrim, a plain `DecoratedBox` above the video (a decorated
 box is a hit-test target). It is `LiveScrim` now (`IgnorePointer`); `test/live_scrim_test.dart` pins it. Remember this for any full-screen paint layer over live video.
 
