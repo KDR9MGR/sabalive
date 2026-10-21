@@ -121,12 +121,12 @@ void main() {
       await c.start();
       expect(reads, 1);
       await c.refresh();
+      now = now.add(const Duration(seconds: 30));
+      await c.refresh();
+      expect(reads, 1, reason: 'inside the 1 minute gap');
       now = now.add(const Duration(minutes: 1));
       await c.refresh();
-      expect(reads, 1, reason: 'inside the 5 minute gap');
-      now = now.add(const Duration(minutes: 5));
-      await c.refresh();
-      expect(reads, 2);
+      expect(reads, 2, reason: 'a minute later a resume reads again, so a panel switch reaches phones quickly');
       await c.refresh(force: true);
       expect(reads, 3);
     });

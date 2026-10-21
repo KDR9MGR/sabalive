@@ -44,6 +44,7 @@ import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/arrival_lines.dart';
+import 'widgets/live_scrim.dart';
 import 'widgets/entry_catch_up.dart';
 import 'widgets/emote_overlay.dart';
 import 'widgets/room_effect.dart';
@@ -909,7 +910,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     // No lines are shown from that read.
     final meId = context.read<AuthController>().user?.id;
     // the first lines of my own chat: my "joined" notice and the house-rules warning under it (the panel can switch it off or change it)
-    _chat.addAll(arrivalLines(me: context.read<AuthController>().user, warning: LiveWarningStore.instance.warning));
+    _chat.addAll(arrivalLines(me: context.read<AuthController>().user, warning: LiveWarningStore.instance.video));
     _chatChannel = supabase
         .channel('live-chat-${widget.stream.id}')
         .onPostgresChanges(
@@ -945,7 +946,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             if (senderId == meId &&
                 payload.newRecord['kind'] == 'system' &&
                 '${payload.newRecord['body']}'.startsWith('joined') &&
-                LiveWarningStore.instance.warning.enabled) {
+                LiveWarningStore.instance.video.enabled) {
               return;
             }
             // someone the user blocked: no chat line
@@ -1352,21 +1353,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               borderRadius: 0,
               overlayOpacity: 0.1,
             ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black54,
-                  Colors.transparent,
-                  Colors.black54,
-                  Colors.black87,
-                ],
-                stops: [0, 0.25, 0.7, 1],
-              ),
-            ),
-          ),
+          // paint only: it must not catch the tap on the other host's frame in a PK battle (LiveScrim)
+          const LiveScrim(),
           // Nothing here is laid out again for the keyboard: the video, top bar and seat strip stay
           // put (the strip and the side rail simply sit behind the keyboard), and only the chat and
           // the input bar are painted higher (KeyboardStable / KeyboardLift).

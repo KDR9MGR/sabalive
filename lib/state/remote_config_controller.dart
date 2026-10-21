@@ -66,7 +66,7 @@ class RemoteConfigController extends ChangeNotifier with WidgetsBindingObserver 
     Future<Map<String, dynamic>?> Function()? fetch,
     Future<int> Function()? buildNumber,
     bool? isIos,
-    this.minGap = const Duration(minutes: 5),
+    this.minGap = const Duration(minutes: 1),
     DateTime Function()? clock,
   })  : _fetch = fetch ?? _fetchFromServer,
         _buildNumber = buildNumber ?? _readBuildNumber,

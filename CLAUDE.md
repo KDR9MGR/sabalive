@@ -75,10 +75,11 @@ Production is shared with the live Play app: follow "Production safety" in the r
   colours and switches through `app_config.pk_theme` -> `PkThemeStore` (`lib/state/pk_theme_store.dart`; fails open; animations off = the plain old
   look). Draw PK colours from `PkThemeStore.instance.theme`, not from `AppColors.live` / `diamond`; the score bar is `PkTugBar` for audio and video.
   Tests that render PK widgets call `usePlainPkLook()` (`test/helpers/pk_fakes.dart`). See `docs/PK_BATTLES.md`.
-- Video live / video PK chat: a new arrival's own chat opens with their "joined" line and the house-rules warning (`arrivalLines`, `LiveWarningStore`,
-  `app_config.video_warning_*`; the panel sets the text and switch under Application Configuration -> Live welcome). Video PK also has a gradient behind the stage
-  (`PkVideoBackdrop`, `pk_theme.bg_top` / `bg_bottom`) and a VS between the frames (`PkVideoStage._versus`). An SVGA that plays once and then repeats part of itself needs
-  `RemoteMedia(loopFrom:)` (it turns off the player's clear-after-stop).
+- Live chat: a new arrival's own chat opens with their "joined" line and a house-rules warning, one for video lives / video PK and one for audio lives / audio PK
+  (`arrivalLines`, `LiveWarningStore`, `app_config.video_warning_*` / `audio_warning_*`; the panel sets text and switch under Application Configuration -> Live welcome). Video PK
+  also has a gradient behind the stage (`PkVideoBackdrop`, `pk_theme.bg_top` / `bg_bottom`) and a VS between the frames (`PkVideoStage._versus`). An SVGA that plays once and
+  then repeats part of itself needs `RemoteMedia(loopFrom:)` (it turns off the player's clear-after-stop). A full-screen paint layer over live video must be `IgnorePointer`
+  (`LiveScrim`): a plain `DecoratedBox` swallows taps meant for what is under it.
 - New SQL objects are `pk_*_v2` / new names only; `invite_pk_opponent` and the other legacy functions serve the old screens.
 
 ## Translations (9 languages)

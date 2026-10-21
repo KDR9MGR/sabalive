@@ -38,11 +38,13 @@ import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
 import '../../state/blocks_controller.dart';
+import '../../state/live_warning_store.dart';
 import '../../state/pk_battle_controller.dart';
 import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'live_access_exit.dart';
+import 'widgets/arrival_lines.dart';
 import 'widgets/entry_catch_up.dart';
 import 'widgets/chat_composer.dart';
 import 'widgets/emote_overlay.dart';
@@ -705,6 +707,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     // own join row (its entry effect can land before the channel is up, and Realtime never replays).
     // No lines are shown from that read.
     final meId = context.read<AuthController>().user?.id;
+    // the first lines of my own chat: my "joined" notice and the house-rules warning under it (the panel can switch it off or change it)
+    _chat.addAll(arrivalLines(me: context.read<AuthController>().user, warning: LiveWarningStore.instance.audio));
     _chatChannel = supabase
         .channel('live-chat-${widget.stream.id}')
         .onPostgresChanges(
@@ -736,6 +740,13 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 loadItems: StoreRepository().itemsByIds,
               ),
             );
+            // my own "joined" line is already the first line of my chat (arrivalLines): the shared one is not shown to its author
+            if (senderId == meId &&
+                payload.newRecord['kind'] == 'system' &&
+                '${payload.newRecord['body']}'.startsWith('joined') &&
+                LiveWarningStore.instance.audio.enabled) {
+              return;
+            }
             // someone the user blocked: no chat line
             if (BlocksController.instance.isBlocked(senderId)) return;
             // an emote from someone on a seat plays over their picture circle instead of being a chat line

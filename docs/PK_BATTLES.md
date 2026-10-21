@@ -81,12 +81,16 @@ last one on the phone, and FAILS OPEN (an unreachable server or a database witho
 halves, the plain bars, the score panels' borders, the video frames, the confetti and, for the animations, a hue turn of the red / blue art
 (`PkTheme.hueShift`, the art sits at hue 3 and 203; vivid colours work best, pale or grey ones cannot be shown by turning a hue).
 
-**Video live welcome warning** (2026-10-21). A new arrival in a VIDEO live or a video PK battle gets, in their OWN chat only, their "joined" line and under it
-a house-rules warning (`arrivalLines`, called from `_loadRealChat` in `watch_live_screen.dart`; nobody else's chat gets it, ghosts see nothing, audio
-rooms and the host's own screen are unchanged; the shared server line "joined the live stream" is not shown to its own author because the local one
-replaces it). The text and the on / off switch are `app_config.video_warning_text` / `video_warning_enabled` (migration `20261020110000`, set from the
-panel's Application Configuration -> Live welcome); `LiveWarningStore` loads them with the branding and FAILS OPEN (on, built-in text) when the columns are
-not there. The built-in text is a translation key (9 languages); a text typed in the panel is shown exactly as written, to everyone, untranslated.
+**Live welcome warnings** (2026-10-21; one for VIDEO lives and video PK, one for AUDIO lives and audio PK). A new arrival gets, in their OWN chat only, their "joined"
+line and under it a house-rules warning (`arrivalLines`, called from `_loadRealChat` in `watch_live_screen.dart` for video and in `watch_audio_room_screen.dart` for
+audio; nobody else's chat gets it, ghosts see nothing, the host's own screen is unchanged; the shared server line "joined the live stream" is not shown to its own
+author because the local one replaces it). Each kind has its own text and on / off switch: `app_config.video_warning_*` / `audio_warning_*` (migration
+`20261020110000_live_welcome_warnings`, set from the panel's Application Configuration -> Live welcome). `LiveWarningStore` loads them with the branding and FAILS OPEN
+(both on, each with its own built-in wording) when the columns are not there. The built-in texts are translation keys 832 (video) and 833 (audio); a text typed in the
+panel is shown exactly as written, to everyone, untranslated, at most 600 characters.
+
+**The viewer's tap on the other host's frame** (the swap mark) was swallowed by the viewer screen's gradient scrim, a plain `DecoratedBox` above the video (a decorated
+box is a hit-test target). It is `LiveScrim` now (`IgnorePointer`); `test/live_scrim_test.dart` pins it. Remember this for any full-screen paint layer over live video.
 
 **Switching the animations off** (`animations: false`, for weak phones or lag reports) gives the plain look every screen had before: gradient bars, a
 diamond, the big countdown number, text results with confetti for a win. A file that cannot be played falls back to the same plain visual for that

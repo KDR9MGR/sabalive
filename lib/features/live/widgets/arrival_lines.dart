@@ -1,7 +1,7 @@
 import '../../../data/models.dart';
 import '../../../state/live_warning_store.dart';
 
-/// The first lines of a new arrival's OWN chat in a video live (and so in video PK): their "joined" notice, then the house-rules warning
+/// The first lines of a new arrival's OWN chat in a live (video or audio, and so in PK): their "joined" notice, then the house-rules warning
 /// under it. Only the person who just arrived sees them; nobody else's chat gets the warning, so a busy room is not told the rules again
 /// at every join. Empty for a ghost (they watch without leaving a trace) and when the panel has the warning switched off.
 ///

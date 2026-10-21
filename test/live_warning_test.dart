@@ -27,7 +27,10 @@ void main() {
         final w = LiveWarning.fromRow(row);
         expect(w.enabled, isTrue);
         expect(w.text, isNull);
-        expect(w.shown, kDefaultLiveWarning);
+        expect(w.shown, kDefaultVideoWarning);
+        final a = LiveWarning.fromRow(row, kind: LiveWarningKind.audio);
+        expect(a.enabled, isTrue);
+        expect(a.shown, kDefaultAudioWarning, reason: 'the audio warning has its own built-in wording');
       }
     });
 
@@ -49,46 +52,62 @@ void main() {
   });
 
   group('LiveWarningStore', () {
-    test('it applies what the panel saved and tells listeners only on a change', () async {
-      var server = <String, dynamic>{'video_warning_enabled': false, 'video_warning_text': null};
+    test('it applies what the panel saved for each kind and tells listeners only on a change', () async {
+      var server = <String, dynamic>{'video_warning_enabled': false, 'audio_warning_text': 'Audio rules.'};
       final store = LiveWarningStore(fetch: () async => server);
       var told = 0;
       store.addListener(() => told++);
       await store.refresh();
-      expect(store.warning.enabled, isFalse);
+      expect(store.video.enabled, isFalse);
+      expect(store.audio.enabled, isTrue, reason: 'the audio warning is its own setting');
+      expect(store.audio.text, 'Audio rules.');
+      expect(store.audio.kind, LiveWarningKind.audio);
       expect(told, 1);
       await store.refresh();
       expect(told, 1, reason: 'the same value is not a change');
-      server = {'video_warning_enabled': true, 'video_warning_text': 'Hello'};
+      server = {'video_warning_enabled': true, 'video_warning_text': 'Hello', 'audio_warning_enabled': false};
       await store.refresh();
-      expect(store.warning, const LiveWarning(enabled: true, text: 'Hello'));
+      expect(store.video, const LiveWarning(enabled: true, text: 'Hello'));
+      expect(store.audio.enabled, isFalse);
+      expect(store.audio.text, isNull);
+      expect(store.warningFor(LiveWarningKind.video), store.video);
+      expect(store.warningFor(LiveWarningKind.audio), store.audio);
     });
 
-    test('a failed read keeps what is showing, and the default is ON (a house rule must not vanish because a read failed)', () async {
+    test('a failed read keeps what is showing, and both default to ON with their own built-in text', () async {
       var fail = false;
-      final store = LiveWarningStore(fetch: () async => fail ? throw Exception('offline') : {'video_warning_text': 'Custom'});
-      expect(store.warning.enabled, isTrue);
+      final store = LiveWarningStore(fetch: () async => fail ? throw Exception('offline') : {'video_warning_text': 'Custom', 'audio_warning_text': 'Custom audio'});
+      expect(store.video.enabled, isTrue);
+      expect(store.audio.enabled, isTrue);
+      expect(store.video.shown, kDefaultVideoWarning);
+      expect(store.audio.shown, kDefaultAudioWarning);
       await store.refresh();
-      expect(store.warning.text, 'Custom');
+      expect(store.video.text, 'Custom');
+      expect(store.audio.text, 'Custom audio');
       fail = true;
       await store.refresh();
-      expect(store.warning.text, 'Custom');
+      expect(store.video.text, 'Custom');
+      expect(store.audio.text, 'Custom audio');
     });
 
-    test('it is kept on the phone for the next launch', () async {
-      final a = LiveWarningStore(fetch: () async => {'video_warning_enabled': false, 'video_warning_text': 'Saved text'});
+    test('both are kept on the phone for the next launch', () async {
+      final a = LiveWarningStore(
+        fetch: () async => {'video_warning_enabled': false, 'video_warning_text': 'Saved video', 'audio_warning_enabled': true, 'audio_warning_text': 'Saved audio'},
+      );
       await a.refresh();
       await Future<void>.delayed(Duration.zero);
       final b = LiveWarningStore(fetch: () async => throw Exception('no network yet'));
       await b.restore();
-      expect(b.warning, const LiveWarning(enabled: false, text: 'Saved text'));
+      expect(b.video, const LiveWarning(enabled: false, text: 'Saved video'));
+      expect(b.audio, const LiveWarning(text: 'Saved audio', kind: LiveWarningKind.audio));
     });
 
     test('a damaged saved copy is ignored', () async {
-      SharedPreferences.setMockInitialValues({'live.warning.v1': '[not an object'});
+      SharedPreferences.setMockInitialValues({'live.warning.v2': '[not an object'});
       final store = LiveWarningStore(fetch: () async => null);
       await store.restore();
-      expect(store.warning, const LiveWarning());
+      expect(store.video, const LiveWarning());
+      expect(store.audio, const LiveWarning(kind: LiveWarningKind.audio));
     });
   });
 
@@ -101,7 +120,16 @@ void main() {
       expect(lines[0].notice, isFalse);
       expect(lines[1].notice, isTrue);
       expect(lines[1].system, isTrue);
-      expect(lines[1].text, kDefaultLiveWarning);
+      expect(lines[1].text, kDefaultVideoWarning);
+    });
+
+    test('an audio live gets the audio wording, with its own join line first', () {
+      final lines = arrivalLines(me: me, warning: const LiveWarning(kind: LiveWarningKind.audio));
+      expect(lines, hasLength(2));
+      expect(lines[0].isJoin, isTrue);
+      expect(lines[1].notice, isTrue);
+      expect(lines[1].text, kDefaultAudioWarning);
+      expect(lines[1].text, isNot(kDefaultVideoWarning), reason: 'a different message than the video one');
     });
 
     test('the panel\'s own text is what shows', () {
@@ -121,7 +149,7 @@ void main() {
         t.pumpWidget(MaterialApp(home: Scaffold(body: Center(child: SizedBox(width: 300, child: LiveChatLineBubble(line: line))))));
 
     testWidgets('the warning is a paragraph in the chat with no name in front of it', (t) async {
-      await show(t, LiveChatLine(me, kDefaultLiveWarning, system: true, notice: true));
+      await show(t, LiveChatLine(me, kDefaultVideoWarning, system: true, notice: true));
       expect(find.byKey(const ValueKey('live-warning')), findsOneWidget);
       expect(find.textContaining('Welcome to SABALIVE Live!'), findsOneWidget);
       expect(find.textContaining('Warning:'), findsOneWidget);
@@ -135,16 +163,19 @@ void main() {
 
     testWidgets('the built-in text follows the app language', (t) async {
       await I18n.set(languageByCode('hi'));
-      await show(t, LiveChatLine(me, kDefaultLiveWarning, system: true, notice: true));
+      await show(t, LiveChatLine(me, kDefaultVideoWarning, system: true, notice: true));
       expect(find.textContaining('SABALIVE Live में आपका स्वागत है'), findsOneWidget);
       expect(find.textContaining('Welcome to SABALIVE Live!'), findsNothing);
     });
 
-    test('the built-in warning has a translation in every language', () async {
+    test('both built-in warnings have a translation in every language', () async {
       for (final l in kLanguages.where((l) => !const {'en', 'en_NG'}.contains(l.code))) {
         await I18n.set(l);
-        expect(tr(kDefaultLiveWarning), isNot(kDefaultLiveWarning), reason: '${l.code} has no translation of the warning');
-        expect(tr(kDefaultLiveWarning), contains('SABALIVE'), reason: l.code);
+        for (final text in [kDefaultVideoWarning, kDefaultAudioWarning]) {
+          expect(tr(text), isNot(text), reason: '${l.code} has no translation of: $text');
+          expect(tr(text), contains('SABALIVE'), reason: l.code);
+        }
+        expect(tr(kDefaultAudioWarning), isNot(tr(kDefaultVideoWarning)), reason: '${l.code}: two different messages');
       }
     });
   });
