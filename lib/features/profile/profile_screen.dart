@@ -15,6 +15,7 @@ import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'blocked_users_screen.dart';
 import 'widgets/equipped_cosmetics.dart';
+import 'widgets/profile_labels.dart';
 import '../../core/i18n/language_picker.dart';
 import '../../core/i18n/text.dart';
 
@@ -83,6 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _copyableLine(context, 'ID: ${user.displayId}'),
                           const SizedBox(height: 6),
                           EquippedCosmetics(profileId: user.id),
+                          ProfileLabelsRow(profileId: user.id, onBadgesTap: () => AppNav.badges(context, user.id)),
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 6,
@@ -132,7 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _stat(context, 'Following', compactCount(user.following),
                         () => AppNav.followList(context, user.id, followers: false)),
                     _divider(),
-                    _stat(context, 'Fans', compactCount(user.fans), null),
+                    _stat(context, 'Fans', compactCount(user.fans), () => AppNav.fansList(context, user.id)),
                   ],
                 ),
               ),

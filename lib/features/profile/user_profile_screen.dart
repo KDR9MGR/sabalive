@@ -17,6 +17,7 @@ import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import 'user_safety_menu.dart';
 import 'widgets/equipped_cosmetics.dart';
+import 'widgets/profile_labels.dart';
 import '../../core/i18n/text.dart';
 
 /// Another user's profile — real `profiles` data, follow/unfollow, and a
@@ -116,6 +117,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               ),
               Center(child: _copyableId(context, _user.displayId)),
               Center(child: EquippedCosmetics(profileId: _user.id)),
+              Center(
+                child: ProfileLabelsRow(
+                  profileId: _user.id,
+                  alignment: WrapAlignment.center,
+                  onBadgesTap: () => AppNav.badges(context, _user.id),
+                ),
+              ),
               if (_user.bio.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Padding(
@@ -140,7 +148,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     _stat('Following', compactCount(_user.following),
                         () => AppNav.followList(context, _user.id, followers: false)),
                     _dot(),
-                    _stat('Fans', compactCount(_user.fans), null),
+                    _stat('Fans', compactCount(_user.fans), () => AppNav.fansList(context, _user.id)),
                   ],
                 ),
               ),

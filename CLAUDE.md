@@ -83,6 +83,25 @@ Production is shared with the live Play app: follow "Production safety" in the r
   (`LiveScrim`): a plain `DecoratedBox` swallows taps meant for what is under it.
 - New SQL objects are `pk_*_v2` / new names only; `invite_pk_opponent` and the other legacy functions serve the old screens.
 
+## Profile: completion step, fans, staff tags, badges
+- **Complete your profile.** After login `ProfileCompletionGate` (`lib/features/auth/profile_completion_screen.dart`, wired in `_RootGate` before the permissions prompt
+  and the home screen) asks for date of birth (13+, the picker stops at 13) and country whenever `profiles.date_of_birth` is null. The date of birth is the signal:
+  every account starts with country 'India' (a database default), so the country alone can't say who chose one. Ghost accounts are never asked. App-side only (the server
+  does not enforce it, so old builds keep working). The country is the English name from `lib/data/countries.dart`, saved in `profiles.location`.
+- **Fans = people who follow each other.** `profiles.fans_count` is kept by the extra trigger `follows_fans_after_change` (re-counts both people from `follows`, so it can
+  not drift; the old follower trigger is untouched); `get_fans(user)` is the list behind the Fans number (`FollowListScreen(fans: true)`). Migration `20261021180000`.
+- **Staff tags** (`profile_tags`, `profile_tag_assignments`, migration `20261021190000`): made and given in the panel (Master -> Tags), written ONLY by the `admin_*_profile_tag` /
+  `admin_set_user_tags` functions behind `staff_can_manage_tags()` (Super Admin always, Master by default, any other staff account only with `manage_tags` in its permissions;
+  `set_staff_permissions` accepts the key). They are not the Store's VIP tags. The app reads them with the earned badges in `ProfileLabelsRepository` and draws both with
+  `ProfileLabelsRow` on both profile screens only (badges first, then tags; not in chat); every read fails open to "nothing to show". A tag has one of three looks
+  (`profile_tags.look`): `pill` (name on a colour), `picture` (an uploaded banner shown as it is, the name is inside the artwork) or `plate` (an uploaded background with the
+  name written on it, `text_color`); a picture that can't load falls back to the pill. A badge with an uploaded picture is the picture itself (a banner, 26 px tall); animated
+  files and badges without a picture are the emoji chip.
+- **Level pictures instead of stars** (`LevelImageStore`, `LevelPicture` in `lib/core/widgets/level_star.dart`): the picture the panel's Levels page holds for a level
+  (`track_levels.image_url`, the same file as the join banner) replaces the star for people at EXACTLY that level (no borrowing from a lower level) on profiles, in live chat
+  and in the join notice. The number is part of the picture. Only still / GIF / WebP files count: SVGA and MP4 keep the star (a looping animation per chat line costs battery).
+  Pictures are kept on the phone by `EffectFileCache` (each downloaded once) and decoded small; the star shows until the picture is ready or if it fails.
+
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
   translates its English string at build time. Hints / tooltips use `tr('...')`. English in code is the key.

@@ -35,6 +35,9 @@ class LevelBannerImages {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
+  /// Every picture the panel set, one step per level and track (shared and remembered like the rest). Null when they cannot be read right now.
+  Future<List<LevelBannerStep>?> steps() => _get();
+
   /// The banner picture for a person at [charmLevel]: the highest Charm level at or below it that has one.
   /// Null when the panel set none (or they cannot be read right now).
   Future<String?> charmImage(int charmLevel) async {

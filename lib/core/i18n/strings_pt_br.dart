@@ -822,4 +822,11 @@ const Map<String, String> ptBrStrings = {
   'The other host gave up.': 'O outro anfitrião desistiu.',
   'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'Bem-vindo ao SABALIVE Live! Aviso: proibido nudez, vulgaridade, violência ou crianças na câmera ou no microfone durante a live. As lives são monitoradas e as violações serão punidas!',
   'Welcome to the SABALIVE audio room! Please be respectful: no abuse, vulgarity, hate speech or harassment, and no children on the mic. Rooms are monitored and violations are punished!': 'Bem-vindo à sala de áudio do SABALIVE! Seja respeitoso: sem xingamentos, vulgaridade, discurso de ódio ou assédio, e sem crianças no microfone. As salas são monitoradas e as violações serão punidas!',
+  'Complete your profile': 'Complete seu perfil',
+  'We need your date of birth and country before you continue.': 'Precisamos da sua data de nascimento e do seu país antes de você continuar.',
+  'Select your country': 'Selecione seu país',
+  'Search country': 'Buscar país',
+  'You must be at least 13 years old to use SABALIVE.': 'Você precisa ter pelo menos 13 anos para usar o SABALIVE.',
+  'No country found': 'Nenhum país encontrado',
+  'No fans yet. Fans are people you follow who follow you back.': 'Ainda não há fãs. Fãs são pessoas que você segue e que seguem você de volta.',
 };

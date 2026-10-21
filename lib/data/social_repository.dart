@@ -117,6 +117,12 @@ class SocialRepository {
     ];
   }
 
+  /// The people who follow [userId] AND whom [userId] follows back: the Fans list (database function `get_fans`, newest pair first).
+  Future<List<AppUser>> fansList(String userId) async {
+    final rows = (await supabase.rpc('get_fans', params: {'p_user': userId}) as List).cast<Map<String, dynamic>>();
+    return [for (final r in rows) AppUser.fromRow(r)];
+  }
+
   // ───────────────────────────────── search
   /// Usernames aren't shown or shared between users anymore — people find
   /// each other by display name or by the real `display_id` (the "ID: …"

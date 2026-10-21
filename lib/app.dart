@@ -10,6 +10,7 @@ import 'core/i18n/app_language.dart';
 import 'core/i18n/i18n.dart';
 import 'core/widgets/permissions_prompt_host.dart';
 import 'features/auth/auth_flow.dart';
+import 'features/auth/profile_completion_screen.dart';
 import 'features/live/live_access_exit.dart';
 import 'features/live/widgets/live_back_guard.dart';
 import 'features/maintenance/maintenance_banner.dart';
@@ -346,7 +347,8 @@ class _RootGate extends StatelessWidget {
       AuthStatus.unknown => const SplashScreen(),
       AuthStatus.onboarding => const OnboardingScreen(),
       AuthStatus.unauthenticated => const AuthFlow(),
-      AuthStatus.authenticated => const PermissionsPromptHost(child: MainShell()),
+      // Date of birth and country come first (before the permissions prompt and the home screen) for anyone who has not given them yet
+      AuthStatus.authenticated => const ProfileCompletionGate(child: PermissionsPromptHost(child: MainShell())),
     };
 
     final switcher = AnimatedSwitcher(

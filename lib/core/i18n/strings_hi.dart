@@ -822,4 +822,11 @@ const Map<String, String> hiStrings = {
   'The other host gave up.': 'दूसरे होस्ट ने हार मान ली।',
   'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'SABALIVE Live में आपका स्वागत है! चेतावनी: लाइव के दौरान कैमरे या माइक पर नग्नता, अश्लीलता, हिंसा या बच्चों की अनुमति नहीं है। लाइव की निगरानी की जाती है और उल्लंघन करने वालों को सज़ा दी जाएगी!',
   'Welcome to the SABALIVE audio room! Please be respectful: no abuse, vulgarity, hate speech or harassment, and no children on the mic. Rooms are monitored and violations are punished!': 'SABALIVE ऑडियो रूम में आपका स्वागत है! कृपया सम्मान से पेश आएँ: गाली-गलौज, अश्लीलता, नफ़रत भरी बातें या उत्पीड़न नहीं, और माइक पर बच्चे नहीं। रूम की निगरानी की जाती है और उल्लंघन करने वालों को सज़ा दी जाएगी!',
+  'Complete your profile': 'अपनी प्रोफ़ाइल पूरी करें',
+  'We need your date of birth and country before you continue.': 'आगे बढ़ने से पहले हमें आपकी जन्म तिथि और देश चाहिए।',
+  'Select your country': 'अपना देश चुनें',
+  'Search country': 'देश खोजें',
+  'You must be at least 13 years old to use SABALIVE.': 'SABALIVE इस्तेमाल करने के लिए आपकी उम्र कम से कम 13 साल होनी चाहिए।',
+  'No country found': 'कोई देश नहीं मिला',
+  'No fans yet. Fans are people you follow who follow you back.': 'अभी कोई फ़ैंस नहीं। फ़ैंस वे लोग हैं जिन्हें आप फ़ॉलो करते हैं और जो आपको वापस फ़ॉलो करते हैं।',
 };

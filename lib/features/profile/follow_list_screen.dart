@@ -13,12 +13,19 @@ class FollowListScreen extends StatefulWidget {
     super.key,
     required this.userId,
     required this.followers,
+    this.fans = false,
     this.title,
+    @visibleForTesting this.loader,
   });
 
   final String userId;
   final bool followers; // true = followers, false = following
+  /// The Fans list: people who follow each other. Overrides [followers].
+  final bool fans;
   final String? title;
+
+  /// Replaces the database read (tests).
+  final Future<List<AppUser>> Function()? loader;
 
   @override
   State<FollowListScreen> createState() => _FollowListScreenState();
@@ -38,7 +45,11 @@ class _FollowListScreenState extends State<FollowListScreen> {
 
   Future<void> _load() async {
     try {
-      final users = await _repo.followList(widget.userId, followers: widget.followers);
+      final users = widget.loader != null
+          ? await widget.loader!()
+          : widget.fans
+              ? await _repo.fansList(widget.userId)
+              : await _repo.followList(widget.userId, followers: widget.followers);
       if (!mounted) return;
       setState(() {
         _users = users;
@@ -58,16 +69,18 @@ class _FollowListScreenState extends State<FollowListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title ?? (widget.followers ? 'Followers' : 'Following')),
+        title: Text(widget.title ?? (widget.fans ? 'Fans' : widget.followers ? 'Followers' : 'Following')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _centered(_error!, retry: true)
               : _users.isEmpty
-                  ? _centered(widget.followers
-                      ? 'No followers yet.'
-                      : 'Not following anyone yet.')
+                  ? _centered(widget.fans
+                      ? 'No fans yet. Fans are people you follow who follow you back.'
+                      : widget.followers
+                          ? 'No followers yet.'
+                          : 'Not following anyone yet.')
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(

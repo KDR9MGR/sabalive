@@ -226,6 +226,10 @@ class AppNav {
     required bool followers,
   }) => _push(context, FollowListScreen(userId: userId, followers: followers));
 
+  /// The Fans list: the people [userId] follows who follow them back.
+  static Future<void> fansList(BuildContext context, String userId) =>
+      _push(context, FollowListScreen(userId: userId, followers: true, fans: true));
+
   static Future<void> kyc(BuildContext context) =>
       _push(context, const KycScreen());
 

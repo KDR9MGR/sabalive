@@ -822,4 +822,11 @@ const Map<String, String> filStrings = {
   'The other host gave up.': 'Sumuko ang kabilang host.',
   'Welcome to SABALIVE Live! Warning: no nudity, vulgarity, violence or children on camera or mic during a live. Lives are monitored and violations are punished!': 'Maligayang pagdating sa SABALIVE Live! Babala: bawal ang kahubaran, bastos na salita, karahasan o mga bata sa camera o mic habang nasa live. Binabantayan ang mga live at paparusahan ang lalabag!',
   'Welcome to the SABALIVE audio room! Please be respectful: no abuse, vulgarity, hate speech or harassment, and no children on the mic. Rooms are monitored and violations are punished!': 'Maligayang pagdating sa audio room ng SABALIVE! Maging magalang: bawal ang pang-aabuso, bastos na salita, hate speech o panliligalig, at bawal ang mga bata sa mic. Binabantayan ang mga room at paparusahan ang lalabag!',
+  'Complete your profile': 'Kumpletuhin ang iyong profile',
+  'We need your date of birth and country before you continue.': 'Kailangan namin ang iyong petsa ng kapanganakan at bansa bago ka magpatuloy.',
+  'Select your country': 'Piliin ang iyong bansa',
+  'Search country': 'Maghanap ng bansa',
+  'You must be at least 13 years old to use SABALIVE.': 'Dapat ay hindi bababa sa 13 taong gulang ka para magamit ang SABALIVE.',
+  'No country found': 'Walang nakitang bansa',
+  'No fans yet. Fans are people you follow who follow you back.': 'Wala pang mga fan. Ang mga fan ay ang mga taong sinusundan mo na sumusunod din sa iyo.',
 };
