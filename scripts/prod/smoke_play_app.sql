@@ -6,7 +6,8 @@
 -- It picks a host and an ordinary user by itself; it never uses a staff account.
 --
 -- It exercises the calls the Play build depends on: go live, heartbeat, join, chat, seats (with the
--- large Agora ids that used to fail), wallet read, leave, and the old app's way of ending a live.
+-- large Agora ids that used to fail), wallet read, leave, and the old app's way of ending a live, then the follow button
+-- (follow, follow back, unfollow: the path the Fans trigger sits on).
 begin;
 
 create temp table res (n serial, step text, ok boolean, info text);
@@ -38,6 +39,9 @@ declare
   v_view uuid := (select viewer_id from who);
   sid uuid;
   w int;
+  f0 int; f1 int;      -- the host's follower count before / after
+  fa0 int; fa1 int;    -- the host's fans count before / after
+  fans_on boolean := exists (select 1 from pg_trigger where tgname = 'follows_fans_after_change');
 begin
   if v_host is null or v_view is null then
     insert into res(step, ok, info) values ('0 pick test users', false, 'no host or no ordinary user found');
@@ -97,6 +101,40 @@ begin
            'ended_at is ' || round(extract(epoch from (ended_at - now())))::text || ' s from now (should be about 0)'
       from public.live_streams where id = sid;
   exception when others then insert into res(step, ok, info) values ('12 host ends the live', false, sqlerrm); end;
+
+  -- the follow button, as the Play app uses it. Start from a clean pair (these two may already follow each other in production; it is all rolled back).
+  begin
+    delete from public.follows where follower_id = v_host and followee_id = v_view;
+    perform set_config('request.jwt.claim.sub', v_view::text, true);
+    perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_view), true);
+    delete from public.follows where follower_id = v_view and followee_id = v_host;
+    select followers_count, fans_count into f0, fa0 from public.profiles where id = v_host;
+    insert into public.follows (follower_id, followee_id) values (v_view, v_host);
+    select followers_count into f1 from public.profiles where id = v_host;
+    insert into res(step, ok, info) values ('13 viewer follows the host (the host gains a follower)', f1 = f0 + 1, 'followers ' || f0 || ' -> ' || f1);
+  exception when others then insert into res(step, ok, info) values ('13 viewer follows the host', false, sqlerrm); end;
+
+  begin
+    perform set_config('request.jwt.claim.sub', v_host::text, true);
+    perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_host), true);
+    insert into public.follows (follower_id, followee_id) values (v_host, v_view);
+    select fans_count into fa1 from public.profiles where id = v_host;
+    insert into res(step, ok, info) values ('14 host follows back', true, null);
+    if fans_on then
+      insert into res(step, ok, info) values ('15 Fans: the pair is counted for the host', fa1 = fa0 + 1, 'fans ' || fa0 || ' -> ' || fa1);
+    else
+      insert into res(step, ok, info) values ('15 Fans trigger not installed yet (expected before migration 20261021180000)', true, null);
+    end if;
+  exception when others then insert into res(step, ok, info) values ('14 host follows back', false, sqlerrm); end;
+
+  begin
+    perform set_config('request.jwt.claim.sub', v_view::text, true);
+    perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_view), true);
+    delete from public.follows where follower_id = v_view and followee_id = v_host;
+    select followers_count, fans_count into f1, fa1 from public.profiles where id = v_host;
+    insert into res(step, ok, info) values ('16 viewer unfollows (follower count back, and the pair is gone when Fans is installed)',
+      f1 = f0 and (not fans_on or fa1 = fa0), 'followers ' || f1 || ', fans ' || fa1 || ', started at ' || f0 || ' / ' || fa0);
+  exception when others then insert into res(step, ok, info) values ('16 viewer unfollows', false, sqlerrm); end;
 end
 $$;
 
