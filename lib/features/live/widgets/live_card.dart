@@ -8,6 +8,7 @@ import '../../../data/models.dart';
 import '../../../router/app_nav.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
+import 'live_type_label.dart';
 
 /// Grid / list card for a live stream. [aspect] controls the thumbnail shape.
 class LiveCard extends StatelessWidget {
@@ -68,23 +69,8 @@ class LiveCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const LiveBadge(dense: true),
-                        // a live that is in a PK battle right now
-                        if (stream.inBattle) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            key: const ValueKey('live-card-pk'),
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(gradient: AppColors.goldGradient, borderRadius: BorderRadius.circular(10)),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.bolt_rounded, size: 11, color: Color(0xFF3A1A5E)),
-                                Text('PK', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w800, fontSize: 10, color: Color(0xFF3A1A5E))),
-                              ],
-                            ),
-                          ),
-                        ],
+                        // what kind of live this is: Audio, Video, or PK (a PK mode live or a live in a battle right now)
+                        LiveTypeLabel(kind: liveKindOf(stream)),
                         const Spacer(),
                         CountChip(
                           icon: Icons.visibility_rounded,
@@ -267,7 +253,7 @@ class LiveListTile extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const LiveBadge(dense: true),
+                LiveTypeLabel(kind: liveKindOf(stream), dense: true),
                 const SizedBox(height: 5),
                 Row(
                   children: [
