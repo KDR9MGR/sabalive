@@ -21,11 +21,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { RtcRole, RtcTokenBuilder } from "npm:agora-token@2.0.5";
 import { mayPublishToBattle } from "./battle_access.ts";
+import { publisherTtlSeconds, seatGivesMic } from "./seat_access.ts";
 
 const APP_ID = Deno.env.get("AGORA_APP_ID") ?? "";
 const APP_CERTIFICATE = Deno.env.get("AGORA_APP_CERTIFICATE") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const TOKEN_TTL_SECONDS = 3600;
 
 const corsHeaders = {
@@ -40,6 +42,24 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// Who was given (or refused) a SPEAKING token, for which channel, from which device and address. Agora's own console only shows anonymous
+// uids (every token is minted with uid 0), so without this a person who spoke in a room could not be named afterwards. Best effort: the
+// log must never stop a join, so any failure (table missing, database busy) is swallowed. Read by Super Admin only (agora_token_log).
+async function logPublisher(userId: string, channel: string, outcome: "granted" | "refused", reason: string, req: Request) {
+  if (!SERVICE_ROLE_KEY) return;
+  try {
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    await admin.from("agora_token_log").insert({
+      user_id: userId,
+      channel,
+      outcome,
+      reason,
+      device_id: req.headers.get("x-device-id") || null,
+      ip: (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || null,
+    });
+  } catch { /* never block a join */ }
 }
 
 // The mint of a token is the real media gate: without one a banned user can't
@@ -98,6 +118,8 @@ Deno.serve(async (req) => {
   }
 
   const role = body.role === "subscriber" ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
+  // how long the token lives: the full hour, except a guest's speaking token (seat_access.ts)
+  let ttl = TOKEN_TTL_SECONDS;
 
   // 1:1 call channels ("call-<uuid>") aren't lives; everything else is. A
   // channel that is a live_streams id also gets the per-room checks (removed by
@@ -151,7 +173,7 @@ Deno.serve(async (req) => {
     // simply won't match any row here and falls through unchanged.
     const { data: stream } = await userClient
       .from("live_streams")
-      .select("host_id")
+      .select("host_id, mode, status, seat_count")
       .eq("id", channelName)
       .maybeSingle();
     if (stream) {
@@ -164,11 +186,15 @@ Deno.serve(async (req) => {
           .eq("live_stream_id", channelName)
           .eq("occupant_id", user.id)
           .maybeSingle();
-        isSeated = !!seat;
+        // a row alone is not enough: the seat must be one the room really has (see seat_access.ts)
+        isSeated = seatGivesMic(seat?.seat_number, stream);
       }
       if (!isHost && !isSeated) {
+        await logPublisher(user.id, channelName, "refused", "not host, no usable seat", req);
         return json({ error: "Not authorized to publish to this stream" }, 403);
       }
+      ttl = publisherTtlSeconds(isHost);
+      await logPublisher(user.id, channelName, "granted", isHost ? "host" : "seat", req);
     }
   }
 
@@ -178,8 +204,8 @@ Deno.serve(async (req) => {
     channelName,
     0,
     role,
-    TOKEN_TTL_SECONDS,
-    TOKEN_TTL_SECONDS,
+    ttl,
+    ttl,
   );
 
   return json({
@@ -187,6 +213,6 @@ Deno.serve(async (req) => {
     appId: APP_ID,
     channelName,
     uid: 0,
-    expiresIn: TOKEN_TTL_SECONDS,
+    expiresIn: ttl,
   });
 });
