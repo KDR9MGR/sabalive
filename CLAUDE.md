@@ -54,6 +54,8 @@ Production is shared with the live Play app: follow "Production safety" in the r
   (the speaking waves are the exception: they run only while someone is talking). Don't mute remote video
   or audio when the app is backgrounded: the product wants the live's audio to keep going.
 - Host chat controls live on `live_streams` (`chat_cleared_at`, `pinned_notice`) via `RoomChatState`.
+- Live cards and rows carry a type label (`LiveTypeLabel`, `liveKindOf` in `lib/features/live/widgets/live_type_label.dart`): purple mic Audio, pink camera Video, gold bolt PK
+  (an old PK-mode live or a live in a battle right now; PK wins over Audio / Video). It replaced the LIVE badge on cards.
 - Seat "who is talking": Agora volume -> `SeatSpeaking` using `live_stream_seats.agora_uid`, drawn as the
   `SpeakingWaves` ring. Agora uids are UNSIGNED 32-bit (about half exceed 2^31): store them as bigint, never
   integer, or the RPC fails silently for those users and their seat never lights up.
