@@ -464,7 +464,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   void _startSeatSync() {
     _seatSyncTimer?.cancel();
     _seatSyncTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      kHostSeatSyncEvery,
       (_) => unawaited(_reconcileSeats()),
     );
   }

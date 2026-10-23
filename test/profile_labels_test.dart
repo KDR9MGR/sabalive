@@ -97,7 +97,12 @@ void main() {
 
     group('the three looks on screen', () {
       const url = 'https://x.supabase.co/storage/v1/object/public/gift-assets/tags/a.png';
-      bool isTagImage(Widget w) => w is Image && w.image is NetworkImage && (w.image as NetworkImage).url == url;
+      bool isTagImage(Widget w) {
+        if (w is! Image) return false;
+        final p = w.image;
+        final inner = p is ResizeImage ? p.imageProvider : p; // pictures are decoded at the size they are drawn
+        return inner is NetworkImage && inner.url == url;
+      }
 
       Future<void> one(WidgetTester t, ProfileTag tag) =>
           t.pumpWidget(MaterialApp(home: Scaffold(body: Center(child: TagPill(tag: tag)))));

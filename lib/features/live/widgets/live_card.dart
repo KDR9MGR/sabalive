@@ -46,6 +46,8 @@ class LiveCard extends StatelessWidget {
                 Image.network(
                   photo,
                   fit: BoxFit.cover,
+                  // a card is about 175 dp wide: decode the host's photo at that size, not at its upload size
+                  cacheWidth: 640,
                   errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
               const DecoratedBox(

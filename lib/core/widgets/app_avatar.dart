@@ -68,6 +68,10 @@ class AppAvatar extends StatelessWidget {
     final hasPhoto = imageUrl != null && imageUrl!.isNotEmpty;
     final framed = showsFrame(size, frameUrl);
     final pic = pictureSize(size, frameUrl);
+    // Decode the photo at the size it is drawn, not at the 1024 px it was uploaded at: a 1024 px photo is a 4 MB bitmap in memory, and a room full of
+    // avatars filled the image cache, so pictures were dropped and downloaded again as you scrolled (heat, battery, data). A little over the box
+    // (x1.25) so a landscape photo, whose short side is the box, is still sharp.
+    final decodeWidth = (pic * MediaQuery.devicePixelRatioOf(context) * 1.25).ceil().clamp(48, 1024);
     final photo = Container(
       width: pic,
       height: pic,
@@ -82,7 +86,7 @@ class AppAvatar extends StatelessWidget {
               ),
         image: hasPhoto
             ? DecorationImage(
-                image: NetworkImage(imageUrl!),
+                image: ResizeImage(NetworkImage(imageUrl!), width: decodeWidth),
                 fit: BoxFit.cover,
               )
             : null,

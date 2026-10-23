@@ -46,10 +46,14 @@ class SabaLiveApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthController()),
         ChangeNotifierProvider(create: (_) => WalletController()),
         ChangeNotifierProvider(create: (_) => SessionController()),
-        ChangeNotifierProvider(create: (_) => LiveStreamsController()),
         ChangeNotifierProvider(create: (_) => CallsController()),
         ChangeNotifierProvider(create: (_) => ThemeConfigController()),
         ChangeNotifierProvider(create: (_) => ActiveLiveSessionController()),
+        // the live list stops listening to Realtime while a live is open full-screen (the list is not on screen), and reads once when it is back
+        ChangeNotifierProxyProvider<ActiveLiveSessionController, LiveStreamsController>(
+          create: (_) => LiveStreamsController(),
+          update: (_, session, streams) => (streams ?? LiveStreamsController())..setInLiveRoom(session.isActive && !session.isMinimized),
+        ),
       ],
       child: _LiveBackInterceptor(
        child: Consumer<ThemeConfigController>(

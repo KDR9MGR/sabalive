@@ -330,7 +330,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   void _startSeatSync() {
     _seatSyncTimer?.cancel();
     _seatSyncTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      kViewerSeatSyncEvery,
       (_) => unawaited(_reconcileSeats()),
     );
   }

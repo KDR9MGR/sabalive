@@ -41,6 +41,14 @@ class SeatSnapshot {
   }
 }
 
+/// How often a VIEWER's screen re-reads the seats as a safety net behind Realtime. Every viewer of a room does it, so it is the biggest steady request load
+/// a busy room puts on the database (two queries a time): 20 s instead of 10 s halves that, and a missed Realtime event is still healed well inside half a
+/// minute (the screen also re-reads the moment the app returns to the foreground or Realtime reconnects).
+const Duration kViewerSeatSyncEvery = Duration(seconds: 20);
+
+/// The HOST's screen keeps the faster safety net: one person per room, and it is also what puts the host back on a seat.
+const Duration kHostSeatSyncEvery = Duration(seconds: 10);
+
 /// Null when it could not be read (offline, etc.) — callers just keep what they have.
 Future<SeatSnapshot?> fetchSeatSnapshot(String streamId) async {
   try {

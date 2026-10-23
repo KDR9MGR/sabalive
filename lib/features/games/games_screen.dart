@@ -176,7 +176,7 @@ class GameCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   if (game.imageUrl != null)
-                    Image.network(game.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const _GameIcon())
+                    Image.network(game.imageUrl!, fit: BoxFit.cover, cacheWidth: 640, errorBuilder: (_, _, _) => const _GameIcon())
                   else
                     const _GameIcon(),
                   if (busy) const ColoredBox(color: Color(0x88000000), child: Center(child: CircularProgressIndicator())),
