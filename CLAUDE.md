@@ -53,6 +53,10 @@ Production is shared with the live Play app: follow "Production safety" in the r
   from a timer). Don't add looping animations or `ImageFilter.blur` to anything shown during a live
   (the speaking waves are the exception: they run only while someone is talking). Don't mute remote video
   or audio when the app is backgrounded: the product wants the live's audio to keep going.
+- Cost control (Supabase meters are multiplied by phones): `live_streams` changes on every heartbeat, join, leave, like and gift and Realtime sends each change to EVERY listener, so
+  `LiveStreamsController` reloads at most once per 8 s (`ThrottledRunner`; `CoalescedRunner` still has a 1.5 s window, too short for a table that never stops changing), listens only
+  while the app is in the foreground and no live is open full-screen (`setInLiveRoom`), and avatars / card photos are decoded at the size drawn (`ResizeImage`). Never subscribe to a
+  whole table without a filter in a screen, never poll faster than 20 s without a reason, and prefer one shared timer to one per screen. See `docs/OPTIMIZATION_AND_SUPABASE_2026-10-23.md`.
 - Host chat controls live on `live_streams` (`chat_cleared_at`, `pinned_notice`) via `RoomChatState`.
 - Live cards and rows carry a type label (`LiveTypeLabel`, `liveKindOf` in `lib/features/live/widgets/live_type_label.dart`): purple mic Audio, pink camera Video, gold bolt PK
   (an old PK-mode live or a live in a battle right now; PK wins over Audio / Video). It replaced the LIVE badge on cards.
