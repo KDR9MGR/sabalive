@@ -10,6 +10,7 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/../.."    # the sabalive/ app repo
+. scripts/lib/supabase_login.sh   # use the sabalive account token from ~/sabalive-secrets/supabase.env if it exists
 
 command -v supabase >/dev/null || { echo "supabase CLI not found"; exit 2; }
 command -v jq >/dev/null || { echo "jq not found (brew install jq)"; exit 2; }

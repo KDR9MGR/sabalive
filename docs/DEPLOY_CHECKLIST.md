@@ -86,6 +86,20 @@ smoke test, dry run, the owner's explicit go) still applies at every hour.
    use "log out all users" unless sessions themselves are the problem.
 6. Write down what happened (QA tracker, one row). The cause matters more than the fix.
 
+## Supabase login (the CLI must act as the sabalive account)
+The CLI keeps one stored login per computer, and it has been switched to the wrong account more than once (it then shows `habitpro` and a personal project, and every
+check answers 403 or "could not query the database"). Fix it once for good with an **access token kept in a file outside git**:
+
+1. In the Supabase dashboard, signed in as the sabalive account: profile icon > Account preferences > **Access Tokens** > Generate new token (name `sabalive-cli`, give it an
+   expiry, 90 days is sensible). Copy it once; it is shown only then.
+2. Save it into `~/sabalive-secrets/supabase.env` (that folder is outside every repo; the file must be mode 600) WITHOUT putting it in chat or in your shell history. In your terminal:
+   `mkdir -p ~/sabalive-secrets && read -rs "T?Paste the token, then press Enter: " && print -r -- "SUPABASE_ACCESS_TOKEN=$T" > ~/sabalive-secrets/supabase.env && chmod 600 ~/sabalive-secrets/supabase.env && unset T && echo saved`
+3. Check: `cd sabalive && set -a && . ~/sabalive-secrets/supabase.env && set +a && supabase projects list` must show `sabalive` and `sabalive-staging`.
+
+Every script under `scripts/prod/` and `scripts/staging/` loads that file by itself (`scripts/lib/supabase_login.sh`; a token already in the environment wins; without the file nothing changes).
+A plain `supabase db push` typed in a terminal does NOT load it: prefix it with the same `set -a && . ~/sabalive-secrets/supabase.env && set +a &&`, or use `supabase login` as before.
+The token has the same power as your login (every project of the account): keep the file at mode 600, never commit or paste it, and revoke it in the same dashboard page if it ever leaks.
+
 ## Edge Functions and secrets
 - Never put a secret in the repo. Function secrets live in Supabase (Edge Functions > Secrets).
 - `agora-token` needs `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE`. A second environment (staging) must use

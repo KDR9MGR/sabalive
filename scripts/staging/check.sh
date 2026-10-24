@@ -3,6 +3,7 @@
 #   scripts/staging/check.sh
 set -uo pipefail
 cd "$(dirname "$0")/../.."
+. scripts/lib/supabase_login.sh   # use the sabalive account token from ~/sabalive-secrets/supabase.env if it exists
 ENV_FILE="${STAGING_ENV_FILE:-$HOME/sabalive-secrets/staging.env}"
 [ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE. See docs/STAGING.md."; exit 2; }
 set -a; . "$ENV_FILE"; set +a

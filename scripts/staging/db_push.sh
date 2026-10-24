@@ -9,6 +9,7 @@
 # NOTE: written ahead of the staging project existing; check the dry run output before using --apply.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. scripts/lib/supabase_login.sh   # use the sabalive account token from ~/sabalive-secrets/supabase.env if it exists
 
 ENV_FILE="${STAGING_ENV_FILE:-$HOME/sabalive-secrets/staging.env}"
 [ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE. See docs/STAGING.md."; exit 2; }

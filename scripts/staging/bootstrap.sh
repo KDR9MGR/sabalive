@@ -15,6 +15,7 @@
 # Not done here (your accounts): the Agora and FCM secrets (see docs/STAGING.md), and the Auth dashboard settings.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. scripts/lib/supabase_login.sh   # use the sabalive account token from ~/sabalive-secrets/supabase.env if it exists
 
 ENV_FILE="${STAGING_ENV_FILE:-$HOME/sabalive-secrets/staging.env}"
 [ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE. See docs/STAGING.md."; exit 2; }

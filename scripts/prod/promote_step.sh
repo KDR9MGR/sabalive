@@ -23,6 +23,7 @@
 # functions, and with --apply it needs PROMOTE_CONFIRM=<version> typed on purpose: only run it after the owner says "go".
 set -uo pipefail
 cd "$(dirname "$0")/../.."    # the sabalive/ app repo
+. scripts/lib/supabase_login.sh   # use the sabalive account token from ~/sabalive-secrets/supabase.env if it exists
 
 VERSION="${1:-}"
 [ -n "$VERSION" ] && shift || true
