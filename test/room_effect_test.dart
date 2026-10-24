@@ -461,9 +461,12 @@ void main() {
         ),
       );
       await t.pump();
-      // flutter_test answers every HTTP request with a 400, so the image errors.
-      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-      await t.pump();
+      // flutter_test answers every HTTP request with a 400, so the picture cannot be fetched and the image errors (the picture goes through the phone's
+      // file cache first, which takes a moment longer than a plain network image): wait for the fallback instead of a fixed pause
+      for (var i = 0; i < 30 && find.text('🌹').evaluate().isEmpty; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+        await t.pump();
+      }
       await t.pump();
       expect(find.text('🌹'), findsOneWidget, reason: 'the gift is still seen');
       await t.pump(const Duration(milliseconds: 2400));

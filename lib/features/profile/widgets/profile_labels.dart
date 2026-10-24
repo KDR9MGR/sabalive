@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/i18n/text.dart';
+import '../../../core/media/disk_cached_image.dart';
 import '../../../core/widgets/remote_media.dart' show MediaKind, mediaKindFor;
 import '../../../data/profile_labels_repository.dart';
 import '../../../theme/app_colors.dart';
@@ -125,11 +126,10 @@ class TagPill extends StatelessWidget {
     final url = tag.imageUrl;
     if (url == null || tag.look == TagLook.pill) return _pill();
     if (tag.look == TagLook.picture) {
-      return Image.network(
-        url,
+      return Image(
+        image: ResizeImage(DiskCachedNetworkImage(url), height: (kTagPictureHeight * MediaQuery.devicePixelRatioOf(context)).ceil()),
         key: ValueKey('tag-${tag.id}'),
         height: kTagPictureHeight,
-        cacheHeight: (kTagPictureHeight * MediaQuery.devicePixelRatioOf(context)).ceil(),
         fit: BoxFit.contain,
         semanticLabel: tag.name,
         errorBuilder: (_, _, _) => _pill(),
@@ -140,7 +140,7 @@ class TagPill extends StatelessWidget {
       alignment: Alignment.center,
       children: [
         Positioned.fill(
-          child: Image.network(url, fit: BoxFit.fill, errorBuilder: (_, _, _) => DecoratedBox(
+          child: Image(image: DiskCachedNetworkImage(url), fit: BoxFit.fill, errorBuilder: (_, _, _) => DecoratedBox(
             decoration: BoxDecoration(color: tag.color, borderRadius: BorderRadius.circular(20)),
           )),
         ),
@@ -201,11 +201,10 @@ class _BadgeChip extends StatelessWidget {
         onTap: onTap,
         child: _hasPicture
             // the picture IS the badge (its artwork carries the name), shown as it is; if it can't load, the chip takes over
-            ? Image.network(
-                badge.iconUrl!,
+            ? Image(
+                image: ResizeImage(DiskCachedNetworkImage(badge.iconUrl!), height: (kTagPictureHeight * MediaQuery.devicePixelRatioOf(context)).ceil()),
                 key: ValueKey('badge-icon-${badge.id}'),
                 height: kTagPictureHeight,
-                cacheHeight: (kTagPictureHeight * MediaQuery.devicePixelRatioOf(context)).ceil(),
                 fit: BoxFit.contain,
                 semanticLabel: badge.name,
                 errorBuilder: (_, _, _) => _chip(),

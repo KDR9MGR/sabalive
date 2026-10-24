@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svga/flutter_svga.dart';
 import 'package:video_player/video_player.dart';
 
+import '../media/disk_cached_image.dart';
 import '../media/effect_file_cache.dart';
 
 enum MediaKind { svga, video, animatedImage, image }
@@ -146,8 +147,9 @@ class RemoteMedia extends StatelessWidget {
           fallback: blank,
           loader: imageLoader ?? _downloadImageBytes,
         ),
-      MediaKind.image => Image.network(
-          url,
+      MediaKind.image => Image(
+          // kept on the phone after the first download
+          image: DiskCachedNetworkImage(url),
           fit: fit,
           gaplessPlayback: true,
           loadingBuilder: (_, child, progress) =>
@@ -444,8 +446,15 @@ final Map<String, Uint8List> _imageBytesCache = {};
 Future<Uint8List> _downloadImageBytes(String url) async {
   final cached = _imageBytesCache[url];
   if (cached != null) return cached;
-  final data = await NetworkAssetBundle(Uri.parse(url)).load('');
-  final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  // from the phone's storage when it is there (downloaded and kept the first time); straight from the network only when that fails
+  Uint8List bytes;
+  final stored = await imageFileCache.cached(url) ?? await imageFileCache.fetch(url);
+  if (stored != null) {
+    bytes = await stored.readAsBytes();
+  } else {
+    final data = await NetworkAssetBundle(Uri.parse(url)).load('');
+    bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  }
   if (_imageBytesCache.length >= 24) {
     _imageBytesCache.remove(_imageBytesCache.keys.first);
   }

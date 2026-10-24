@@ -8,6 +8,7 @@ import '../../../data/models.dart';
 import '../../../router/app_nav.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
+import '../../../core/media/disk_cached_image.dart';
 import 'live_type_label.dart';
 
 /// Grid / list card for a live stream. [aspect] controls the thumbnail shape.
@@ -43,11 +44,10 @@ class LiveCard extends StatelessWidget {
             children: [
               AppThumb(seed: stream.id + stream.host.name, borderRadius: 18),
               if (photo != null && photo.isNotEmpty)
-                Image.network(
-                  photo,
+                Image(
+                  // a card is about 175 dp wide: decode the host's photo at that size, not at its upload size; kept on the phone
+                  image: ResizeImage(DiskCachedNetworkImage(photo), width: 640),
                   fit: BoxFit.cover,
-                  // a card is about 175 dp wide: decode the host's photo at that size, not at its upload size
-                  cacheWidth: 640,
                   errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
               const DecoratedBox(

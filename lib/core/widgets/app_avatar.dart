@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide Text;
 
 import '../../theme/app_colors.dart';
 import '../utils/formatters.dart';
+import '../media/disk_cached_image.dart';
 import 'remote_media.dart';
 import '../i18n/text.dart';
 import '../../state/remote_config_controller.dart';
@@ -86,7 +87,9 @@ class AppAvatar extends StatelessWidget {
               ),
         image: hasPhoto
             ? DecorationImage(
-                image: ResizeImage(NetworkImage(imageUrl!), width: decodeWidth),
+                // kept on the phone after the first download (every app start used to download every avatar again), decoded small
+                image: ResizeImage(DiskCachedNetworkImage(imageUrl!), width: decodeWidth),
+                onError: (_, _) {}, // offline / deleted picture: the initials stay, no error report
                 fit: BoxFit.cover,
               )
             : null,

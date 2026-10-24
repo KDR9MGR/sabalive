@@ -19,6 +19,7 @@ class EffectFileCache {
     this.maxBytes = 150 * 1024 * 1024,
     this.maxFileBytes = 30 * 1024 * 1024,
     this.timeout = const Duration(seconds: 25),
+    this.minTrimGap = Duration.zero,
   })  : _directory = directory ?? _defaultDirectory,
         _client = client ?? http.Client();
 
@@ -30,6 +31,11 @@ class EffectFileCache {
   final int maxBytes;
   final int maxFileBytes;
   final Duration timeout;
+
+  /// The least time between two trims of the folder. A trim lists and measures every file, so a cache that takes dozens of small files at once
+  /// (the picture cache at app start) asks for a gap; the default (none) trims after every new file, as before.
+  final Duration minTrimGap;
+  DateTime? _lastTrim;
 
   final Map<String, Future<File?>> _inFlight = {};
   Directory? _dir;
@@ -98,7 +104,11 @@ class EffectFileCache {
       final part = File('${target.path}.part');
       await part.writeAsBytes(bytes, flush: true);
       await part.rename(target.path);
-      unawaited(_trim(dir));
+      final last = _lastTrim;
+      if (last == null || DateTime.now().difference(last) >= minTrimGap) {
+        _lastTrim = DateTime.now();
+        unawaited(_trim(dir));
+      }
       return target;
     } catch (_) {
       return null;

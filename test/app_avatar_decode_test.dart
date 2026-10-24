@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sabalive/core/media/disk_cached_image.dart';
 import 'package:sabalive/core/utils/formatters.dart';
 import 'package:sabalive/core/widgets/app_avatar.dart';
 
@@ -27,7 +28,7 @@ void main() {
     expect(p, isA<ResizeImage>());
     final w = (p as ResizeImage).width!;
     expect(w, inInclusiveRange(150, 180), reason: '44 x 3 x 1.25');
-    expect(p.imageProvider, isA<NetworkImage>());
+    expect(p.imageProvider, isA<DiskCachedNetworkImage>(), reason: 'kept on the phone after the first download');
   });
 
   testWidgets('a big avatar still decodes sharp, and never above the 1024 px it was uploaded at', (t) async {

@@ -55,7 +55,7 @@ Production is shared with the live Play app: follow "Production safety" in the r
   or audio when the app is backgrounded: the product wants the live's audio to keep going.
 - Cost control (Supabase meters are multiplied by phones): `live_streams` changes on every heartbeat, join, leave, like and gift and Realtime sends each change to EVERY listener, so
   `LiveStreamsController` reloads at most once per 8 s (`ThrottledRunner`; `CoalescedRunner` still has a 1.5 s window, too short for a table that never stops changing), listens only
-  while the app is in the foreground and no live is open full-screen (`setInLiveRoom`), and avatars / card photos are decoded at the size drawn (`ResizeImage`). Never subscribe to a
+  while the app is in the foreground and no live is open full-screen (`setInLiveRoom`), and avatars / card photos are decoded at the size drawn (`ResizeImage`) and kept on the phone after the first download (`DiskCachedNetworkImage`, never plain `NetworkImage` / `Image.network` for user or catalogue pictures). Never subscribe to a
   whole table without a filter in a screen, never poll faster than 20 s without a reason, and prefer one shared timer to one per screen. See `docs/OPTIMIZATION_AND_SUPABASE_2026-10-23.md`.
 - Host chat controls live on `live_streams` (`chat_cleared_at`, `pinned_notice`) via `RoomChatState`.
 - Live cards and rows carry a type label (`LiveTypeLabel`, `liveKindOf` in `lib/features/live/widgets/live_type_label.dart`): purple mic Audio, pink camera Video, gold bolt PK

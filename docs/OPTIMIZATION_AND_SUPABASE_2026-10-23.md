@@ -72,7 +72,7 @@ Tests: 908 pass (new ones for the throttle, the listening rules, background / li
 
 | # | What | Why / effect | Risk |
 |---|---|---|---|
-| A1 | **Keep pictures on the phone** (disk cache for avatars, frames, gift and store pictures, using the cache the app already has for effects) | the main lever on **Cached Egress** (325 GB): a picture is downloaded once per phone, not once per start | low |
+| A1 | **DONE 2026-10-24 (commit below, in the next build): keep pictures on the phone** (disk cache for avatars, frames, gift and store pictures, using the cache the app already has for effects) | the main lever on **Cached Egress** (325 GB): a picture is downloaded once per phone, not once per start | low |
 | A2 | **Measure, then shrink effect files** (gift MP4 / SVGA, frames): sizes, count of plays, cap and re-encode | effects are the biggest files; likely the other half of Cached Egress | low, needs the numbers (see C1) |
 | A3 | **Trim unused Agora extensions** (about 14 MB off the 75 MB download, about 20% smaller) | smaller install, faster updates | needs a **real-phone test** of video live, audio live, PK and the beauty filter |
 | A4 | Compress the bundled pictures (4.4 MB) to WebP and re-encode the splash video (2.3 MB) | about 4 MB | low |
@@ -97,6 +97,11 @@ Tests: 908 pass (new ones for the throttle, the listening rules, background / li
 
 **D. Panel (when you want):** lazy-load pages (the 1.2 MB file becomes about 6 small ones), replace the 1000-row pickers with search, page the big tables on the server and
 select only needed columns, make the three dashboard timers pause when the tab is hidden.
+
+**A1 as built (2026-10-24).** `DiskCachedNetworkImage` (`lib/core/media/disk_cached_image.dart`) is a drop-in for `NetworkImage`: it reads the picture from the phone's storage when it is there and
+otherwise downloads it once and keeps it (own folder `image_files`, 120 MB limit, oldest removed first, trims at most every 30 s). It is used for avatars, live-card photos, game pictures, tag and
+badge pictures, every still picture shown through `RemoteMedia` (gift, store and banner pictures) and the bytes of animated GIF / WebP. Not covered: SVGA files (the SVGA package already keeps
+them 7 days) and looping or preview MP4s (they still stream; effect MP4s were already kept). If the system clears the temporary folder, pictures are simply downloaded again. Tests: `test/disk_cached_image_test.dart`.
 
 ## 5. Phone heat and battery: what actually causes it, and where we stand
 

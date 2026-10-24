@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/core/i18n/app_language.dart';
 import 'package:sabalive/core/i18n/i18n.dart';
 import 'package:sabalive/core/i18n/text.dart';
+import 'package:sabalive/core/media/disk_cached_image.dart';
 import 'package:sabalive/data/profile_labels_repository.dart';
 import 'package:sabalive/features/profile/widgets/profile_labels.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,6 +65,15 @@ void main() {
         ProfileTag(id: id, name: name, color: parseTagColor(color), emoji: emoji);
     ProfileBadge badge(String id, String name) => ProfileBadge(id: id, name: name, emoji: '🏅');
 
+
+    /// The picture is fetched through the phone's file cache and the test network refuses it, which takes a little real time: wait until [text] shows.
+    Future<void> waitFor(WidgetTester t, String text) async {
+      for (var i = 0; i < 30 && find.text(text).evaluate().isEmpty; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+        await t.pump();
+      }
+    }
+
     Future<void> show(WidgetTester t, Future<ProfileLabels> Function(String) loader, {String id = 'p1', VoidCallback? onBadgesTap}) =>
         t.pumpWidget(MaterialApp(home: Scaffold(body: ProfileLabelsRow(profileId: id, loader: loader, onBadgesTap: onBadgesTap))));
 
@@ -90,7 +100,7 @@ void main() {
       expect(find.text('Crown'), findsOneWidget);
       expect(find.text('👑'), findsOneWidget);
       expect(find.text('Fire'), findsOneWidget);
-      await t.pumpAndSettle(); // the test network refuses the picture: the chip takes over, the badge never vanishes
+      await waitFor(t, 'Star'); // the test network refuses the picture: the chip takes over, the badge never vanishes
       expect(find.text('Star'), findsOneWidget);
       expect(find.text('⭐'), findsOneWidget);
     });
@@ -101,7 +111,7 @@ void main() {
         if (w is! Image) return false;
         final p = w.image;
         final inner = p is ResizeImage ? p.imageProvider : p; // pictures are decoded at the size they are drawn
-        return inner is NetworkImage && inner.url == url;
+        return inner is DiskCachedNetworkImage && inner.url == url;
       }
 
       Future<void> one(WidgetTester t, ProfileTag tag) =>
@@ -111,7 +121,7 @@ void main() {
         await one(t, const ProfileTag(id: 'p', name: 'Viscount', color: Color(0xFF112233), look: TagLook.picture, imageUrl: url));
         expect(find.byWidgetPredicate(isTagImage), findsOneWidget);
         expect(find.text('Viscount'), findsNothing, reason: 'the name is inside the picture, nothing is written over it');
-        await t.pumpAndSettle(); // the test network refuses the file
+        await waitFor(t, 'Viscount'); // the test network refuses the file
         expect(find.text('Viscount'), findsOneWidget, reason: 'the pill takes over');
       });
 
@@ -119,7 +129,8 @@ void main() {
         await one(t, const ProfileTag(id: 'p', name: 'Sahi BDM', color: Color(0xFF118833), look: TagLook.plate, imageUrl: url));
         expect(find.byWidgetPredicate(isTagImage), findsOneWidget);
         expect((t.widget<w.Text>(find.text('Sahi BDM')).style)!.color, Colors.white);
-        await t.pumpAndSettle();
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+        await t.pump();
         expect(find.text('Sahi BDM'), findsOneWidget, reason: 'the name stays when the picture fails');
         await one(t, const ProfileTag(id: 'p', name: 'Sahi BDM', color: Color(0xFF118833), look: TagLook.plate, imageUrl: url, textColor: Color(0xFFFFEE88)));
         expect((t.widget<w.Text>(find.text('Sahi BDM')).style)!.color, const Color(0xFFFFEE88));

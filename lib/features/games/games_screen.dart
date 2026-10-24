@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
 import '../../core/utils/formatters.dart';
+import '../../core/media/disk_cached_image.dart';
 import '../../data/games_repository.dart';
 import '../../state/games_store.dart';
 import '../../state/remote_config_controller.dart';
@@ -176,7 +177,7 @@ class GameCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   if (game.imageUrl != null)
-                    Image.network(game.imageUrl!, fit: BoxFit.cover, cacheWidth: 640, errorBuilder: (_, _, _) => const _GameIcon())
+                    Image(image: ResizeImage(DiskCachedNetworkImage(game.imageUrl!), width: 640), fit: BoxFit.cover, errorBuilder: (_, _, _) => const _GameIcon())
                   else
                     const _GameIcon(),
                   if (busy) const ColoredBox(color: Color(0x88000000), child: Center(child: CircularProgressIndicator())),
