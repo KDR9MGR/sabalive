@@ -66,6 +66,26 @@ void main() {
     });
   });
 
+  group('levelUnlocked', () {
+    // the panel lets every level take any XP: here level 2 needs MORE than level 4
+    final odd = [LevelThreshold(1, 0), LevelThreshold(2, 5000), LevelThreshold(3, 5000), LevelThreshold(4, 100)];
+
+    test('in order: everything up to the current level is unlocked', () {
+      final mine = MyLevel(3, 2500, [LevelThreshold(1, 0), LevelThreshold(2, 500), LevelThreshold(3, 2000), LevelThreshold(4, 4500)]);
+      expect([for (final t in mine.thresholds) levelUnlocked(t, mine)], [true, true, true, false]);
+    });
+
+    test('out of order: a level below the current one stays locked until its XP is reached', () {
+      final mine = MyLevel(4, 3000, odd);
+      expect([for (final t in odd) levelUnlocked(t, mine)], [true, false, false, true]);
+    });
+
+    test('the current level is always unlocked, and a reached higher-numbered level is too', () {
+      expect(levelUnlocked(LevelThreshold(5, 99999), MyLevel(5, 10, odd)), isTrue, reason: 'the server says this is their level');
+      expect(levelUnlocked(LevelThreshold(2, 5000), MyLevel(4, 6000, odd)), isTrue);
+    });
+  });
+
   group('MyLevelScreen', () {
     Future<void> show(WidgetTester t, WealthCharmLevels data) async {
       await t.pumpWidget(MaterialApp(home: MyLevelScreen(loader: () async => data)));

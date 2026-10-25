@@ -10,6 +10,11 @@ import '../../core/i18n/text.dart';
 /// tracks, both to level 100. See levels_repository.dart's own doc comment
 /// for how these relate to the older combined xp/level "LV X" badge shown
 /// elsewhere in the app, which this screen no longer shows at all.
+/// A level shows as unlocked when it is the person's level or they have reached its XP. The panel lets each level's XP be any number, so a lower-numbered
+/// level can need more XP than the person's level; it stays locked until they get there.
+@visibleForTesting
+bool levelUnlocked(LevelThreshold t, MyLevel mine) => t.level == mine.level || mine.xp >= t.xpRequired;
+
 class MyLevelScreen extends StatefulWidget {
   const MyLevelScreen({super.key, @visibleForTesting this.loader});
 
@@ -66,7 +71,7 @@ class _MyLevelScreenState extends State<MyLevelScreen> {
                   childAspectRatio: 1.3,
                   children: [
                     for (final t in selected.thresholds)
-                      _levelCard(t, current: t.level == selected.level, unlocked: t.level <= selected.level),
+                      _levelCard(t, current: t.level == selected.level, unlocked: levelUnlocked(t, selected)),
                   ],
                 ),
               ],

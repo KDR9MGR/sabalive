@@ -112,8 +112,10 @@ Production is shared with the live Play app: follow "Production safety" in the r
   Pictures are kept on the phone by `EffectFileCache` (each downloaded once) and decoded small; the star shows until the picture is ready or if it fails.
 - **Levels are the panel's numbers.** Wealth and Charm each have their OWN XP per level in `track_levels` (Master -> Levels edits it and re-levels everyone). The My Level screen
   (`my_level_screen.dart`) reads exactly that through `LevelsRepository` (`level_thresholds` is only the fallback when `track_levels` can't be read; it also feeds the old combined
-  "LV X" badge, which the panel does not edit). The panel edits any level freely: `admin_save_track_level_v2(..., p_shift)` moves every LATER level up by the same amount when the new XP
-  reaches the next level (their gaps are kept), where the old `admin_save_track_level` refuses (migration `20261025110000`). Level pictures are cached 5 minutes
+  "LV X" badge, which the panel does not edit). The panel gives every level EXACTLY the XP typed, with no relation to the level before or after it (`admin_save_track_level_v3`, migration `20261025140000`; the strict v1 and the shifting v2 stay but the
+  panel only falls back to them): a person is at the HIGHEST level whose XP they reached, so out-of-order numbers are allowed (My Level shows a level unlocked only when it is theirs or they reached its XP). Fixed rules:
+  level 1 needs 0 XP, the next new level is highest + 1, XP is a whole number up to 2,147,483,647 (integer column). v2's shift stopped at 2,000,000,000 and production's Wealth ladder ends exactly there, so Wealth edits
+  needing a shift always failed while Charm worked. Level pictures are cached 5 minutes
   (`LevelBannerImages` + `LevelImageStore`), so a picture changed in the panel shows within a few minutes.
 
 ## Gifts: quantity (1x / 10x), Send to All, who hears the sound (2026-10-25, migration `20261025100000_gift_quantity_and_receivers`)

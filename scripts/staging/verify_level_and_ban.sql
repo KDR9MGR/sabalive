@@ -80,6 +80,36 @@ begin
 end
 $$;
 
+-- ---- any XP for any level (20261025140000), including a Wealth ladder that already ends at 2,000,000,000 (production's shape) ----
+do $$
+declare
+  staff uuid := (select staff_id from who);
+  a int;
+  b int;
+begin
+  if staff is null then return; end if;
+  perform set_config('request.jwt.claim.sub', staff::text, true);
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', staff), true);
+  begin
+    perform public.admin_save_track_level_v3('wealth', 100, 2000000000);
+    perform public.admin_save_track_level_v3('wealth', 5, 2147483647);
+    select xp_required into a from public.track_levels where track = 'wealth' and level = 5;
+    select xp_required into b from public.track_levels where track = 'wealth' and level = 6;
+    insert into res(step, ok, info) values ('13 with the Wealth top at 2,000,000,000, level 5 can still be set to the largest number, above level 6 and the top', a = 2147483647 and b < a, 'level 5 = ' || a);
+  exception when others then insert into res(step, ok, info) values ('13 Wealth edit above the top', false, sqlerrm); end;
+  begin
+    perform public.admin_save_track_level_v3('wealth', 7, 1);
+    select xp_required into a from public.track_levels where track = 'wealth' and level = 7;
+    insert into res(step, ok, info) values ('13b a level can be set far below the one before it', a = 1, 'level 7 = ' || a);
+  exception when others then insert into res(step, ok, info) values ('13b level below previous', false, sqlerrm); end;
+  begin
+    perform public.admin_save_track_level_v3('charm', 3, 1);
+    perform public.admin_save_track_level_v3('charm', 2, 2147483647);
+    insert into res(step, ok, info) values ('13c the same on Charm', (select xp_required from public.track_levels where track = 'charm' and level = 2) = 2147483647, '');
+  exception when others then insert into res(step, ok, info) values ('13c Charm', false, sqlerrm); end;
+end
+$$;
+
 -- ---- bans ----
 do $$
 declare
@@ -156,7 +186,7 @@ begin
     insert into res(step, ok, info) values ('11 an ordinary user cannot ban', false, 'it was allowed');
   exception when others then insert into res(step, ok, info) values ('11 an ordinary user cannot ban', true, sqlerrm); end;
   begin
-    perform public.admin_save_track_level_v2('wealth', 2, 5, null, true);
+    perform public.admin_save_track_level_v3('wealth', 2, 5);
     insert into res(step, ok, info) values ('12 an ordinary user cannot edit levels', false, 'it was allowed');
   exception when others then insert into res(step, ok, info) values ('12 an ordinary user cannot edit levels', true, sqlerrm); end;
 end
