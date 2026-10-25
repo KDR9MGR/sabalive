@@ -101,12 +101,35 @@ Production is shared with the live Play app: follow "Production safety" in the r
   `set_staff_permissions` accepts the key). They are not the Store's VIP tags. The app reads them with the earned badges in `ProfileLabelsRepository` and draws both with
   `ProfileLabelsRow` on both profile screens only (badges first, then tags; not in chat); every read fails open to "nothing to show". A tag has one of three looks
   (`profile_tags.look`): `pill` (name on a colour), `picture` (an uploaded banner shown as it is, the name is inside the artwork) or `plate` (an uploaded background with the
-  name written on it, `text_color`); a picture that can't load falls back to the pill. A badge with an uploaded picture is the picture itself (a banner, 26 px tall); animated
-  files and badges without a picture are the emoji chip.
+  name written on it, `text_color`); a picture that can't load falls back to the pill. A badge with an uploaded picture is the picture itself (a banner, 26 px tall); badges without a
+  picture are the emoji chip. Tag and badge pictures are drawn by `LabelPicture` (`lib/core/widgets/label_picture.dart`): stills, GIF and WebP through the disk-cached image, **SVGA played
+  scaled to the height** (the panel accepts `.svga` for tags and badges, owner 2026-10-25); the pill / emoji chip stands in while an SVGA loads or if it fails or is empty; a video file
+  (MP4) is never drawn on a profile, the pill / chip is shown. The Badges screen (`badges_screen.dart`) draws the same uploaded `icon_url` instead of the emoji.
+  The small Store pills under the name (VIP / frame names, `EquippedCosmetics`) were removed from both profile screens on 2026-10-25 (owner: "get rid of store tags"); staff tags and badges stay.
 - **Level pictures instead of stars** (`LevelImageStore`, `LevelPicture` in `lib/core/widgets/level_star.dart`): the picture the panel's Levels page holds for a level
   (`track_levels.image_url`, the same file as the join banner) replaces the star for people at EXACTLY that level (no borrowing from a lower level) on profiles, in live chat
   and in the join notice. The number is part of the picture. Only still / GIF / WebP files count: SVGA and MP4 keep the star (a looping animation per chat line costs battery).
   Pictures are kept on the phone by `EffectFileCache` (each downloaded once) and decoded small; the star shows until the picture is ready or if it fails.
+- **Levels are the panel's numbers.** Wealth and Charm each have their OWN XP per level in `track_levels` (Master -> Levels edits it and re-levels everyone). The My Level screen
+  (`my_level_screen.dart`) reads exactly that through `LevelsRepository` (`level_thresholds` is only the fallback when `track_levels` can't be read; it also feeds the old combined
+  "LV X" badge, which the panel does not edit). The panel edits any level freely: `admin_save_track_level_v2(..., p_shift)` moves every LATER level up by the same amount when the new XP
+  reaches the next level (their gaps are kept), where the old `admin_save_track_level` refuses (migration `20261025110000`). Level pictures are cached 5 minutes
+  (`LevelBannerImages` + `LevelImageStore`), so a picture changed in the panel shows within a few minutes.
+
+## Gifts: quantity (1x / 10x), Send to All, who hears the sound (2026-10-25, migration `20261025100000_gift_quantity_and_receivers`)
+- One tap on 10x is ONE call and ONE chat line, not ten: `send_gift_v2(gift, receiver, stream, quantity)` and `send_gift_to_all_v2(gift, stream, quantity)` (quantity 1..99, balance checked up front for
+  price x quantity x people, one wallet / gift_transactions row per unit, one `live_chat_messages` row). The chat line says `sent Alice 10x Rose` (the `Nx` only when the quantity is above 1) or
+  `sent 10x Rose to 5 people` for Send to All (always with the count of people and the `Nx`); the row also carries `gift_count` and `gift_receiver_ids`. The app calls them through `GiftSender`
+  (`lib/data/gift_sender.dart`, used by `WalletController.sendGift` / `sendGiftToAll`) and falls back to the old `send_gift` / `send_gift_to_all` (one call per unit) when the v2 functions are missing
+  (PGRST202 / 42883), so a new app works on a database that does not have the migration yet. Old functions stay for old Play builds.
+- Sound rule (`RoomEffectController.onChatRow` in `room_effect.dart`): the gift's SOUND plays only on the phones of the people it was sent to. The sender's own effect is created with
+  `playSound: false` (the picture and the animation still play) and a chat row whose `gift_receiver_ids` does not contain me is shown silently. A row WITHOUT `gift_receiver_ids` (an old app's gift)
+  plays for everyone as before, because the receivers are unknown. Send to All lists everyone except the sender. A new gift entry point must go through `GiftSender` and pass `playSound: false` for the sender's own effect.
+
+## Share and invite links
+- The invite link opens the Play Store listing directly: `inviteShareUrl(code)` in `lib/core/utils/share_links.dart` is `https://play.google.com/store/apps/details?id=com.sabalive.in&referrer=utm_source%3Dinvite...utm_content%3D<CODE>`
+  (it used to be `sabalive.app/invite/<code>`, a page that does not exist, so the link did nothing). The code is also in the share text (`inviteShareText`). Reading the referrer back automatically on first launch would need the Play
+  Install Referrer plugin and a Play build (not done); today the new user types the code. The public landing site's `STORE_LINKS.android` (`sabaliveadmin/landing/src/lib/site.js`) points at the same listing.
 
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
@@ -132,3 +155,9 @@ Production is shared with the live Play app: follow "Production safety" in the r
   inert until the owner enables it. MAC addresses are unreadable on modern Android / iOS: never promise a MAC ban.
 - Retiring old app versions = the minimum Android version code in Master -> Config -> Release controls (owner's release decision).
 - Staff see "Linked accounts" on a user's profile (`admin_linked_accounts`: same phone / network / login).
+- Ban length and reason (2026-10-25, migration `20261025120000`): `ban_user_v2(user, kinds, duration, reason, ends_at)` adds `24h` and `custom` (an end date 5 minutes to 10 years ahead) to `7d` / `30d` /
+  `permanent`; presets are worked out on the SERVER clock. `ban_user` stays (`set_profile_status` calls it). A reason typed through v2 is marked `user_bans.reason_visible` and is SHOWN to the banned
+  person; a reason of any older ban (or a v1 ban) is a staff-only note and is never shown. Before sign-in the app asks `check_login_access_v2(device ids, email, phone)` (callable by anon) which finds an
+  ID-banned account by its email / phone, a banned phone or a blocked identity, and returns the end time and the visible reason; `AuthController.signupBlockedMessage` writes "Your account is banned until
+  27 Oct 2026, 14:30." plus a second line "Reason: ...", already translated (`tr`), and the login screen keeps it as the red notice banner (no duplicate snackbar). A database without the v2 function falls back to
+  `check_signup_access`. Ban ends are shown with their time (`formatBanDate`). The reason is readable by anyone who types the banned email on the login screen, so the panel tells staff to write it for the user.
