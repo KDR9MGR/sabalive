@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/share_links.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/pills.dart';
@@ -73,7 +74,7 @@ class _InviteTabState extends State<_InviteTab> {
     super.dispose();
   }
 
-  String get _link => 'https://sabalive.app/invite/${_code ?? ''}';
+  String get _link => inviteShareUrl(_code ?? '');
 
   Future<void> _redeem() async {
     final code = _redeemCode.text.trim();
@@ -127,7 +128,7 @@ class _InviteTabState extends State<_InviteTab> {
                 label: 'Share',
                 icon: Icons.share_rounded,
                 onPressed: () => SharePlus.instance.share(
-                  ShareParams(text: 'Join me on SABALIVE! $_link'),
+                  ShareParams(text: inviteShareText(_code ?? '')),
                 ),
               ),
             ),

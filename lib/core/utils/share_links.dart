@@ -12,6 +12,22 @@ const shareHost = 'sabalive.in';
 /// page it lands on offers "Open in SABALIVE" and tries to open the app itself.
 String liveShareUrl(String streamId) => 'https://$shareHost/live/$streamId';
 
+/// The app's id on Google Play.
+const playPackageId = 'com.sabalive.in';
+
+/// The link a person shares to invite a friend: the app's Google Play page, opened straight in the Play Store on an Android phone (WhatsApp, SMS and the
+/// rest hand `play.google.com` links to the Play Store app). It used to point at `sabalive.app/invite/<code>`, a page that does not exist, so the link did
+/// nothing. The invite code rides along as the Play "referrer" (`utm_source=invite`, `utm_content=<code>`): Play keeps it with the install, so the app can
+/// read it on first launch later without the link changing. Until then the friend types the code (it is also written in the share text).
+String inviteShareUrl(String code) {
+  final clean = code.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+  final referrer = Uri.encodeQueryComponent('utm_source=invite&utm_medium=referral${clean.isEmpty ? '' : '&utm_content=$clean'}');
+  return 'https://play.google.com/store/apps/details?id=$playPackageId&referrer=$referrer';
+}
+
+/// The message that goes out with the invite link.
+String inviteShareText(String code) => 'Join me on SABALIVE! Use my invite code $code. ${inviteShareUrl(code)}';
+
 /// The stream id inside a live link, or null if [uri] isn't one. Understands
 /// both the shared https link and the older `sabalive://live/<id>` form.
 String? liveIdFromUri(Uri uri) {
