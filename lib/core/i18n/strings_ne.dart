@@ -829,4 +829,5 @@ const Map<String, String> neStrings = {
   'You must be at least 13 years old to use SABALIVE.': 'SABALIVE प्रयोग गर्न तपाईंको उमेर कम्तीमा १३ वर्ष हुनुपर्छ।',
   'No country found': 'कुनै देश फेला परेन',
   'No fans yet. Fans are people you follow who follow you back.': 'अहिलेसम्म कुनै फ्यान छैन। फ्यान भनेका तपाईंले फलो गर्ने र तपाईंलाई फलो ब्याक गर्ने मानिसहरू हुन्।',
+  'Reason': 'कारण',
 };

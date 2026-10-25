@@ -829,4 +829,5 @@ const Map<String, String> filStrings = {
   'You must be at least 13 years old to use SABALIVE.': 'Dapat ay hindi bababa sa 13 taong gulang ka para magamit ang SABALIVE.',
   'No country found': 'Walang nakitang bansa',
   'No fans yet. Fans are people you follow who follow you back.': 'Wala pang mga fan. Ang mga fan ay ang mga taong sinusundan mo na sumusunod din sa iyo.',
+  'Reason': 'Dahilan',
 };

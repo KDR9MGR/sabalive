@@ -3,6 +3,8 @@ import 'package:sabalive/data/restrictions_repository.dart';
 
 void main() {
   final now = DateTime.utc(2026, 10, 3, 12);
+  // an end given in the phone's own time (what the user reads), so the text below does not depend on the machine's time zone
+  final endsLocal = DateTime(2026, 10, 9, 14, 30).toUtc();
 
   group('BanInfo', () {
     test('parses an end date and a permanent flag', () {
@@ -16,7 +18,7 @@ void main() {
 
     test('phrase reads "permanently" or "until <date>"', () {
       expect(const BanInfo(permanent: true).phrase, 'permanently');
-      expect(BanInfo(until: DateTime.utc(2026, 10, 9, 12)).phrase, 'until 09 Oct 2026');
+      expect(BanInfo(until: endsLocal).phrase, 'until 09 Oct 2026, 14:30');
     });
 
     test('a ban whose date has passed is no longer active, even before the server says so', () {
@@ -27,9 +29,10 @@ void main() {
   });
 
   group('formatBanDate', () {
-    test('pads the day and names the month', () {
-      expect(formatBanDate(DateTime(2026, 1, 5, 12)), '05 Jan 2026');
-      expect(formatBanDate(DateTime(2026, 12, 31, 12)), '31 Dec 2026');
+    test('pads the day, names the month and gives the time, because a 24 hour ban ends at a time of day', () {
+      expect(formatBanDate(DateTime(2026, 1, 5, 12)), '05 Jan 2026, 12:00');
+      expect(formatBanDate(DateTime(2026, 12, 31, 9, 5)), '31 Dec 2026, 09:05');
+      expect(formatBanDate(DateTime(2026, 6, 1, 0, 0)), '01 Jun 2026, 00:00');
     });
   });
 
@@ -60,7 +63,7 @@ void main() {
   });
 
   group('messages', () {
-    final until = BanInfo(until: DateTime.utc(2026, 10, 9, 12));
+    final until = BanInfo(until: endsLocal);
     const forever = BanInfo(permanent: true);
 
     test('nothing active: no message', () {
@@ -70,8 +73,8 @@ void main() {
 
     test('an ID ban closes the app and live', () {
       final r = Restrictions(account: until);
-      expect(r.appBlockMessage(now), 'Your account is banned until 09 Oct 2026.');
-      expect(r.liveBlockMessage(now), 'Your account is banned until 09 Oct 2026.');
+      expect(r.appBlockMessage(now), 'Your account is banned until 09 Oct 2026, 14:30.');
+      expect(r.liveBlockMessage(now), 'Your account is banned until 09 Oct 2026, 14:30.');
     });
 
     test('a device ban closes the app and live', () {
@@ -83,7 +86,7 @@ void main() {
     test('a live ban closes live only', () {
       final r = Restrictions(live: until);
       expect(r.appBlockMessage(now), isNull);
-      expect(r.liveBlockMessage(now), 'You are banned from live until 09 Oct 2026.');
+      expect(r.liveBlockMessage(now), 'You are banned from live until 09 Oct 2026, 14:30.');
     });
 
     test('the account ban is named first when several apply', () {

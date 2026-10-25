@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_client.dart';
@@ -8,22 +9,27 @@ const _months = [
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
-/// `09 Oct 2026` — how a ban's end date is shown to the user.
+/// `09 Oct 2026, 14:30` (the phone's own time) — how a ban's end is shown to the user. The time matters: a 24 hour ban ends at a time of day.
 String formatBanDate(DateTime d) {
   final local = d.toLocal();
-  return '${local.day.toString().padLeft(2, '0')} ${_months[local.month - 1]} ${local.year}';
+  final hh = local.hour.toString().padLeft(2, '0');
+  final mm = local.minute.toString().padLeft(2, '0');
+  return '${local.day.toString().padLeft(2, '0')} ${_months[local.month - 1]} ${local.year}, $hh:$mm';
 }
 
 /// One kind of restriction on this user / device: until a date, or forever.
 class BanInfo {
-  const BanInfo({this.until, this.permanent = false, this.reason});
+  const BanInfo({this.until, this.permanent = false, this.reason, this.note});
 
   factory BanInfo.fromJson(Map<dynamic, dynamic> json) {
     final until = json['until'] as String?;
+    final note = json['note'];
     return BanInfo(
       until: until == null ? null : DateTime.parse(until).toUtc(),
       permanent: json['permanent'] == true,
-      reason: json['reason'] as String?,
+      // `check_login_access_v2` calls the same thing `kind` (account / device / identity)
+      reason: (json['reason'] ?? json['kind']) as String?,
+      note: note is String && note.trim().isNotEmpty ? note.trim() : null,
     );
   }
 
@@ -33,6 +39,10 @@ class BanInfo {
   /// Why a sign-up check refused: `device`, `identity` (a banned Google / email / phone) or `ip` (a short block on new
   /// accounts from a banned user's network). Null for the older answers that carried no reason.
   final String? reason;
+
+  /// What the staff member who placed the ban wrote for the person (the panel's "Reason (shown to the user)"). Null when they wrote nothing, or the
+  /// ban is an older one whose note was meant for staff only.
+  final String? note;
 
   /// Still in force at [now]. A ban whose date has passed no longer counts even
   /// if the app hasn't heard from the server since.
@@ -114,9 +124,14 @@ class Restrictions {
 /// panel and enforced by the database; this only reads them so the app can show
 /// the right message and step out of a room when one lands.
 class RestrictionsRepository {
+  RestrictionsRepository({@visibleForTesting Future<dynamic> Function(String function, Map<String, dynamic> params)? rpc})
+      : _rpc = rpc ?? ((fn, params) => supabase.rpc(fn, params: params));
+
+  final Future<dynamic> Function(String function, Map<String, dynamic> params) _rpc;
+
   /// The signed-in user's restrictions (`my_restrictions`).
   Future<Restrictions> mine() async {
-    final res = await supabase.rpc('my_restrictions');
+    final res = await _rpc('my_restrictions', const {});
     return Restrictions.fromJson(res);
   }
 
@@ -125,9 +140,9 @@ class RestrictionsRepository {
     return null;
   }
 
-  /// Before any sign-in / sign-up: is this phone (any of its ids) banned, is this email / phone number on the blocklist,
-  /// and — for a NEW account only — is this network briefly blocked? Falls back to the single-id check on a database that
-  /// does not have `check_signup_access` yet.
+  /// Before any sign-in / sign-up: is the account behind this email / phone number ID-banned, is this phone (any of its ids) banned, is this email /
+  /// phone number on the blocklist — each with its end date and the reason staff wrote — and, for a NEW account only, is this network briefly
+  /// blocked? Asks `check_login_access_v2` first; a database without it falls back to `check_signup_access`, and without that to the single-id check.
   Future<BanInfo?> checkSignup({
     required List<String> deviceIds,
     String? email,
@@ -135,9 +150,21 @@ class RestrictionsRepository {
     bool newAccount = false,
   }) async {
     try {
-      final res = await supabase.rpc(
+      final res = await _rpc(
+        'check_login_access_v2',
+        {'p_device_ids': deviceIds, 'p_email': email, 'p_phone': phone},
+      );
+      final ban = _bannedOrNull(res);
+      if (ban != null) return ban;
+      // a sign-in has nothing more to ask; a new account is also checked against the short network block below
+      if (!newAccount) return null;
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+    }
+    try {
+      final res = await _rpc(
         'check_signup_access',
-        params: {
+        {
           'p_device_ids': deviceIds,
           'p_email': email,
           'p_phone': phone,
@@ -155,10 +182,7 @@ class RestrictionsRepository {
 
   /// Is this phone banned? Callable before sign-in.
   Future<BanInfo?> checkDevice(String deviceId) async {
-    final res = await supabase.rpc(
-      'check_device_access',
-      params: {'p_device_id': deviceId},
-    );
+    final res = await _rpc('check_device_access', {'p_device_id': deviceId});
     return _bannedOrNull(res);
   }
 
@@ -166,27 +190,21 @@ class RestrictionsRepository {
   Future<BanInfo?> registerDevice(DeviceIdentity device) async {
     try {
       // v2 also records the hardware id and spreads a ban across every id this phone has shown
-      final res = await supabase.rpc(
-        'register_device_v2',
-        params: {
-          'p_device_id': device.id,
-          'p_platform': device.platform,
-          'p_model': device.model,
-          'p_extra_ids': device.extraIds,
-        },
-      );
+      final res = await _rpc('register_device_v2', {
+        'p_device_id': device.id,
+        'p_platform': device.platform,
+        'p_model': device.model,
+        'p_extra_ids': device.extraIds,
+      });
       return _bannedOrNull(res);
     } on PostgrestException catch (e) {
       if (e.code != 'PGRST202' && e.code != '42883') rethrow;
     }
-    final res = await supabase.rpc(
-      'register_device',
-      params: {
-        'p_device_id': device.id,
-        'p_platform': device.platform,
-        'p_model': device.model,
-      },
-    );
+    final res = await _rpc('register_device', {
+      'p_device_id': device.id,
+      'p_platform': device.platform,
+      'p_model': device.model,
+    });
     return _bannedOrNull(res);
   }
 

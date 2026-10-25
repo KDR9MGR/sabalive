@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/google_config.dart';
 import '../config/supabase_client.dart';
 import '../config/supabase_config.dart';
+import '../core/i18n/i18n.dart';
 import '../core/utils/errors.dart';
 import '../data/models.dart';
 import '../data/restrictions_repository.dart';
@@ -330,9 +331,10 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  /// Before any sign-in or sign-up: a banned phone (any of its ids), a banned email / phone number, or — for a NEW
-  /// account — a briefly blocked network can't even start one. Fails open if the server can't be reached.
-  Future<void> _requireDeviceAllowed({String? email, String? phone, bool newAccount = false}) async {
+  /// Before any sign-in or sign-up: an ID-banned account (found by the email / phone number used), a banned phone (any of its ids), a banned email /
+  /// phone number, or — for a NEW account — a briefly blocked network can't even start one. Fails open if the server can't be reached.
+  /// [showNotice] (the login screen) also leaves the message up as a banner, since it can be long (the end time and the reason staff wrote).
+  Future<void> _requireDeviceAllowed({String? email, String? phone, bool newAccount = false, bool showNotice = false}) async {
     String? message;
     try {
       final device = await DeviceIdentityService.instance.load();
@@ -344,16 +346,29 @@ class AuthController extends ChangeNotifier {
       );
       if (ban != null && ban.isActive()) message = signupBlockedMessage(ban);
     } catch (_) {}
-    if (message != null) throw Exception(message);
+    if (message != null) {
+      if (showNotice) {
+        _notice = message;
+        notifyListeners();
+      }
+      throw Exception(message);
+    }
   }
 
-  /// What to tell someone a sign-in / sign-up check turned away.
+  /// What to tell someone a sign-in / sign-up check turned away: what is banned and until when, then the reason staff wrote (when there is one). Built
+  /// in the person's language here because it is one string with a line break, which the screen's Text cannot translate piece by piece.
   @visibleForTesting
-  static String signupBlockedMessage(BanInfo ban) => switch (ban.reason) {
-    'identity' => 'This account cannot be created.',
-    'ip' => 'New accounts cannot be created from this network right now. Please try again later.',
-    _ => 'This device is banned ${ban.phrase}.',
-  };
+  static String signupBlockedMessage(BanInfo ban) {
+    final headline = switch (ban.reason) {
+      'account' => tr('Your account is banned ${ban.phrase}.'),
+      'identity' => tr('This account cannot be created.'),
+      'ip' => tr('New accounts cannot be created from this network right now. Please try again later.'),
+      _ => tr('This device is banned ${ban.phrase}.'),
+    };
+    final note = ban.note;
+    if (note == null || ban.reason == 'ip') return headline;
+    return '$headline\n${tr('Reason')}: $note';
+  }
 
   /// Re-reads the signed-in user's profile (after equipping a frame, say) so
   /// every screen showing it picks the change up.
@@ -432,8 +447,12 @@ class AuthController extends ChangeNotifier {
       _guard(() async {
         clearNotice();
         await _requireLoginsOpen();
-        await _requireDeviceAllowed(email: id.contains('@') ? id.trim() : null);
         final trimmed = id.trim();
+        await _requireDeviceAllowed(
+          email: trimmed.contains('@') ? trimmed : null,
+          phone: trimmed.contains('@') ? null : trimmed,
+          showNotice: true,
+        );
         if (trimmed.contains('@')) {
           await supabase.auth.signInWithPassword(
             email: trimmed,
@@ -466,7 +485,7 @@ class AuthController extends ChangeNotifier {
   Future<void> loginWithSocial(String provider) => _guard(() async {
     clearNotice();
     await _requireLoginsOpen();
-    await _requireDeviceAllowed();
+    await _requireDeviceAllowed(showNotice: true);
     if (provider == 'Google' && GoogleConfig.isConfigured) {
       // The on-device Google picker needs its Android plugin and Play Services. If either
       // is not working on this phone (it answers `channel-error`, or Google refuses the
@@ -485,6 +504,8 @@ class AuthController extends ChangeNotifier {
       }
       if (nativeWorked) {
         if (googleUser == null) return; // user cancelled the native picker
+        // the picked account's email is known now: an ID-banned account is told why, before Supabase refuses the session with a bare "banned"
+        await _requireDeviceAllowed(email: googleUser.email, showNotice: true);
         final googleAuth = await googleUser.authentication;
         final idToken = googleAuth.idToken;
         if (idToken == null) {

@@ -32,21 +32,21 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _login() async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await context.read<AuthController>().loginWithPassword(_id.text, _password.text);
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
-    }
-  }
+  Future<void> _login() => _attempt((auth) => auth.loginWithPassword(_id.text, _password.text));
 
-  Future<void> _social(String provider) async {
+  Future<void> _social(String provider) => _attempt((auth) => auth.loginWithSocial(provider));
+
+  /// Runs a sign-in and tells the person what went wrong. A ban is already up as the banner above the form (with its end time and the reason staff
+  /// wrote), so it is not repeated in a snackbar.
+  Future<void> _attempt(Future<void> Function(AuthController auth) signIn) async {
     final messenger = ScaffoldMessenger.of(context);
+    final auth = context.read<AuthController>();
     try {
-      await context.read<AuthController>().loginWithSocial(provider);
+      await signIn(auth);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      final message = friendlyError(e);
+      if (message == auth.notice) return;
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

@@ -829,4 +829,5 @@ const Map<String, String> ptBrStrings = {
   'You must be at least 13 years old to use SABALIVE.': 'Você precisa ter pelo menos 13 anos para usar o SABALIVE.',
   'No country found': 'Nenhum país encontrado',
   'No fans yet. Fans are people you follow who follow you back.': 'Ainda não há fãs. Fãs são pessoas que você segue e que seguem você de volta.',
+  'Reason': 'Motivo',
 };

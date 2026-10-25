@@ -829,4 +829,5 @@ const Map<String, String> urStrings = {
   'You must be at least 13 years old to use SABALIVE.': 'SABALIVE استعمال کرنے کے لیے آپ کی عمر کم از کم 13 سال ہونی چاہیے۔',
   'No country found': 'کوئی ملک نہیں ملا',
   'No fans yet. Fans are people you follow who follow you back.': 'ابھی کوئی فینز نہیں۔ فینز وہ لوگ ہیں جنہیں آپ فالو کرتے ہیں اور جو آپ کو واپس فالو کرتے ہیں۔',
+  'Reason': 'وجہ',
 };
