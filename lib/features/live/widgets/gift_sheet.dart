@@ -5,6 +5,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../data/models.dart';
 import '../../../router/app_nav.dart';
+import '../../../state/auth_controller.dart';
 import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
 import 'gift_icon.dart';
@@ -60,6 +61,13 @@ class _GiftSheetState extends State<_GiftSheet> {
 
   static const _quantities = [1, 10, 99];
 
+  /// How many people Send All reaches: everyone offered in the sheet except me (never fewer than one).
+  int _sendAllPeople(BuildContext context) {
+    final me = context.read<AuthController>().user?.id;
+    final n = widget.recipients.where((r) => r.id != me).length;
+    return n < 1 ? 1 : n;
+  }
+
   /// The tabs on offer. Effects and Event only appear once the panel has at
   /// least one gift in them, so a tab never opens onto nothing.
   List<String> _tabsFor(List<Gift> catalog) => [
@@ -94,7 +102,9 @@ class _GiftSheetState extends State<_GiftSheet> {
     }
 
     final gift = gifts[_selected.clamp(0, gifts.length - 1)];
-    final total = gift.price * _quantity;
+    // Send All charges the gift to EVERY person (price x people x quantity): the button shows what will really be spent
+    final people = _sendAllPeople(context);
+    final total = gift.price * _quantity * (_sendToAll ? people : 1);
     final canAfford = wallet.canAfford(total);
     final canSend = _sendToAll || _recipient != null;
 

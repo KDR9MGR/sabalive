@@ -1111,7 +1111,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       // a gift to either host of a battle counts for that host's side (the other host is a recipient in the sheet)
       final side = await sendPkGift(context, pk, gift, giftChoice.quantity, to: pkSide);
       if (side != null && mounted) {
-        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity));
+        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity, playSound: false));
       }
       return;
     }
@@ -1119,24 +1119,26 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         ? _giftRecipients()
         : [if (giftChoice.recipient != null) giftChoice.recipient!];
     if (recipients.isEmpty) return;
+    int? toAllCount;
     try {
       if (giftChoice.sendToAll && _isReal) {
-        // one server action for everyone (host + seated, never me): charged up front, one chat line
-        await context.read<WalletController>().sendGiftToAll(
+        // one server action for everyone (host + seated, never me) and for the whole quantity: charged up front, one chat line
+        // ("sent 10x Rose to 5 people")
+        toAllCount = await context.read<WalletController>().sendGiftToAll(
           gift,
           liveStreamId: widget.stream.id,
+          quantity: giftChoice.quantity,
           fallbackRecipients: recipients,
         );
       } else {
+        // one server action per person, for the whole quantity (demo streams have no real people: the wallet refuses them with a message)
         for (final recipient in recipients) {
-          final qty = giftChoice.sendToAll ? 1 : giftChoice.quantity;
-          for (var i = 0; i < qty; i++) {
-            await context.read<WalletController>().sendGift(
-              gift,
-              recipient,
-              liveStreamId: _isReal ? widget.stream.id : null,
-            );
-          }
+          await context.read<WalletController>().sendGift(
+            gift,
+            recipient,
+            liveStreamId: _isReal ? widget.stream.id : null,
+            quantity: giftChoice.quantity,
+          );
         }
       }
     } catch (e) {
@@ -1148,7 +1150,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     }
     if (!mounted) return;
     final label = giftChoice.sendToAll
-        ? 'sent ${gift.name} to All'
+        ? 'sent ${giftChoice.quantity}x ${gift.name} to ${toAllCount ?? recipients.length} people'
         : giftChoice.quantity > 1
         ? 'sent ${giftChoice.quantity}x ${gift.name}'
         : 'sent ${gift.name}';
@@ -1159,8 +1161,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         gift: gift,
         senderName: 'You',
         senderId: me.id,
-        count: giftChoice.sendToAll ? 1 : giftChoice.quantity,
+        count: giftChoice.quantity,
         toAll: giftChoice.sendToAll,
+        recipientCount: giftChoice.sendToAll ? (toAllCount ?? recipients.length) : null,
+        playSound: false, // the sender sees their own gift silently: its sound is for the receivers
       ),
     );
     if (!_isReal) {

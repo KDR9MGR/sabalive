@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_client.dart';
-import '../core/utils/ids.dart';
+import '../data/gift_sender.dart';
+import '../data/gift_sender.dart' as gift_sender show isMissingFunction;
 import '../data/models.dart';
 
 /// Real Supabase-backed wallet. Balance and history come from `wallets` /
@@ -176,61 +177,30 @@ class WalletController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sends [gift] to [receiver] — server-authoritative via the `send_gift`
-  /// Postgres function. [receiver] must be a real signed-up profile; demo
-  /// hosts (mock data, not yet backed by a real account) are rejected with a
-  /// clear error rather than silently no-op'ing or crashing on a bad UUID.
-  Future<void> sendGift(Gift gift, AppUser receiver, {String? liveStreamId}) async {
-    if (!isRealId(receiver.id)) {
-      throw Exception("${receiver.name} is a demo host — gifts can't be sent yet.");
-    }
-    await supabase.rpc('send_gift', params: {
-      'p_gift_id': gift.id,
-      'p_receiver_id': receiver.id,
-      'p_live_stream_id': liveStreamId,
-    });
-  }
+  final GiftSender _giftSender = GiftSender();
 
-  /// Sends [gift] to everyone in the room as ONE server action (`send_gift_to_all`): the host and whoever is
-  /// on a seat, never the sender. The server charges price x people up front, so it either all goes or none
-  /// of it does, and the room gets a single "sent (gift) to All" line. Returns how many people got it.
+  /// Sends [gift] x [quantity] to [receiver] — server-authoritative, as ONE action (see [GiftSender]). [receiver] must be a real signed-up profile; demo
+  /// hosts (mock data, not yet backed by a real account) are rejected with a clear error rather than silently no-op'ing or crashing on a bad UUID.
+  Future<void> sendGift(Gift gift, AppUser receiver, {String? liveStreamId, int quantity = 1}) =>
+      _giftSender.send(gift, receiver, liveStreamId: liveStreamId, quantity: quantity);
+
+  /// Sends [gift] x [quantity] to everyone in the room as ONE server action: the host and whoever is on a seat, never the sender. The server charges
+  /// price x people x quantity up front, so it either all goes or none of it does, and the room gets a single line ("sent 10x Rose to 5 people").
+  /// Returns how many people got it.
   ///
-  /// If the backend doesn't have the function yet (an app newer than the database), it falls back to
-  /// sending one gift per person in [fallbackRecipients].
+  /// If the backend doesn't have the new function yet (an app newer than the database) it falls back to the old one, then to one gift per person
+  /// in [fallbackRecipients] (see [GiftSender]).
   Future<int> sendGiftToAll(
     Gift gift, {
     required String liveStreamId,
+    int quantity = 1,
     required List<AppUser> fallbackRecipients,
-  }) async {
-    try {
-      final n = await supabase.rpc('send_gift_to_all', params: {
-        'p_gift_id': gift.id,
-        'p_live_stream_id': liveStreamId,
-      });
-      return (n as num?)?.toInt() ?? 0;
-    } catch (e) {
-      if (!isMissingFunction(e)) rethrow;
-    }
-    final me = supabase.auth.currentUser?.id;
-    var sent = 0;
-    for (final r in fallbackRecipients) {
-      if (r.id == me) continue;
-      await sendGift(gift, r, liveStreamId: liveStreamId);
-      sent++;
-    }
-    return sent;
-  }
+  }) =>
+      _giftSender.sendToAll(gift, liveStreamId: liveStreamId, quantity: quantity, fallbackRecipients: fallbackRecipients);
 
   /// The database has no function with that name (yet): PostgREST code PGRST202 / Postgres 42883.
   @visibleForTesting
-  static bool isMissingFunction(Object e) {
-    if (e is PostgrestException) {
-      return e.code == 'PGRST202' ||
-          e.code == '42883' ||
-          e.message.contains('Could not find the function');
-    }
-    return false;
-  }
+  static bool isMissingFunction(Object e) => gift_sender.isMissingFunction(e);
 
   /// ALPHA: no real payment gateway yet, so this credits the pack's coins
   /// server-side via `dev_purchase_coins` (writes a `wallet_ledger` purchase

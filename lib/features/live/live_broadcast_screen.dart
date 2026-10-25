@@ -1405,17 +1405,21 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       final side = await sendPkGift(context, pk, choice.gift, choice.quantity, to: pkSide);
       if (side != null && mounted) {
         _effects.enqueue(
-          RoomEffect.gift(gift: choice.gift, senderName: 'You', senderId: supabase.auth.currentUser?.id, count: choice.quantity),
+          RoomEffect.gift(
+            gift: choice.gift,
+            senderName: 'You',
+            senderId: supabase.auth.currentUser?.id,
+            count: choice.quantity,
+            playSound: false,
+          ),
         );
       }
       return;
     }
     if (choice.sendToAll) {
-      // Send All always sends exactly one copy per recipient regardless of
-      // the quantity picker — quantity × every seated guest could add up to
-      // a very large, surprising coin spend in one tap otherwise. It is one server
-      // action (send_gift_to_all): charged up front, one chat line "sent <gift> to All".
-      await _sendGiftToAll(choice.gift);
+      // One server action for everyone and the whole quantity (send_gift_to_all_v2): charged up front (price x people x quantity, which the gift sheet shows
+      // on its button), one chat line "sent 10x <gift> to 5 people".
+      await _sendGiftToAll(choice.gift, quantity: choice.quantity);
       return;
     }
     final recipient = choice.recipient;
@@ -1423,13 +1427,15 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     await _sendGift(choice.gift, recipient, quantity: choice.quantity);
   }
 
-  Future<void> _sendGiftToAll(Gift gift) async {
+  Future<void> _sendGiftToAll(Gift gift, {int quantity = 1}) async {
     final wallet = context.read<WalletController>();
     final messenger = ScaffoldMessenger.of(context);
+    final int people;
     try {
-      await wallet.sendGiftToAll(
+      people = await wallet.sendGiftToAll(
         gift,
         liveStreamId: widget.stream.id,
+        quantity: quantity,
         fallbackRecipients: _giftRecipients(),
       );
     } catch (e) {
@@ -1443,6 +1449,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         senderName: 'You',
         senderId: supabase.auth.currentUser?.id,
         toAll: true,
+        count: quantity,
+        recipientCount: people > 0 ? people : null,
+        playSound: false, // the sender sees their own gift silently: its sound is for the receivers
       ),
     );
   }
@@ -1463,10 +1472,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     final messenger = ScaffoldMessenger.of(context);
     var sent = 0;
     try {
-      for (var i = 0; i < quantity; i++) {
-        await wallet.sendGift(gift, recipient, liveStreamId: widget.stream.id);
-        sent++;
-      }
+      // the whole quantity is one server action: it all goes or none of it does
+      await wallet.sendGift(gift, recipient, liveStreamId: widget.stream.id, quantity: quantity);
+      sent = quantity;
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
@@ -1476,6 +1484,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           gift: gift,
           senderName: 'You',
           senderId: supabase.auth.currentUser?.id,
+          playSound: false, // the sender sees their own gift silently: its sound is for the receivers
           count: sent,
         ),
       );

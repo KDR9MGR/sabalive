@@ -35,6 +35,8 @@ class RoomEffect {
     this.toAll = false,
     this.speed,
     this.soundUrl,
+    this.playSound = true,
+    this.recipientCount,
   });
 
   factory RoomEffect.gift({
@@ -43,6 +45,8 @@ class RoomEffect {
     String? senderId,
     int count = 1,
     bool toAll = false,
+    bool playSound = true,
+    int? recipientCount,
   }) => RoomEffect._(
     kind: RoomEffectKind.gift,
     id: gift.id,
@@ -56,6 +60,8 @@ class RoomEffect {
     toAll: toAll,
     speed: gift.playSpeed,
     soundUrl: gift.soundUrl,
+    playSound: playSound,
+    recipientCount: recipientCount,
   );
 
   factory RoomEffect.entry({
@@ -94,10 +100,20 @@ class RoomEffect {
   /// The panel's play speed for this item (1 = the file's own); null = [kDefaultEffectSpeed].
   final double? speed;
 
-  /// A sound the panel attached; every device plays it together with the effect.
+  /// A sound the panel attached.
   final String? soundUrl;
 
+  /// Does THIS phone play the sound? A gift's sound is for the people it was sent to only: everybody else sees the animation silently, and so does the
+  /// sender. (A microphone near a speaker sends what the speaker plays back into the room: the sound used to be played on every phone and returned
+  /// as an echo.) Entries always play theirs; a gift whose receivers are not known (a row from an older app) plays as it always did.
+  final bool playSound;
+
+  /// For a gift to everyone: how many people got it (null = not known).
+  final int? recipientCount;
+
   String get caption => switch (kind) {
+    RoomEffectKind.gift when toAll && recipientCount != null =>
+      '$senderName sent ${count}x $name to $recipientCount ${recipientCount == 1 ? 'person' : 'people'}',
     RoomEffectKind.gift when toAll && count > 1 => '$senderName sent $name x$count to All',
     RoomEffectKind.gift when toAll => '$senderName sent $name to All',
     RoomEffectKind.gift when count > 1 => '$senderName sent $name x$count',
@@ -106,7 +122,20 @@ class RoomEffect {
   };
 
   bool _sameAs(RoomEffect o) =>
-      kind == o.kind && id == o.id && senderId == o.senderId && toAll == o.toAll;
+      kind == o.kind && id == o.id && senderId == o.senderId && toAll == o.toAll && playSound == o.playSound && recipientCount == o.recipientCount;
+}
+
+/// The ids in a uuid[] chat column: Realtime sends a list, some versions a Postgres text like `{id1,id2}`. Null when there is no value.
+Set<String>? parseUuidSet(Object? raw) {
+  if (raw is List) return {for (final v in raw) if (v is String) v};
+  if (raw is String) {
+    final t = raw.trim();
+    if (t.startsWith('{') && t.endsWith('}')) {
+      final inner = t.substring(1, t.length - 1).trim();
+      return inner.isEmpty ? <String>{} : {for (final p in inner.split(',')) p.trim().replaceAll('"', '')};
+    }
+  }
+  return null;
 }
 
 /// Plays room effects one at a time for everyone in a room — sender, host and
@@ -228,12 +257,19 @@ class RoomEffectController extends ChangeNotifier {
     if (rowId is int && !_seenRows.add(rowId)) return false;
     final gift = giftById(giftId);
     if (gift == null) return false;
+    // The sound is for the receivers (rows from the new gift functions say who they are); an older row does not, and plays as it always did.
+    final receivers = parseUuidSet(row['gift_receiver_ids']);
+    final toAll = row['to_all'] == true;
+    final quantity = row['gift_count'];
     enqueue(
       RoomEffect.gift(
         gift: gift,
         senderName: senderName,
         senderId: senderId,
-        toAll: row['to_all'] == true,
+        toAll: toAll,
+        count: quantity is num && quantity >= 1 ? quantity.toInt() : 1,
+        playSound: receivers == null || (meId != null && receivers.contains(meId)),
+        recipientCount: toAll && receivers != null ? receivers.length : null,
       ),
     );
     return true;
@@ -479,6 +515,7 @@ class _RoomEffectViewState extends State<_RoomEffectView> {
   EffectSound? _sound;
 
   void _startSound() {
+    if (!widget.effect.playSound) return; // this phone is not one of the receivers
     final url = widget.effect.soundUrl;
     if (_sound != null || url == null) return;
     _sound = EffectSounds.start(url);
@@ -535,7 +572,8 @@ class _RoomEffectViewState extends State<_RoomEffectView> {
             child: RemoteMedia(
               url,
               loop: false,
-              muted: false,
+              // an MP4 effect carries its own soundtrack: it is heard only on the phones the gift was sent to (see RoomEffect.playSound)
+              muted: !e.playSound,
               speed: widget.speed,
               // a separate sound from the panel replaces the video's own soundtrack
               silenceEmbeddedAudio: e.soundUrl != null,
