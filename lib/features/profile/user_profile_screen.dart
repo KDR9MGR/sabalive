@@ -16,7 +16,6 @@ import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import 'user_safety_menu.dart';
-import 'widgets/equipped_cosmetics.dart';
 import 'widgets/profile_labels.dart';
 import '../../core/i18n/text.dart';
 
@@ -116,7 +115,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ),
               ),
               Center(child: _copyableId(context, _user.displayId)),
-              Center(child: EquippedCosmetics(profileId: _user.id)),
               Center(
                 child: ProfileLabelsRow(
                   profileId: _user.id,

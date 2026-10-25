@@ -2,7 +2,8 @@ import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/i18n/text.dart';
 import '../../../core/media/disk_cached_image.dart';
-import '../../../core/widgets/remote_media.dart' show MediaKind, mediaKindFor;
+import '../../../core/widgets/label_picture.dart';
+import '../../../core/widgets/remote_media.dart' show MediaKind, RemoteMedia, mediaKindFor;
 import '../../../data/profile_labels_repository.dart';
 import '../../../theme/app_colors.dart';
 
@@ -125,24 +126,23 @@ class TagPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = tag.imageUrl;
     if (url == null || tag.look == TagLook.pill) return _pill();
+    if (!LabelPicture.supports(url)) return _pill(); // a video file is not drawn on a profile
     if (tag.look == TagLook.picture) {
-      return Image(
-        image: ResizeImage(DiskCachedNetworkImage(url), height: (kTagPictureHeight * MediaQuery.devicePixelRatioOf(context)).ceil()),
-        key: ValueKey('tag-${tag.id}'),
-        height: kTagPictureHeight,
-        fit: BoxFit.contain,
-        semanticLabel: tag.name,
-        errorBuilder: (_, _, _) => _pill(),
+      // the artwork exactly as uploaded: a picture, a GIF / WebP or an SVGA animation; the pill stands in while it loads and if it can't be drawn
+      return Semantics(
+        label: tag.name,
+        child: LabelPicture(key: ValueKey('tag-${tag.id}'), url: url, height: kTagPictureHeight, maxWidth: 220, fallback: _pill()),
       );
     }
+    final plate = DecoratedBox(decoration: BoxDecoration(color: tag.color, borderRadius: BorderRadius.circular(20)));
     return Stack(
       key: ValueKey('tag-${tag.id}'),
       alignment: Alignment.center,
       children: [
         Positioned.fill(
-          child: Image(image: DiskCachedNetworkImage(url), fit: BoxFit.fill, errorBuilder: (_, _, _) => DecoratedBox(
-            decoration: BoxDecoration(color: tag.color, borderRadius: BorderRadius.circular(20)),
-          )),
+          child: mediaKindFor(url) == MediaKind.svga
+              ? RemoteMedia(url, fit: BoxFit.fill, loop: true, fallback: plate)
+              : Image(image: DiskCachedNetworkImage(url), fit: BoxFit.fill, errorBuilder: (_, _, _) => plate),
         ),
         Container(
           height: kTagPictureHeight,
@@ -168,13 +168,11 @@ class _BadgeChip extends StatelessWidget {
   final ProfileBadge badge;
   final VoidCallback? onTap;
 
-  /// A badge animation (SVGA / MP4) is not played here: a profile is full of small things and a looping animation on each would cost battery.
-  /// Those, and badges with no picture, are drawn as the emoji chip.
+  /// A badge picture is drawn as uploaded (still, GIF / WebP or SVGA). A video file (MP4) is not played here: a decoder per badge would cost battery.
+  /// That, and a badge with no picture, is drawn as the emoji chip.
   bool get _hasPicture {
     final url = badge.iconUrl;
-    if (url == null) return false;
-    final kind = mediaKindFor(url);
-    return kind != MediaKind.svga && kind != MediaKind.video;
+    return url != null && LabelPicture.supports(url);
   }
 
   Widget _chip() => Container(
@@ -201,13 +199,9 @@ class _BadgeChip extends StatelessWidget {
         onTap: onTap,
         child: _hasPicture
             // the picture IS the badge (its artwork carries the name), shown as it is; if it can't load, the chip takes over
-            ? Image(
-                image: ResizeImage(DiskCachedNetworkImage(badge.iconUrl!), height: (kTagPictureHeight * MediaQuery.devicePixelRatioOf(context)).ceil()),
-                key: ValueKey('badge-icon-${badge.id}'),
-                height: kTagPictureHeight,
-                fit: BoxFit.contain,
-                semanticLabel: badge.name,
-                errorBuilder: (_, _, _) => _chip(),
+            ? Semantics(
+                label: badge.name,
+                child: LabelPicture(key: ValueKey('badge-icon-${badge.id}'), url: badge.iconUrl!, height: kTagPictureHeight, fallback: _chip()),
               )
             : _chip(),
       );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 
+import '../../core/widgets/label_picture.dart';
 import '../../data/badges_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../core/i18n/text.dart';
@@ -8,8 +9,11 @@ import '../../core/i18n/text.dart';
 /// `badges`/`user_badges`, no mock. Badges are admin-awarded (judged
 /// achievements like "Event Winner"), so this is read-only.
 class BadgesScreen extends StatefulWidget {
-  const BadgesScreen({super.key, required this.profileId});
+  const BadgesScreen({super.key, required this.profileId, @visibleForTesting this.loader});
   final String profileId;
+
+  /// Replaces the database read (tests).
+  final Future<List<BadgeInfo>> Function(String profileId)? loader;
 
   @override
   State<BadgesScreen> createState() => _BadgesScreenState();
@@ -21,7 +25,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
   @override
   void initState() {
     super.initState();
-    BadgesRepository().allWithOwnership(widget.profileId).then((b) {
+    (widget.loader ?? BadgesRepository().allWithOwnership)(widget.profileId).then((b) {
       if (mounted) setState(() => _badges = b);
     });
   }
@@ -68,10 +72,11 @@ class _BadgesScreenState extends State<BadgesScreen> {
       ),
       child: Column(
         children: [
-          Text(
-            owned.isEmpty ? '—' : owned.first.emoji,
-            style: const TextStyle(fontSize: 44),
-          ),
+          if (owned.isEmpty)
+            const Text('—', style: TextStyle(fontSize: 44))
+          else
+            // the picture uploaded for the badge, as it is (the emoji only when none was uploaded)
+            _badgeArt(owned.first, 64, key: const ValueKey('my-badge-art')),
           const SizedBox(height: 8),
           Text(
             owned.isEmpty ? 'No badges yet' : '${owned.length} badge${owned.length == 1 ? '' : 's'} earned',
@@ -94,6 +99,18 @@ class _BadgesScreenState extends State<BadgesScreen> {
     );
   }
 
+  /// A badge's own picture at [height] (still, GIF / WebP or SVGA), or its emoji when the panel uploaded none or the file can't be drawn.
+  Widget _badgeArt(BadgeInfo b, double height, {Key? key}) {
+    final emoji = Text(b.emoji, style: TextStyle(fontSize: height * 0.73));
+    final url = b.iconUrl;
+    if (url == null || !LabelPicture.supports(url)) return SizedBox(key: key, height: height, child: Center(child: emoji));
+    return SizedBox(
+      key: key,
+      height: height,
+      child: Center(child: LabelPicture(url: url, height: height, maxWidth: 130, fallback: emoji)),
+    );
+  }
+
   Widget _badgeCard(BadgeInfo b) {
     return Container(
       padding: const EdgeInsets.all(14),
@@ -107,7 +124,7 @@ class _BadgesScreenState extends State<BadgesScreen> {
         children: [
           Opacity(
             opacity: b.owned ? 1 : 0.35,
-            child: Text(b.emoji, style: const TextStyle(fontSize: 32)),
+            child: _badgeArt(b, 44, key: ValueKey('badge-art-${b.id}')),
           ),
           const SizedBox(height: 8),
           Text(b.name,

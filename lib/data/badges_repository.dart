@@ -7,6 +7,7 @@ class BadgeInfo {
     required this.emoji,
     required this.criteria,
     required this.owned,
+    this.iconUrl,
   });
 
   factory BadgeInfo.fromRow(Map<String, dynamic> row, {required bool owned}) =>
@@ -16,13 +17,20 @@ class BadgeInfo {
         emoji: row['emoji'] as String? ?? '🏅',
         criteria: row['criteria'] as String? ?? '',
         owned: owned,
+        iconUrl: _picture(row['icon_url']),
       );
+
+  /// The picture the panel's Badge Management uploaded (a still, GIF / WebP or SVGA file), or null: then the emoji is the badge.
+  static String? _picture(Object? raw) => raw is String && raw.trim().isNotEmpty ? raw.trim() : null;
 
   final String id;
   final String name;
   final String emoji;
   final String criteria;
   final bool owned;
+
+  /// The uploaded badge picture; null = show [emoji].
+  final String? iconUrl;
 }
 
 /// The full badge catalog (`badges`, publicly readable) cross-referenced

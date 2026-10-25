@@ -86,7 +86,7 @@ void main() {
       expect(t.getTopLeft(find.byKey(const ValueKey('badge-b1'))).dx, lessThan(t.getTopLeft(find.byKey(const ValueKey('tag-t1'))).dx));
     });
 
-    testWidgets('a badge with an uploaded picture is the picture itself; an animation file or no picture is the emoji chip', (t) async {
+    testWidgets('a badge with an uploaded picture (still, GIF / WebP, SVGA) is the picture itself; a video file or no picture is the emoji chip', (t) async {
       await show(t, (_) async => const ProfileLabels(badges: [
             ProfileBadge(id: 'png', name: 'Star', emoji: '⭐', iconUrl: 'https://example.com/star.png'),
             ProfileBadge(id: 'svga', name: 'Crown', emoji: '👑', iconUrl: 'https://example.com/crown.svga'),
@@ -95,9 +95,9 @@ void main() {
       await t.pump();
       expect(find.byKey(const ValueKey('badge-icon-png')), findsOneWidget);
       expect(find.text('Star'), findsNothing, reason: 'the picture carries the name');
-      expect(find.byKey(const ValueKey('badge-icon-svga')), findsNothing);
-      expect(find.byKey(const ValueKey('badge-icon-mp4')), findsNothing);
-      expect(find.text('Crown'), findsOneWidget);
+      expect(find.byKey(const ValueKey('badge-icon-svga')), findsOneWidget, reason: 'an SVGA badge is drawn as uploaded (its chip stands in while it loads)');
+      expect(find.byKey(const ValueKey('badge-icon-mp4')), findsNothing, reason: 'a video file is not drawn on a profile');
+      expect(find.text('Crown'), findsOneWidget, reason: 'the stand-in chip while the SVGA is read');
       expect(find.text('👑'), findsOneWidget);
       expect(find.text('Fire'), findsOneWidget);
       await waitFor(t, 'Star'); // the test network refuses the picture: the chip takes over, the badge never vanishes
