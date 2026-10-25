@@ -23,7 +23,7 @@ class LevelImageStore extends ChangeNotifier {
   DateTime? _at;
 
   /// How long a read is trusted before the next chip asks again (the read itself is also remembered by [LevelBannerImages]).
-  static const Duration ttl = Duration(minutes: 10);
+  static const Duration ttl = Duration(minutes: 5);
 
   static String _key(String track, int level) => '$track:$level';
 

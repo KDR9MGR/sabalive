@@ -11,7 +11,10 @@ import '../../core/i18n/text.dart';
 /// for how these relate to the older combined xp/level "LV X" badge shown
 /// elsewhere in the app, which this screen no longer shows at all.
 class MyLevelScreen extends StatefulWidget {
-  const MyLevelScreen({super.key});
+  const MyLevelScreen({super.key, @visibleForTesting this.loader});
+
+  /// Replaces the database read (tests).
+  final Future<WealthCharmLevels?> Function()? loader;
 
   @override
   State<MyLevelScreen> createState() => _MyLevelScreenState();
@@ -24,7 +27,7 @@ class _MyLevelScreenState extends State<MyLevelScreen> {
   @override
   void initState() {
     super.initState();
-    LevelsRepository().wealthAndCharm().then((v) {
+    (widget.loader ?? LevelsRepository().wealthAndCharm)().then((v) {
       if (mounted) setState(() => _data = v);
     });
   }

@@ -5,13 +5,13 @@ import '../config/supabase_client.dart';
 ///
 /// A person's banner is the picture of the highest Charm level they have reached that has one (falling back to
 /// their Wealth level's picture when [bannerFor] is asked). Everything is read in one small query (a few dozen
-/// rows), shared by concurrent callers, and remembered for [ttl]. A failed read is not remembered, and gives null:
+/// rows), shared by concurrent callers, and remembered for [ttl] (5 minutes: a picture changed in the panel shows up on a phone within a few minutes). A failed read is not remembered, and gives null:
 /// the caller then keeps the picture the join row carried.
 class LevelBannerImages {
   LevelBannerImages({
     Future<List<Map<String, dynamic>>> Function()? loader,
     DateTime Function()? now,
-    this.ttl = const Duration(minutes: 10),
+    this.ttl = const Duration(minutes: 5),
   })  : _loader = loader ?? _loadFromSupabase,
         _now = now ?? DateTime.now;
 
