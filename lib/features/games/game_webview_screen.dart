@@ -16,10 +16,19 @@ enum GameExit { closed, recharge }
 /// open the coin shop. The panel's height follows the game: once the page's engine is up it is asked for its design size
 /// ([kDesignSizeScript]) and the panel is resized to fit exactly.
 class GameWebViewScreen extends StatefulWidget {
-  const GameWebViewScreen({super.key, required this.url, required this.title, this.sizeKey});
+  const GameWebViewScreen({super.key, required this.url, required this.title, this.sizeKey, this.initialAspect, this.measure = true, this.allowSubframes = false});
 
   final Uri url;
   final String title;
+
+  /// A fixed starting (and, with [measure] false, final) height / width: a SUD game's page has no Cocos engine to ask. Null = the remembered or guessed one.
+  final double? initialAspect;
+
+  /// Ask the page for its Cocos design size and follow it (Tulasi games). Off for a SUD game, whose size is the one it was given.
+  final bool measure;
+
+  /// A SUD game builds itself from frames and requests of its own hosts: only the TOP page is held to our address, a frame may load any https address.
+  final bool allowSubframes;
 
   /// The game's identification: where what the page reports is remembered, so the next open starts at the right size.
   final String? sizeKey;
@@ -32,7 +41,7 @@ class _GameWebViewScreenState extends State<GameWebViewScreen> {
   late final WebViewController _controller;
   bool _loading = true;
   bool _failed = false;
-  late double _aspect = gameAspectGuess(widget.sizeKey);
+  late double _aspect = widget.initialAspect ?? gameAspectGuess(widget.sizeKey);
   Timer? _measure;
 
   @override
@@ -49,7 +58,7 @@ class _GameWebViewScreenState extends State<GameWebViewScreen> {
           },
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
-            _startMeasuring();
+            if (widget.measure) _startMeasuring();
           },
           onWebResourceError: (e) {
             // a broken picture or script inside the page is the game's business; a page that cannot load at all is ours
@@ -63,6 +72,7 @@ class _GameWebViewScreenState extends State<GameWebViewScreen> {
   }
 
   NavigationDecision _onNavigation(NavigationRequest request) {
+    if (widget.allowSubframes && !request.isMainFrame && request.url.startsWith('https://')) return NavigationDecision.navigate;
     switch (decideGameNavigation(request.url, gameHost: widget.url.host)) {
       case GameNavigation.allow:
         return NavigationDecision.navigate;

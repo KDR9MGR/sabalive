@@ -17,9 +17,10 @@ typedef GamesChangeFeed = void Function() Function(void Function() onChange);
 /// that shows games (the Games tab, the Home strip, the in-room Games menu) changes at once, with no restart.
 /// It also listens to `app_config`, so the panel's "Games" switch flips the app immediately, and reloads on return to the app.
 class GamesStore extends ChangeNotifier with WidgetsBindingObserver {
-  GamesStore({GamesRepository? repo, GamesChangeFeed? feed, Duration window = const Duration(milliseconds: 500)})
+  GamesStore({GamesRepository? repo, GamesChangeFeed? feed, Duration window = const Duration(milliseconds: 500), bool Function()? sudEnabled})
       : _repo = repo ?? GamesRepository(),
-        _feed = feed ?? _supabaseFeed {
+        _feed = feed ?? _supabaseFeed,
+        _sudEnabled = sudEnabled ?? _sudSwitch {
     _runner = CoalescedRunner(() {
       if (_started) unawaited(refresh()); // an event that was already on its way when we stopped does nothing
     }, window: window);
@@ -30,6 +31,10 @@ class GamesStore extends ChangeNotifier with WidgetsBindingObserver {
 
   final GamesRepository _repo;
   final GamesChangeFeed _feed;
+  final bool Function() _sudEnabled;
+
+  /// The panel's "SUD games" switch (Release controls): off = the SUD games are not shown at all, whatever the list holds.
+  static bool _sudSwitch() => RemoteConfigController.instance.flag('sud_games_enabled', defaultValue: false);
   late final CoalescedRunner _runner;
 
   List<MerchantGame>? _games;
@@ -38,8 +43,12 @@ class GamesStore extends ChangeNotifier with WidgetsBindingObserver {
   bool _loading = false;
   void Function()? _stopFeed;
 
-  /// The enabled games, null until the first load finishes.
-  List<MerchantGame>? get games => _games;
+  /// The enabled games (SUD's only while its switch is on), null until the first load finishes.
+  List<MerchantGame>? get games {
+    final all = _games;
+    if (all == null) return null;
+    return _sudEnabled() ? all : [for (final g in all) if (!g.isSud) g];
+  }
   String? get error => _error;
   bool get started => _started;
 
@@ -112,6 +121,14 @@ class GamesStore extends ChangeNotifier with WidgetsBindingObserver {
           callback: (_) => unawaited(RemoteConfigController.instance.refresh(force: true)),
         )
         .subscribe();
-    return () => unawaited(channel.unsubscribe());
+    // SUD's list has its OWN channel: if the table is not published yet (an older database) only this one fails, never Tulasi's list or the switch above
+    final sud = supabase
+        .channel('sud-games')
+        .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'sud_games', callback: (_) => onChange())
+        .subscribe();
+    return () {
+      unawaited(channel.unsubscribe());
+      unawaited(sud.unsubscribe());
+    };
   }
 }

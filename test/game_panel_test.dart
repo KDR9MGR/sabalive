@@ -425,7 +425,7 @@ void main() {
 
 class _FakeGames extends GamesRepository {
   @override
-  Future<GameSession> start(MerchantGame game) async => GameSession(token: 'T', uid: 1);
+  Future<GameSession> start(MerchantGame game, {String? roomId, String lang = 'en'}) async => GameSession(token: 'T', uid: 1);
 }
 
 /// A Games list that owns its launcher and disposes it with itself, as the real Games screen does.

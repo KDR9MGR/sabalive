@@ -50,7 +50,9 @@ class GamesScreen extends StatefulWidget {
 }
 
 class _GamesScreenState extends State<GamesScreen> {
-  late final GamesStore _store = widget.store ?? (widget.repo != null ? GamesStore(repo: widget.repo, feed: (_) => () {}) : GamesStore.instance);
+  late final GamesStore _store = widget.store ?? (widget.repo != null
+      ? GamesStore(repo: widget.repo, feed: (_) => () {}, sudEnabled: () => _config.flag('sud_games_enabled', defaultValue: false))
+      : GamesStore.instance);
   late final GameLauncher _launcher =
       GameLauncher(repo: widget.repo, openGame: widget.openGame, onRecharge: widget.onRecharge, userId: widget.userId);
   RemoteConfigController get _config => widget.config ?? RemoteConfigController.instance;

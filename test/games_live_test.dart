@@ -33,7 +33,7 @@ class _Repo extends GamesRepository {
   }
 
   @override
-  Future<GameSession> start(MerchantGame game) async {
+  Future<GameSession> start(MerchantGame game, {String? roomId, String lang = 'en'}) async {
     started.add(game.id);
     return GameSession(token: 'TOKEN-${game.id}', uid: 10001);
   }

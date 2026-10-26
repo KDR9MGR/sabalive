@@ -237,6 +237,8 @@ class _Repo extends GamesRepository {
   final List<MerchantGame> list;
   int loads = 0;
   final started = <int>[];
+  final rooms = <String?>[];
+  final langs = <String>[];
   Object? startError;
   Object? listError;
 
@@ -248,9 +250,11 @@ class _Repo extends GamesRepository {
   }
 
   @override
-  Future<GameSession> start(MerchantGame game) async {
+  Future<GameSession> start(MerchantGame game, {String? roomId, String lang = 'en'}) async {
     if (startError != null) throw startError!;
     started.add(game.id);
+    rooms.add(roomId);
+    langs.add(lang);
     return GameSession(token: 'TOKEN-${game.id}', uid: 10001);
   }
 }
