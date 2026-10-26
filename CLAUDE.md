@@ -197,6 +197,10 @@ iOS has never been published. Apple's message (4.1(a) copycat, 5.2.1 China live-
 - **Still open (owner)**: Age Rating "Messaging and Chat" = Yes and "User-Generated Content" = Yes (App Store Connect); China mainland removed from availability + a reply that the app is for India (5.2.1); the icon and splash artwork carry a red "play button + LIVE" pill (and a small red play button inside the S) that looks like YouTube's (4.1(a)): needs new artwork (an automatic fill of the pill looked wrong,
   so the icon was NOT changed); check the App Store name / description / screenshots for lookalike content; a demo login for App Review and a live running during review; test the new build on a real iPhone and iPad.
 
+## Keeping old and modified copies out (plan: `docs/PLAY_INTEGRITY_PLAN.md`)
+Only the minimum-version gate exists (panel: Application Config -> Release Settings -> Android minimum version code). Set it only AFTER the new version is live on Play at 100%, or everyone is locked out. It cannot block builds from before 2026-10-06 (no gate in them), nor a
+modified copy (the check runs inside the app). The plan (server-side build check, Play Integrity verified by an Edge Function in shadow mode first, enforced only on coin-moving actions, plus an audit of the server rules) is written down, not built.
+
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
   translates its English string at build time. Hints / tooltips use `tr('...')`. English in code is the key.
