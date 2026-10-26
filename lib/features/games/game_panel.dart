@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 
 import '../../core/widgets/over_live_route.dart';
-import '../../theme/app_colors.dart';
 import '../../core/i18n/text.dart';
 
 /// A game opens as a panel at the bottom of the screen, the way it does in other live apps: the live room (or the Games list)
@@ -9,9 +8,17 @@ import '../../core/i18n/text.dart';
 /// edge, so the space they need is width x (design height / design width) and anything taller is just empty. That ratio is
 /// different per game (square for most; Fruit Machine 1.4; Greedy and Roulette 1.6), so the panel reads it from the page and
 /// follows it, which also covers games the platform adds later.
+///
+/// Nothing of ours limits the game: no header strip (a small close button floats over the game's top right instead), no rounded
+/// corners cutting its edges, no clamp on its proportions, and it always gets the full screen width and the height its own layout
+/// asks for. The one exception is a game that cannot fit even on the whole screen (a rotated phone): it is then narrowed, not cropped.
 
-/// The strip above the game: its name and the close button. The game's own exit button sits at its top left, so ours is on the right.
-const double kGamePanelHeader = 44;
+/// A panel is never shorter than this, so the close button always fits (only a nonsense reading could ask for less).
+const double kGamePanelMinHeight = 96;
+
+/// The floating close button's size and its distance from the panel's top right corner.
+const double kGameCloseSize = 34;
+const double kGameCloseMargin = 6;
 
 /// What the games looked like on a measuring run (1.0 = a square), as a first guess before the page answers; the page's own
 /// answer replaces it a moment later.
@@ -55,6 +62,11 @@ void rememberGameAspect(String? identification, double aspect) {
   if (identification != null) _measured[identification] = aspect;
 }
 
+/// The proportions (height / width) a reading may have to be believed. A real game is between a wide slot machine and a tall phone screen; a reading outside this is
+/// the engine still starting up or a page that is not a game, and is ignored (the panel keeps its size) instead of being squeezed into a range.
+const double kMinGameAspect = 0.25;
+const double kMaxGameAspect = 4.0;
+
 /// Reads the answer of the measuring script (`<design width>x<design height>x<policy name>`, possibly wrapped in quotes) and
 /// returns height / width. Null when it is not usable: nothing yet (the engine is still starting), no sensible numbers, or a
 /// game that is not scaled by width (then the panel's size is a guess and stays so).
@@ -66,7 +78,8 @@ double? parseDesignAspect(Object? raw) {
   final h = double.tryParse(m.group(2)!);
   if (w == null || h == null || w <= 0 || h <= 0) return null;
   if (m.group(3) != 'FixedWidth') return null;
-  return (h / w).clamp(0.5, 2.5).toDouble();
+  final aspect = h / w;
+  return aspect < kMinGameAspect || aspect > kMaxGameAspect ? null : aspect;
 }
 
 /// The script that asks a loaded game for its design size.
@@ -75,21 +88,20 @@ const String kDesignSizeScript =
     "try{p=cc.view.getResolutionPolicy()._contentStrategy.name}catch(e){}"
     "return s.width+'x'+s.height+'x'+p}catch(e){return ''}})()";
 
-/// How tall the panel is: the header, the game at the screen's width x [aspect], and the system bar's inset. A game gets the
-/// height its own layout asks for, up to the whole screen below the status bar (a tall game designed for a full phone screen, such as
-/// 750 x 1334, must not have its top, where its table, info and buttons sit, cut off by an arbitrary cap); never so short that nothing
-/// is usable. When even the whole screen is not tall enough, see [gamePanelGameWidth].
-double gamePanelHeight({required Size screen, required double bottomInset, required double aspect, double topInset = 0}) {
-  final wanted = kGamePanelHeader + screen.width * aspect + bottomInset;
-  final room = screen.height - topInset;
-  return wanted.clamp(kGamePanelHeader + 160, room < kGamePanelHeader + 160 ? kGamePanelHeader + 160 : room).toDouble();
+/// How tall the panel is: the game at the screen's width x [aspect], plus the system bar's inset. A game gets exactly the height its own layout asks for, with no
+/// header above it and no cap below the screen's own height: a tall game designed for a full phone screen (750 x 1334) keeps its top, where its table, info and
+/// buttons sit, even when that means the panel grows over the status bar. Never taller than the screen, never so short that the close button does not fit. When even
+/// the whole screen is not tall enough, see [gamePanelGameWidth].
+double gamePanelHeight({required Size screen, required double bottomInset, required double aspect}) {
+  final wanted = screen.width * aspect + bottomInset;
+  return wanted.clamp(kGamePanelMinHeight, screen.height < kGamePanelMinHeight ? kGamePanelMinHeight : screen.height).toDouble();
 }
 
-/// How wide the game is drawn. These games keep the width they are given and hang from the bottom edge, so a panel shorter than
-/// width x [aspect] would cut the TOP of the game off. On a short or wide screen where even [gamePanelHeight]'s whole-screen height is
-/// not enough, the game is made narrower instead, centred with black sides, so its full layout stays on screen at its own proportions.
+/// How wide the game is drawn: the full screen width. These games keep the width they are given and hang from the bottom edge, so a panel shorter than width x [aspect]
+/// would cut the TOP of the game off. That happens only when the game cannot fit even on the whole screen (a phone turned sideways, say); then, and only then, the game
+/// is made narrower, centred with black sides, so its full layout stays on screen at its own proportions.
 double gamePanelGameWidth({required double screenWidth, required double panelHeight, required double bottomInset, required double aspect}) {
-  final room = panelHeight - kGamePanelHeader - bottomInset;
+  final room = panelHeight - bottomInset;
   if (aspect <= 0 || room <= 0) return screenWidth;
   final fit = room / aspect;
   return fit < screenWidth ? fit : screenWidth;
@@ -151,12 +163,13 @@ Future<T?> showGamePanel<T>(BuildContext context, {required Widget page}) {
   return nav.push<T>(GamePanelRoute<T>(page: page, modal: !fromLive));
 }
 
-/// The panel itself: rounded top, a header with the game's name and a close button, and [child] (the game) filling the rest.
-/// Its height follows [aspect] (animated, so a correction after the page answers is smooth). Everything above it is empty, so the
-/// route's dimmed barrier shows the room through.
+/// The panel itself: the game ([child]) filling it edge to edge, and a small close button floating at its top right (the game's own exit button sits at its top
+/// left). Its height follows [aspect] (animated, so a correction after the page answers is smooth). Everything above it is empty, so the route's dimmed barrier
+/// shows the room through.
 class GamePanelFrame extends StatelessWidget {
   const GamePanelFrame({super.key, required this.title, required this.aspect, required this.child, required this.onClose});
 
+  /// The game's name: what the close button says to a screen reader.
   final String title;
   final double aspect;
   final Widget child;
@@ -165,7 +178,7 @@ class GamePanelFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final height = gamePanelHeight(screen: mq.size, bottomInset: mq.viewPadding.bottom, aspect: aspect, topInset: mq.viewPadding.top);
+    final height = gamePanelHeight(screen: mq.size, bottomInset: mq.viewPadding.bottom, aspect: aspect);
     final gameWidth = gamePanelGameWidth(screenWidth: mq.size.width, panelHeight: height, bottomInset: mq.viewPadding.bottom, aspect: aspect);
     return Material(
       type: MaterialType.transparency,
@@ -177,40 +190,33 @@ class GamePanelFrame extends StatelessWidget {
           curve: Curves.easeOutCubic,
           width: double.infinity,
           height: height,
-          clipBehavior: Clip.antiAlias,
-          decoration: const BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-          ),
-          child: Column(
+          color: Colors.black,
+          child: Stack(
             children: [
-              Container(
-                height: kGamePanelHeader,
-                color: AppColors.bgElevated,
-                padding: const EdgeInsets.only(left: 18, right: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary),
-                      ),
-                    ),
-                    IconButton(
-                      key: const ValueKey('game-panel-close'),
-                      tooltip: tr('Close'),
-                      icon: const Icon(Icons.close_rounded, color: AppColors.textPrimary),
-                      onPressed: onClose,
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
+              Positioned.fill(
                 child: Padding(
                   padding: EdgeInsets.only(bottom: mq.viewPadding.bottom),
                   child: Center(child: SizedBox(key: const ValueKey('game-area'), width: gameWidth, height: double.infinity, child: child)),
+                ),
+              ),
+              Positioned(
+                top: kGameCloseMargin,
+                right: kGameCloseMargin,
+                child: Semantics(
+                  label: '${tr('Close')} $title',
+                  button: true,
+                  child: SizedBox(
+                    width: kGameCloseSize,
+                    height: kGameCloseSize,
+                    child: IconButton(
+                      key: const ValueKey('game-panel-close'),
+                      tooltip: tr('Close'),
+                      padding: EdgeInsets.zero,
+                      style: IconButton.styleFrom(backgroundColor: Colors.black.withValues(alpha: 0.45), shape: const CircleBorder()),
+                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                      onPressed: onClose,
+                    ),
+                  ),
                 ),
               ),
             ],

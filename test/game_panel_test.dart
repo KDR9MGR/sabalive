@@ -25,9 +25,13 @@ void main() {
       expect(parseDesignAspect('undefined'), isNull);
     });
 
-    test('an absurd ratio is kept within bounds', () {
-      expect(parseDesignAspect('750x75xFixedWidth'), 0.5);
-      expect(parseDesignAspect('750x9000xFixedWidth'), 2.5);
+    test('a ratio is never squeezed into a range: any real game is followed as it is, only a nonsense reading is ignored', () {
+      expect(parseDesignAspect('750x600xFixedWidth'), closeTo(0.8, 0.0001)); // flatter than the old 0.5..2.5 clamp liked
+      expect(parseDesignAspect('750x2400xFixedWidth'), closeTo(3.2, 0.0001)); // taller than the old 2.5 cap
+      expect(parseDesignAspect('750x75xFixedWidth'), isNull); // 0.1: not a game
+      expect(parseDesignAspect('750x9000xFixedWidth'), isNull); // 12: not a game
+      expect(kMinGameAspect, lessThan(0.5));
+      expect(kMaxGameAspect, greaterThan(2.5));
     });
 
     test('the script asks the engine for the design size and the policy, and never throws', () {
@@ -72,34 +76,42 @@ void main() {
   });
 
   group('panel height', () {
-    test('header + screen width x ratio + the system bar', () {
-      expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 0, aspect: 1.0), kGamePanelHeader + 400);
-      expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 20, aspect: 1.6), kGamePanelHeader + 640 + 20);
+    test('the screen width x the ratio of the game + the system bar: nothing else is added', () {
+      expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 0, aspect: 1.0), 400);
+      expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 20, aspect: 1.6), 640 + 20);
     });
 
-    test('a tall game gets the height its layout asks for, up to the whole screen below the status bar; never uselessly short', () {
-      // 750 x 1334 on a 400 x 800 screen needs 44 + 400 x 1.78 = 756: more than the old 90% cap (720), which cut the game's top off
-      expect(gamePanelHeight(screen: const Size(400, 800), bottomInset: 0, aspect: kEngineDefaultAspect), closeTo(kGamePanelHeader + 400 * kEngineDefaultAspect, 0.001));
-      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 2.5), 700); // capped by the screen, not by a share of it
-      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, topInset: 24, aspect: 2.5), 676); // the status bar stays clear
-      expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 0, aspect: 0.1), kGamePanelHeader + 160);
+    test('a tall game gets the height its layout asks for, up to the whole screen (over the status bar if it must)', () {
+      // 750 x 1334 on a 400 x 800 screen needs 400 x 1.78 = 711: no header and no 90% cap in the way
+      expect(gamePanelHeight(screen: const Size(400, 800), bottomInset: 0, aspect: kEngineDefaultAspect), closeTo(400 * kEngineDefaultAspect, 0.001));
+      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 2.5), 700); // capped by the screen itself, not by a share of it
+      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 1.7), 680);
+    });
+
+    test('a tall ratio is no longer cut at 2.5', () {
+      expect(gamePanelHeight(screen: const Size(400, 1400), bottomInset: 0, aspect: 3.2), 1280);
+    });
+
+    test('never so short that the close button does not fit', () {
+      expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 0, aspect: 0.1), kGamePanelMinHeight);
     });
   });
 
   group('game width', () {
     test('the full width while the game fits', () {
-      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 444, bottomInset: 0, aspect: 1.0), 400);
-      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 0, aspect: 1.6), 400);
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 400, bottomInset: 0, aspect: 1.0), 400);
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 640, bottomInset: 0, aspect: 1.6), 400);
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 780, bottomInset: 20, aspect: 1.9), 400);
     });
 
-    test('narrower, at its own proportions, when even the whole screen is too short (so the top is not cut off)', () {
-      // 400 x 700 screen, a game 2.5 times as tall as wide: 700 - 44 header = 656 of height -> 262.4 wide
-      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 0, aspect: 2.5), closeTo(262.4, 0.001));
-      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 20, aspect: 2.5), closeTo(254.4, 0.001)); // the system bar takes 20
+    test('narrower, at its own proportions, only when even the whole screen is too short (so the top is not cut off)', () {
+      // a 400 x 700 screen and a game 2.5 times as tall as wide: 700 of height -> 280 wide
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 0, aspect: 2.5), closeTo(280, 0.001));
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 20, aspect: 2.5), closeTo(272, 0.001)); // the system bar takes 20
     });
 
     test('nonsense inputs never shrink the game to nothing', () {
-      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 30, bottomInset: 0, aspect: 1.0), 400);
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 0, bottomInset: 0, aspect: 1.0), 400);
       expect(gamePanelGameWidth(screenWidth: 400, panelHeight: 700, bottomInset: 0, aspect: 0), 400);
     });
   });
@@ -134,16 +146,39 @@ void main() {
     testWidgets('a square game takes the bottom of the screen only; the room stays on screen above it, not covered by black', (t) async {
       await open(t, aspect: 1.0, onResult: (_) {});
       final panel = find.byKey(const ValueKey('game-panel'));
-      expect(t.getSize(panel).height, kGamePanelHeader + 400); // 44 + the 400 px screen width
+      expect(t.getSize(panel).height, 400); // exactly the 400 px screen width: no header on top of the game
       expect(t.getBottomLeft(panel).dy, 800);
-      expect(t.getTopLeft(panel).dy, 800 - (kGamePanelHeader + 400));
+      expect(t.getTopLeft(panel).dy, 800 - 400);
       expect(find.text('THE LIVE ROOM'), findsOneWidget); // still built and visible behind the panel
-      expect(find.text('Teen Patti Gold'), findsOneWidget);
+      expect(find.text('Teen Patti Gold'), findsNothing); // no title strip over the game any more
       // the room is above the panel, not under it
       expect(t.getCenter(find.text('THE LIVE ROOM')).dy, lessThan(t.getTopLeft(panel).dy));
     });
 
-    testWidgets('a tall game on a short screen keeps its whole layout: full height, narrowed at its own proportions, nothing cut off', (t) async {
+    testWidgets('a game gets the full screen width and edge to edge: no header, no rounded corners, the close button floats on it', (t) async {
+      t.view.physicalSize = const Size(400, 900);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        home: GamePanelFrame(title: 'Teen Patti Gold', aspect: kEngineDefaultAspect, onClose: () {}, child: const ColoredBox(color: Colors.green)),
+      ));
+      await t.pumpAndSettle();
+      final panel = t.getRect(find.byKey(const ValueKey('game-panel')));
+      final area = t.getRect(find.byKey(const ValueKey('game-area')));
+      expect(area.width, 400, reason: 'the whole screen width: not narrowed');
+      expect(area.height, closeTo(400 * kEngineDefaultAspect, 0.01), reason: 'the height its own layout asks for');
+      expect(area.top, panel.top, reason: 'the game starts at the very top of the panel: no strip above it');
+      expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, closeTo(400 * kEngineDefaultAspect, 0.01));
+      final decorated = t.widget<AnimatedContainer>(find.byKey(const ValueKey('game-panel')));
+      expect((decorated.decoration as BoxDecoration?)?.borderRadius, isNull, reason: 'no rounded corners');
+      expect(decorated.clipBehavior, Clip.none, reason: 'nothing clips the edges of the game');
+      final close = t.getRect(find.byKey(const ValueKey('game-panel-close')));
+      expect(close.right, lessThanOrEqualTo(panel.right));
+      expect(close.top, greaterThanOrEqualTo(panel.top));
+      expect(panel.contains(close.center), isTrue, reason: 'the close button floats over the game');
+    });
+
+    testWidgets('a tall game on a short portrait phone grows over the status bar rather than lose its top or get narrower', (t) async {
       t.view.physicalSize = const Size(360, 640); // an old 16:9 phone
       t.view.devicePixelRatio = 1.0;
       addTearDown(t.view.reset);
@@ -153,8 +188,21 @@ void main() {
       await t.pumpAndSettle();
       expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, 640); // all of the screen, not 90% of it
       final area = t.getSize(find.byKey(const ValueKey('game-area')));
-      expect(area.width, lessThan(360)); // narrowed instead of cropped
-      expect(area.height / area.width, closeTo(kEngineDefaultAspect, 0.01)); // the game's own proportions: its top is on screen
+      expect(area.width, closeTo(360, 0.5)); // as wide as the phone
+    });
+
+    testWidgets('only a game that cannot fit even the whole screen is narrowed, at its own proportions (a phone turned sideways)', (t) async {
+      t.view.physicalSize = const Size(800, 360);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        home: GamePanelFrame(title: 'Fishing', aspect: kEngineDefaultAspect, onClose: () {}, child: const ColoredBox(color: Colors.green)),
+      ));
+      await t.pumpAndSettle();
+      expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, 360);
+      final area = t.getSize(find.byKey(const ValueKey('game-area')));
+      expect(area.width, lessThan(800));
+      expect(area.height / area.width, closeTo(kEngineDefaultAspect, 0.01)); // its whole layout is on screen
     });
 
     testWidgets('a taller game gets a taller panel, and a correction animates (the page answers after the first guess)', (t) async {
@@ -170,15 +218,15 @@ void main() {
         }),
       ));
       final panel = find.byKey(const ValueKey('game-panel'));
-      expect(t.getSize(panel).height, kGamePanelHeader + 400);
+      expect(t.getSize(panel).height, 400);
       set(() => aspect = 1.6);
       await t.pump(); // the animation starts on this frame
       await t.pump(const Duration(milliseconds: 100));
       final mid = t.getSize(panel).height;
-      expect(mid, greaterThan(kGamePanelHeader + 400));
-      expect(mid, lessThan(kGamePanelHeader + 640));
+      expect(mid, greaterThan(400));
+      expect(mid, lessThan(640));
       await t.pumpAndSettle();
-      expect(t.getSize(panel).height, kGamePanelHeader + 640);
+      expect(t.getSize(panel).height, 640);
     });
 
     testWidgets('a tap on the room above does not close the game; the close button does, and says it was closed', (t) async {
