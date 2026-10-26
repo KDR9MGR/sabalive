@@ -133,6 +133,13 @@ Production is shared with the live Play app: follow "Production safety" in the r
   (it used to be `sabalive.app/invite/<code>`, a page that does not exist, so the link did nothing). The code is also in the share text (`inviteShareText`). Reading the referrer back automatically on first launch would need the Play
   Install Referrer plugin and a Play build (not done); today the new user types the code. The public landing site's `STORE_LINKS.android` (`sabaliveadmin/landing/src/lib/site.js`) points at the same listing.
 
+## Who reports to whom (Global > Country > Sub > Agency)
+`agencies.sub_admin_id` -> the Sub Admin; `staff_roles.country_admin_id` (on a sub admin) -> the Country Admin; `staff_roles.global_admin_id` (on a country admin) -> the Global Admin (migration `20261026100000`:
+the column did not exist before, so every Global Admin column in the Salary exports was empty). It is a REPORTING link only: RLS still lets every Global Admin see the whole tree. Back-filled from the audit log (the creator of a
+Country Admin, if that creator is a Global Admin); set automatically when a Global Admin creates a Country Admin (trigger on the `staff.created` audit row, `create_staff_account` untouched); assigned or moved with
+`transfer_country_admin(country_admin, to_global_admin)` (Master / Super Admin any, a Global Admin only their own) from the panel's Transfer Global page. `salary_agency_map()` reads it, so the exports and tables show
+Sub / Country / Global Admin each with name + app User ID ("Not assigned" when the system has none). Check coverage with `scripts/staging/verify_global_link.sh`.
+
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
   translates its English string at build time. Hints / tooltips use `tr('...')`. English in code is the key.
