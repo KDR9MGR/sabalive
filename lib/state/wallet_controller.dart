@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_client.dart';
+import '../core/media/gift_artwork_warmer.dart';
 import '../data/gift_sender.dart';
 import '../data/gift_sender.dart' as gift_sender show isMissingFunction;
 import '../data/models.dart';
@@ -89,10 +90,14 @@ class WalletController extends ChangeNotifier {
   /// and a viewer could not play a new gift that someone else sent. Called when a live opens. Never throws.
   Future<void> refreshCatalog({Duration maxAge = const Duration(minutes: 5)}) async {
     final at = _catalogAt;
-    if (at != null && DateTime.now().difference(at) < maxAge) return;
-    try {
-      await _loadCatalog();
-    } catch (_) {/* keep the catalog we have */}
+    if (at == null || DateTime.now().difference(at) >= maxAge) {
+      try {
+        await _loadCatalog();
+      } catch (_) {/* keep the catalog we have */}
+    }
+    // Entering a live is when someone is about to gift: put the gift pictures on the phone now, quietly, so the gift sheet draws them at once instead of
+    // showing a stand-in while each file downloads (see GiftArtworkWarmer). Not at app start: people who never gift would download them for nothing.
+    unawaited(GiftArtworkWarmer.instance.warm(_gifts));
   }
 
   /// Wallet & Earnings' Transaction History excludes these same kinds, so

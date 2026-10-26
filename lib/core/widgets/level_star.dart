@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../data/level_images.dart';
 import '../../theme/app_colors.dart';
 import '../i18n/text.dart';
 import '../media/effect_file_cache.dart';
+import 'remote_media.dart' show MediaKind, mediaKindFor;
 
 enum LevelStarKind { wealth, charm }
 
@@ -220,6 +222,17 @@ class _LevelPictureState extends State<LevelPicture> {
     final file = _file;
     if (file == null) return widget.fallback;
     final dpr = MediaQuery.devicePixelRatioOf(context);
+    if (mediaKindFor(widget.url) == MediaKind.svg) {
+      // a vector picture: drawn at any size, the star stays until it is ready and comes back if it can't be drawn
+      return SvgPicture.file(
+        file,
+        key: const ValueKey('level-picture'),
+        height: widget.size,
+        fit: BoxFit.contain,
+        placeholderBuilder: (_) => widget.fallback,
+        errorBuilder: (_, _, _) => widget.fallback,
+      );
+    }
     return Image.file(
       file,
       key: const ValueKey('level-picture'),

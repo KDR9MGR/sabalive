@@ -830,4 +830,8 @@ const Map<String, String> ptBrStrings = {
   'No country found': 'Nenhum país encontrado',
   'No fans yet. Fans are people you follow who follow you back.': 'Ainda não há fãs. Fãs são pessoas que você segue e que seguem você de volta.',
   'Reason': 'Motivo',
+  'Basic': 'Básico',
+  'Luxury': 'Luxo',
+  'Vehicle': 'Veículo',
+  'Special': 'Especial',
 };

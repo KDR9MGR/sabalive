@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import '../state/remote_config_controller.dart';
 
 /// Switches for UI that's deliberately hidden during the alpha because the
@@ -62,4 +64,11 @@ class FeatureFlags {
   static bool pkVideoEnabledFor(RemoteConfigController config) =>
       pkLayerEnabledFor(config) && config.flag('pk_video', defaultValue: false);
   static const bool callsEnabled = false;
+
+  /// The "Buy from Offline Seller" button (coin sellers). Always shown on Android. On iOS it follows the server switch `coin_seller_ios` (Application Config ->
+  /// Release controls: "Coin sellers on iOS"), so it can be hidden for App Store review without a release. The default is ON: nothing changes until the switch is turned off.
+  static bool get coinSellerVisible => coinSellerVisibleFor(RemoteConfigController.instance, isIOS: Platform.isIOS);
+
+  /// The rule behind [coinSellerVisible], for any [RemoteConfigController] and platform (tests use their own).
+  static bool coinSellerVisibleFor(RemoteConfigController config, {required bool isIOS}) => !isIOS || config.flag('coin_seller_ios', defaultValue: true);
 }

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
+import '../../config/feature_flags.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
+import '../../state/remote_config_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../../core/i18n/text.dart';
@@ -60,13 +62,21 @@ class WalletScreen extends StatelessWidget {
                   gradient: AppColors.goldGradient,
                   onPressed: () => AppNav.buyCoins(context),
                 ),
-                const SizedBox(height: 10),
-                OutlinePillButton(
-                  label: 'Buy from Offline Seller',
-                  icon: Icons.storefront_rounded,
-                  height: 44,
-                  color: Colors.white,
-                  onPressed: () => AppNav.coinSellers(context),
+                // coin sellers: always on Android; on iOS the panel's "Coin sellers on iOS" switch decides (it can change while this screen is open)
+                ListenableBuilder(
+                  listenable: RemoteConfigController.instance,
+                  builder: (context, _) => !FeatureFlags.coinSellerVisible
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: OutlinePillButton(
+                            label: 'Buy from Offline Seller',
+                            icon: Icons.storefront_rounded,
+                            height: 44,
+                            color: Colors.white,
+                            onPressed: () => AppNav.coinSellers(context),
+                          ),
+                        ),
                 ),
               ],
             ),

@@ -830,4 +830,8 @@ const Map<String, String> bnStrings = {
   'No country found': 'কোনো দেশ পাওয়া যায়নি',
   'No fans yet. Fans are people you follow who follow you back.': 'এখনও কোনো ফ্যান নেই। ফ্যান হলো সেই মানুষ যাদের আপনি ফলো করেন এবং যারা আপনাকে ফলো ব্যাক করে।',
   'Reason': 'কারণ',
+  'Basic': 'বেসিক',
+  'Luxury': 'লাক্সারি',
+  'Vehicle': 'যানবাহন',
+  'Special': 'বিশেষ',
 };

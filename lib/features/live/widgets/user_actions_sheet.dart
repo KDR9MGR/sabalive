@@ -1,3 +1,4 @@
+import '../../profile/widgets/profile_labels.dart';
 import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/utils/errors.dart';
@@ -61,6 +62,11 @@ Future<void> showUserActionsSheet(
                 padding: EdgeInsets.only(top: 2),
                 child: Text('Room admin', style: TextStyle(fontSize: 11.5, color: AppColors.gold)),
               ),
+            // the person's badges and tags, as on their profile (nothing is drawn for someone without any)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ProfileLabelsRow(profileId: user.id, alignment: WrapAlignment.center),
+            ),
             const SizedBox(height: 6),
             _tile(sheet, 'profile', Icons.person_outline_rounded, 'View profile'),
             if (!isMe) _tile(sheet, 'report', Icons.flag_outlined, 'Report'),

@@ -154,8 +154,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-              _vipBanner(context),
-              const SizedBox(height: 16),
               _walletStrip(context, wallet),
               const SizedBox(height: 20),
               _menuGrid(context, user),
@@ -293,36 +291,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _divider() =>
       Container(width: 1, height: 28, color: AppColors.stroke);
-
-  Widget _vipBanner(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _soon(context, 'VIP'),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          gradient: AppColors.goldGradient,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.diamond_rounded, color: Color(0xFF3A1A5E), size: 20),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text('VIP  ·  Luxury Privileges',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    color: Color(0xFF3A1A5E),
-                  )),
-            ),
-            Icon(Icons.chevron_right_rounded, color: Color(0xFF3A1A5E)),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _walletStrip(BuildContext context, WalletController wallet) {
     return Container(

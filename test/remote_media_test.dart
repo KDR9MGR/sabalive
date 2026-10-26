@@ -215,9 +215,11 @@ void main() {
           ),
         ),
       );
+      // The fallback is already there while the picture loads (it stands in until the first frame is decoded).
+      expect(find.byKey(const Key('fallback')), findsOneWidget);
       // flutter_test serves HTTP 400 for every request, so this is the error path. The picture goes through the phone's file cache first: the failure
       // arrives, the image rebuilds with its error builder, and that reports back: each stage needs its own frame.
-      for (var i = 0; i < 30 && find.byKey(const Key('fallback')).evaluate().isEmpty; i++) {
+      for (var i = 0; i < 30 && finished == 0; i++) {
         await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
         await t.pump();
       }

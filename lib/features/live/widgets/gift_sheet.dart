@@ -5,7 +5,6 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../data/models.dart';
 import '../../../router/app_nav.dart';
-import '../../../state/auth_controller.dart';
 import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
 import 'gift_icon.dart';
@@ -41,6 +40,36 @@ Future<GiftChoice?> showGiftSheet(
   );
 }
 
+/// The panel's gift categories, in the panel's order (Gifts -> category): a tab for each one that has at least one gift.
+const giftCategoryTabs = [('basic', 'Basic'), ('luxury', 'Luxury'), ('vehicle', 'Vehicle'), ('special', 'Special'), ('event', 'Event')];
+
+/// The tabs on offer: Popular and New, Effects when the panel has any, then a tab for every category that has gifts, so a tab never opens onto nothing.
+List<String> giftTabsFor(List<Gift> catalog) => [
+      'Popular',
+      'New',
+      if (catalog.any((g) => g.effect)) 'Effects',
+      for (final (key, label) in giftCategoryTabs)
+        if (catalog.any((g) => g.category == key)) label,
+    ];
+
+/// The gifts shown under [tab] ("Popular" is everything in the panel's order, "New" the same newest first).
+List<Gift> giftsForTab(List<Gift> catalog, String tab) {
+  switch (tab) {
+    case 'New':
+      return catalog.reversed.toList();
+    case 'Effects':
+      return catalog.where((g) => g.effect).toList();
+    case 'Popular':
+      return catalog;
+  }
+  final key = giftCategoryTabs.where((c) => c.$2 == tab).map((c) => c.$1).firstOrNull;
+  return key == null ? catalog : catalog.where((g) => g.category == key).toList();
+}
+
+/// How many people Send All reaches: everyone offered in the sheet, the sender included when they are one of them (the host or someone on a seat): that is the list
+/// the server uses too (send_gift_to_all_v3). Never fewer than one.
+int giftSendAllPeople(List<AppUser> recipients) => recipients.isEmpty ? 1 : recipients.length;
+
 class _GiftSheet extends StatefulWidget {
   const _GiftSheet({required this.hostName, required this.recipients});
   final String hostName;
@@ -61,28 +90,11 @@ class _GiftSheetState extends State<_GiftSheet> {
 
   static const _quantities = [1, 10, 99];
 
-  /// How many people Send All reaches: everyone offered in the sheet except me (never fewer than one).
-  int _sendAllPeople(BuildContext context) {
-    final me = context.read<AuthController>().user?.id;
-    final n = widget.recipients.where((r) => r.id != me).length;
-    return n < 1 ? 1 : n;
-  }
+  int _sendAllPeople(BuildContext context) => giftSendAllPeople(widget.recipients);
 
-  /// The tabs on offer. Effects and Event only appear once the panel has at
-  /// least one gift in them, so a tab never opens onto nothing.
-  List<String> _tabsFor(List<Gift> catalog) => [
-    'Popular',
-    'New',
-    if (catalog.any((g) => g.effect)) 'Effects',
-    if (catalog.any((g) => g.category == 'event')) 'Event',
-  ];
+  List<String> _tabsFor(List<Gift> catalog) => giftTabsFor(catalog);
 
-  List<Gift> _list(List<Gift> catalog, String tab) => switch (tab) {
-    'New' => catalog.reversed.toList(),
-    'Effects' => catalog.where((g) => g.effect).toList(),
-    'Event' => catalog.where((g) => g.category == 'event').toList(),
-    _ => catalog,
-  };
+  List<Gift> _list(List<Gift> catalog, String tab) => giftsForTab(catalog, tab);
 
   @override
   Widget build(BuildContext context) {
@@ -182,27 +194,34 @@ class _GiftSheetState extends State<_GiftSheet> {
             ),
           ),
           if (widget.recipients.isNotEmpty) _recipientRow(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
+          // up to eight tabs (Popular, New, Effects and the five categories): the row scrolls sideways instead of overflowing
+          SizedBox(
+            height: 30,
+            child: ListView(
+              key: const ValueKey('gift-tabs'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               children: [
                 for (final (i, label) in tabs.indexed)
                   Padding(
                     padding: const EdgeInsets.only(right: 20),
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() {
                         _tab = i;
                         _selected = 0;
                       }),
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13.5,
-                          color: tab == i
-                              ? AppColors.textPrimary
-                              : AppColors.textMuted,
+                      child: Center(
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                            color: tab == i
+                                ? AppColors.textPrimary
+                                : AppColors.textMuted,
+                          ),
                         ),
                       ),
                     ),

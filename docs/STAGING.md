@@ -27,6 +27,7 @@ from the same migrations, with **fake data only**: no real users, chats or walle
 | Check the newest features as real roles (send to All, instant leave, Lucky Box pull back, grants; all rolled back) | `scripts/staging/verify_new_features.sh` |
 | Check the SUD games database side as real roles (switches, panel list, launch rules, coin rules; all rolled back) | `scripts/staging/verify_sud_games.sh` |
 | Check the monthly diamond reset as real roles (who may press, amounts per wallet, once-only, undo; all rolled back) | `scripts/staging/verify_diamond_reset.sh` |
+| Check Send to All with the sender (v3) and the reset_diamonds permission as real roles (all rolled back) | `scripts/staging/verify_quick_fixes.sh` |
 | Build a staging APK (orange STAGING ribbon) | `scripts/staging/build_apk.sh` |
 | Run the panel against staging | `cd ../sabaliveadmin && npm run dev:staging` (uses `.env.staging.local`, git-ignored) |
 | Back up staging | `SUPABASE_WORKDIR=~/.sabalive-staging-workdir SABALIVE_BACKUP_DIR=~/sabalive-backups/staging scripts/prod/backup.sh` |

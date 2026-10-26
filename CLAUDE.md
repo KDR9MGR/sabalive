@@ -155,6 +155,21 @@ month's credits, capped by the balance minus positive credits that arrived after
 `admin_set_diamond_reset_auto`; the pg_cron job `diamond-reset-auto` (18:35 UTC = 00:05 India time daily) calls `run_diamond_reset_auto()`, which acts only on the chosen day and resets the PREVIOUS month through the same `_diamond_reset_run_one` the
 buttons use (runs have `auto = true`, no person; no catch-up if a day is missed). Check: `scripts/staging/verify_diamond_reset.sh`.
 
+## Quick-fix batch of 2026-10-26 (owner's list of nine; migration `20261026140000`)
+- **Profile labels.** `ProfileLabelsRow` (`lib/features/profile/widgets/profile_labels.dart`) draws badges first, then staff tags. Sizes are `LabelSizes.profile` (badge pictures 34, tags 28, chip text 12.5) or `LabelSizes.compact`
+  (22 / 20 / 10) for a ONE-LINE row in a list (`compact: true`, at most 3, clipped never wrapped). A **plate** tag is exactly as wide as its name (a Row, not a Center: a Center/Container-with-alignment fills the row, which
+  stretched the artwork and floated the name) and its picture is `cover`, not stretched. The Store's own items are never drawn on a profile; the dead "VIP · Luxury Privileges" banner on My Profile was removed (it opened "coming soon").
+  Lists of people (followers / following / fans, search, profile visitors, rankings) show the compact row under the name through `PersonLine`, and the live-room user card (`user_actions_sheet.dart`) shows the full row. They read
+  through `ProfileLabelsCache` (`profile_labels_repository.dart`): asks made in the same moment become ONE `loadMany` (two database reads in all), answers kept 5 minutes, pieces of 60. Not in chat lines (a read per line).
+- **SVG** (plain vector drawings, not SVGA) are a media kind of their own: `MediaKind.svg`, drawn by `RemoteMedia` (`_SvgMedia`, `flutter_svg`, read once and kept on the phone), `LabelPicture`, `LevelPicture` and still effects. The panel
+  sends an .svg as `application/octet-stream` (like SVGA) so no storage bucket type list had to change; a broken file shows the fallback. `RemoteMedia` now shows its `fallback` until a still picture's first frame is decoded.
+- **Gift sheet.** Tabs: Popular, New, Effects, then a tab for every panel category that has gifts (Basic, Luxury, Vehicle, Special, Event: `giftTabsFor`); the tab row scrolls. **Send to All includes the sender** when they are the host or on
+  a seat: `send_gift_to_all_v3` (v2 stays for old builds; `GiftSender.sendToAll` tries v3, then v2, then the old ones); the "All" count is every person in the sheet (`giftSendAllPeople`). A gift tile shows a quiet shape (not the emoji)
+  while its artwork loads, the emoji only if there is none or it fails (an MP4 tile keeps the emoji: only a few video stills are held at once). `GiftArtworkWarmer` (`lib/core/media/`) puts the first 60 gifts' files on the phone, two at a
+  time, when a live opens (`WalletController.refreshCatalog`), NOT at app start (egress). SVGA files go to flutter_svga's own disk cache (raw bytes, no decode).
+- **iOS coin sellers.** `FeatureFlags.coinSellerVisible`: Android always; iOS follows the panel's Release control `coin_seller_ios` (default ON = unchanged); the wallet screen's "Buy from Offline Seller" button listens to it.
+- **Diamond reset is a permission**: `reset_diamonds` (Access Control, on by default for a Master, never for a lower role; `_diamond_reset_actor_ok()` reads it). See `docs/DIAMOND_RESET.md`.
+
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
   translates its English string at build time. Hints / tooltips use `tr('...')`. English in code is the key.

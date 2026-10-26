@@ -48,14 +48,25 @@ class GiftSender {
     }
   }
 
-  /// Gift [gift] x [quantity] to everyone in the room (the host and whoever is on a seat, never the sender). Returns how many people got it.
-  /// Against a database without the new function it falls back to the old Send to All once per unit, and without that to one gift per person.
+  /// Gift [gift] x [quantity] to everyone in the room (the host and whoever is on a seat, the SENDER INCLUDED when they are one of them). Returns how many people got it.
+  /// `send_gift_to_all_v3` includes the sender; against a database that does not have it yet this falls back to `send_gift_to_all_v2` (the sender is left out), then to
+  /// the old Send to All once per unit, and without that to one gift per person.
   Future<int> sendToAll(
     Gift gift, {
     required String liveStreamId,
     int quantity = 1,
     required List<AppUser> fallbackRecipients,
   }) async {
+    try {
+      final n = await _rpc('send_gift_to_all_v3', {
+        'p_gift_id': gift.id,
+        'p_live_stream_id': liveStreamId,
+        'p_quantity': quantity,
+      });
+      return (n as num?)?.toInt() ?? 0;
+    } catch (e) {
+      if (!isMissingFunction(e)) rethrow;
+    }
     try {
       final n = await _rpc('send_gift_to_all_v2', {
         'p_gift_id': gift.id,

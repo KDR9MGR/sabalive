@@ -830,4 +830,8 @@ const Map<String, String> arStrings = {
   'No country found': 'لم يتم العثور على أي دولة',
   'No fans yet. Fans are people you follow who follow you back.': 'لا يوجد معجبون بعد. المعجبون هم الأشخاص الذين تتابعهم ويتابعونك أيضًا.',
   'Reason': 'السبب',
+  'Basic': 'أساسي',
+  'Luxury': 'فاخر',
+  'Vehicle': 'مركبة',
+  'Special': 'خاص',
 };

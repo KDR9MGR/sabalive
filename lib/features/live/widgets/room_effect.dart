@@ -535,7 +535,7 @@ class _RoomEffectViewState extends State<_RoomEffectView> {
     if (url == null) {
       // no picture to wait for: the sound goes with the emoji straight away
       _startSound();
-    } else if (mediaKindFor(url) == MediaKind.image) {
+    } else if (mediaKindFor(url) == MediaKind.image || mediaKindFor(url) == MediaKind.svg) {
       _startSound();
       _stillTimer = Timer(
         Duration(milliseconds: (stillDuration.inMilliseconds / (widget.speed > 0 ? widget.speed : 1)).round()),

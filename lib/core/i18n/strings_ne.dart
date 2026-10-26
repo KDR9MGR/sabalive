@@ -830,4 +830,8 @@ const Map<String, String> neStrings = {
   'No country found': 'कुनै देश फेला परेन',
   'No fans yet. Fans are people you follow who follow you back.': 'अहिलेसम्म कुनै फ्यान छैन। फ्यान भनेका तपाईंले फलो गर्ने र तपाईंलाई फलो ब्याक गर्ने मानिसहरू हुन्।',
   'Reason': 'कारण',
+  'Basic': 'बेसिक',
+  'Luxury': 'लक्जरी',
+  'Vehicle': 'सवारी',
+  'Special': 'विशेष',
 };

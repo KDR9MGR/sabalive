@@ -6,8 +6,9 @@ Owner's request: "reset diamonds monthly ... manual buttons, two different ones 
 then "add a toggle for auto along with checkbox options" (the automatic monthly reset, below).
 
 ## Where
-Master panel -> Economy -> **Diamond Reset** (`/admin/diamond-reset`; a Super Admin reaches it through the Master panel). Needs the Master / Super Admin role AND the Run payroll switch
-(on for a Master by default; an explicit false blocks). A Global / Country / Sub Admin or an agency can never use it, even with Run payroll, and the page is not on their menu.
+Master panel -> Economy -> **Diamond Reset** (`/admin/diamond-reset`; a Super Admin reaches it through the Master panel). It is its own permission, **`reset_diamonds`** (Access Control, group Operations; migration
+`20261026140000`): on for a Master by default, a Super Admin can switch it off per account (an explicit false blocks the Master at once, in the menu, the route and the database), a Super Admin always has it. A Global / Country / Sub
+Admin or an agency can never use it, even if the key is saved on them (the functions also require the Master / Super Admin role), and the page is not on their menu. (Before that migration it used Run payroll.)
 
 ## What a reset takes
 Choose a FINISHED month (India time, like the Salary reports; the month in progress is refused). The page shows, before anything happens, how many wallets and diamonds each button would take.

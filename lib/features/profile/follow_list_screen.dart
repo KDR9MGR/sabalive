@@ -1,3 +1,4 @@
+import 'widgets/profile_labels.dart';
 import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
@@ -95,9 +96,7 @@ class _FollowListScreenState extends State<FollowListScreen> {
                                     fontFamily: 'Poppins',
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14)),
-                            subtitle: Text('ID: ${u.displayId}',
-                                style: const TextStyle(
-                                    fontSize: 11.5, color: AppColors.textMuted)),
+                            subtitle: PersonLine(profileId: u.id, text: 'ID: ${u.displayId}'),
                             trailing: u.isLive
                                 ? Container(
                                     padding: const EdgeInsets.symmetric(

@@ -1,3 +1,4 @@
+import '../profile/widgets/profile_labels.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart' hide Text;
@@ -118,8 +119,7 @@ class _SearchScreenState extends State<SearchScreen> {
           title: Text(u.name,
               style: const TextStyle(
                   fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 14)),
-          subtitle: Text('ID: ${u.displayId}',
-              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+          subtitle: PersonLine(profileId: u.id, text: 'ID: ${u.displayId}'),
           trailing: u.isLive
               ? const _LiveDot()
               : const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),

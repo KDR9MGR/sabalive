@@ -56,7 +56,7 @@ void main() {
   });
 
   group('Send to All with a quantity', () {
-    test('is ONE call to the new function and returns how many people got it', () async {
+    test('is ONE call to send_gift_to_all_v3 (the sender included) and returns how many people got it', () async {
       final calls = <(String, Map<String, dynamic>)>[];
       final sender = GiftSender(rpc: (fn, p) async {
         calls.add((fn, p));
@@ -64,27 +64,39 @@ void main() {
       });
       final n = await sender.sendToAll(rose, liveStreamId: live, quantity: 10, fallbackRecipients: [host, guest]);
       expect(n, 5);
-      expect(calls.single.$1, 'send_gift_to_all_v2');
+      expect(calls.single.$1, 'send_gift_to_all_v3');
       expect(calls.single.$2, {'p_gift_id': rose.id, 'p_live_stream_id': live, 'p_quantity': 10});
     });
 
-    test('without the new function it uses the old Send to All once per unit', () async {
+    test('against a database without v3 it uses v2 (the sender is left out there, as before)', () async {
       final calls = <String>[];
       final sender = GiftSender(rpc: (fn, p) async {
         calls.add(fn);
-        if (fn == 'send_gift_to_all_v2') throw missing(fn);
+        if (fn == 'send_gift_to_all_v3') throw missing(fn);
+        return 4;
+      });
+      final n = await sender.sendToAll(rose, liveStreamId: live, quantity: 10, fallbackRecipients: [host]);
+      expect(n, 4);
+      expect(calls, ['send_gift_to_all_v3', 'send_gift_to_all_v2']);
+    });
+
+    test('without v3 and v2 it uses the old Send to All once per unit', () async {
+      final calls = <String>[];
+      final sender = GiftSender(rpc: (fn, p) async {
+        calls.add(fn);
+        if (fn == 'send_gift_to_all_v3' || fn == 'send_gift_to_all_v2') throw missing(fn);
         return 4;
       });
       final n = await sender.sendToAll(rose, liveStreamId: live, quantity: 2, fallbackRecipients: [host]);
       expect(n, 4);
-      expect(calls, ['send_gift_to_all_v2', 'send_gift_to_all', 'send_gift_to_all']);
+      expect(calls, ['send_gift_to_all_v3', 'send_gift_to_all_v2', 'send_gift_to_all', 'send_gift_to_all']);
     });
 
     test('without either it sends one gift per person per unit', () async {
       final calls = <String>[];
       final sender = GiftSender(currentUserId: () => null, rpc: (fn, p) async {
         calls.add(fn);
-        if (fn == 'send_gift_to_all_v2' || fn == 'send_gift_to_all') throw missing(fn);
+        if (fn == 'send_gift_to_all_v3' || fn == 'send_gift_to_all_v2' || fn == 'send_gift_to_all') throw missing(fn);
         return null;
       });
       final n = await sender.sendToAll(rose, liveStreamId: live, quantity: 2, fallbackRecipients: [host, guest]);
@@ -97,7 +109,7 @@ void main() {
       final sender = GiftSender(
         currentUserId: () => host.id,
         rpc: (fn, p) async {
-          if (fn == 'send_gift_to_all_v2' || fn == 'send_gift_to_all') throw missing(fn);
+          if (fn == 'send_gift_to_all_v3' || fn == 'send_gift_to_all_v2' || fn == 'send_gift_to_all') throw missing(fn);
           to.add(p['p_receiver_id'] as String);
           return null;
         },
@@ -114,7 +126,7 @@ void main() {
         throw const PostgrestException(message: 'Insufficient coins', code: 'P0001');
       });
       await expectLater(sender.sendToAll(rose, liveStreamId: live, quantity: 10, fallbackRecipients: [host]), throwsA(isA<PostgrestException>()));
-      expect(calls, ['send_gift_to_all_v2']);
+      expect(calls, ['send_gift_to_all_v3']);
     });
   });
 }

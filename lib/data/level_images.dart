@@ -59,7 +59,7 @@ class LevelImageStore extends ChangeNotifier {
 
   static bool _isStill(String url) {
     final kind = mediaKindFor(url);
-    return kind == MediaKind.image || kind == MediaKind.animatedImage;
+    return kind == MediaKind.image || kind == MediaKind.animatedImage || kind == MediaKind.svg;
   }
 
   /// For tests: forget everything read.

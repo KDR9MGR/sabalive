@@ -1,3 +1,4 @@
+import '../profile/widgets/profile_labels.dart';
 import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/errors.dart';
@@ -299,9 +300,11 @@ class _RankingsScreenState extends State<RankingsScreen> {
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,
                         fontSize: 13.5)),
-                Text('Lv ${e.user.level}',
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textMuted)),
+                PersonLine(
+                  profileId: e.user.id,
+                  text: 'Lv ${e.user.level}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
               ],
             ),
           ),

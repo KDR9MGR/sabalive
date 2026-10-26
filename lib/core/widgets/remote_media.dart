@@ -4,23 +4,26 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_svga/flutter_svga.dart';
 import 'package:video_player/video_player.dart';
 
 import '../media/disk_cached_image.dart';
 import '../media/effect_file_cache.dart';
 
-enum MediaKind { svga, video, animatedImage, image }
+enum MediaKind { svga, svg, video, animatedImage, image }
 
 /// What a panel-uploaded file is, from its extension (ignoring any query string,
-/// e.g. a signed URL). The panel accepts SVGA, MP4, WebP, GIF and PNG/JPG; GIF
-/// and WebP may be animated, anything unrecognised is treated as a still image.
+/// e.g. a signed URL). The panel accepts SVGA, SVG, MP4, WebP, GIF and PNG/JPG; GIF
+/// and WebP may be animated, SVG is a plain vector picture (not SVGA), anything
+/// unrecognised is treated as a still image.
 MediaKind mediaKindFor(String url) {
   final path = Uri.tryParse(url)?.path ?? url;
   final dot = path.lastIndexOf('.');
   final ext = dot < 0 ? '' : path.substring(dot + 1).toLowerCase();
   return switch (ext) {
     'svga' => MediaKind.svga,
+    'svg' => MediaKind.svg,
     'mp4' || 'webm' || 'mov' || 'm4v' => MediaKind.video,
     'gif' || 'webp' => MediaKind.animatedImage,
     _ => MediaKind.image,
@@ -147,11 +150,24 @@ class RemoteMedia extends StatelessWidget {
           fallback: blank,
           loader: imageLoader ?? _downloadImageBytes,
         ),
+      MediaKind.svg => _SvgMedia(
+          key: ValueKey(url),
+          url: url,
+          fit: fit,
+          onFinished: onFinished,
+          onError: onError,
+          onPlaying: onPlaying,
+          fallback: blank,
+          loader: imageLoader ?? _downloadImageBytes,
+        ),
       MediaKind.image => Image(
           // kept on the phone after the first download
           image: DiskCachedNetworkImage(url),
           fit: fit,
           gaplessPlayback: true,
+          // the fallback until the first frame is decoded (loadingBuilder only reports progress for NetworkImage, so a picture from the file cache showed nothing
+          // at all while it loaded)
+          frameBuilder: (_, child, frame, syncLoaded) => frame == null && !syncLoaded ? blank : child,
           loadingBuilder: (_, child, progress) =>
               progress == null ? child : blank,
           errorBuilder: (_, _, _) {
@@ -167,7 +183,7 @@ class RemoteMedia extends StatelessWidget {
     };
     // An animated picture (SVGA, MP4, GIF / WebP) repaints on every display refresh. Without its own layer each one drags everything
     // around it into the same repaint (all seats, names, the room), which is what made rooms with several animated frames lag.
-    return (kind == MediaKind.image || !animate) ? media : RepaintBoundary(child: media);
+    return (kind == MediaKind.image || kind == MediaKind.svg || !animate) ? media : RepaintBoundary(child: media);
   }
 }
 
@@ -459,6 +475,77 @@ Future<Uint8List> _downloadImageBytes(String url) async {
     _imageBytesCache.remove(_imageBytesCache.keys.first);
   }
   return _imageBytesCache[url] = bytes;
+}
+
+/// A plain SVG picture (a vector drawing, not an SVGA animation): read once (kept on the phone like every other picture) and drawn at any size. It is a still, like a
+/// PNG: a one-shot effect that is an SVG gets no "finished" from here (the caller's still timer ends it, see room_effect.dart). A file that is not a readable SVG shows the
+/// [fallback] and reports [onError] like any other broken file. Scripts and links inside an SVG are never run.
+class _SvgMedia extends StatefulWidget {
+  const _SvgMedia({
+    super.key,
+    required this.url,
+    required this.fit,
+    required this.onFinished,
+    required this.onError,
+    required this.onPlaying,
+    required this.fallback,
+    required this.loader,
+  });
+  final String url;
+  final BoxFit fit;
+  final VoidCallback? onFinished;
+  final VoidCallback? onError;
+  final void Function(Duration? expected)? onPlaying;
+  final Widget fallback;
+  final ImageBytesLoader loader;
+
+  @override
+  State<_SvgMedia> createState() => _SvgMediaState();
+}
+
+class _SvgMediaState extends State<_SvgMedia> {
+  Uint8List? _bytes;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final bytes = await widget.loader(widget.url);
+      if (!mounted) return;
+      if (bytes.isEmpty) throw const FormatException('empty file');
+      setState(() => _bytes = bytes);
+    } catch (_) {
+      _fail();
+    }
+  }
+
+  void _fail() {
+    if (!mounted || _failed) return;
+    setState(() => _failed = true);
+    widget.onError?.call();
+    widget.onFinished?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    if (_failed || bytes == null) return widget.fallback;
+    return SvgPicture.memory(
+      bytes,
+      fit: widget.fit,
+      placeholderBuilder: (_) => widget.fallback,
+      // a file that is not an SVG (an error page, a half download) is a failed picture, not a red box
+      errorBuilder: (_, _, _) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _fail());
+        return widget.fallback;
+      },
+    );
+  }
 }
 
 /// Plays an animated GIF / WebP at the right speed (see [normalizedFrameDelay]).

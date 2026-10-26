@@ -830,4 +830,8 @@ const Map<String, String> filStrings = {
   'No country found': 'Walang nakitang bansa',
   'No fans yet. Fans are people you follow who follow you back.': 'Wala pang mga fan. Ang mga fan ay ang mga taong sinusundan mo na sumusunod din sa iyo.',
   'Reason': 'Dahilan',
+  'Basic': 'Basic',
+  'Luxury': 'Luxury',
+  'Vehicle': 'Sasakyan',
+  'Special': 'Espesyal',
 };

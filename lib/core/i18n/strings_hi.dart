@@ -830,4 +830,8 @@ const Map<String, String> hiStrings = {
   'No country found': 'कोई देश नहीं मिला',
   'No fans yet. Fans are people you follow who follow you back.': 'अभी कोई फ़ैंस नहीं। फ़ैंस वे लोग हैं जिन्हें आप फ़ॉलो करते हैं और जो आपको वापस फ़ॉलो करते हैं।',
   'Reason': 'कारण',
+  'Basic': 'बेसिक',
+  'Luxury': 'लक्ज़री',
+  'Vehicle': 'वाहन',
+  'Special': 'विशेष',
 };

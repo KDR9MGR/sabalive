@@ -830,4 +830,8 @@ const Map<String, String> urStrings = {
   'No country found': 'کوئی ملک نہیں ملا',
   'No fans yet. Fans are people you follow who follow you back.': 'ابھی کوئی فینز نہیں۔ فینز وہ لوگ ہیں جنہیں آپ فالو کرتے ہیں اور جو آپ کو واپس فالو کرتے ہیں۔',
   'Reason': 'وجہ',
+  'Basic': 'بنیادی',
+  'Luxury': 'لگژری',
+  'Vehicle': 'گاڑی',
+  'Special': 'خصوصی',
 };

@@ -13,8 +13,8 @@ double labelPictureWidth(double height, double pictureWidth, double pictureHeigh
   return (height * aspect).clamp(height * 0.3, maxWidth);
 }
 
-/// The picture a panel uploaded for a BADGE or a TAG, drawn [height] tall at its own width: a still picture (PNG / JPG), an animated GIF / WebP, or an SVGA
-/// animation (which loops). It is the picture exactly as uploaded, not a stand-in: the badge or tag's own artwork.
+/// The picture a panel uploaded for a BADGE or a TAG, drawn [height] tall at its own width: a still picture (PNG / JPG), an SVG drawing, an animated GIF / WebP,
+/// or an SVGA animation (which loops). It is the picture exactly as uploaded, not a stand-in: the badge or tag's own artwork.
 ///
 /// While an SVGA is loading (its size is only known once it is read), and whenever a file can't be drawn (offline, deleted, a video file), [fallback] is shown, so a badge
 /// or tag never disappears. Videos (MP4) are not drawn here: a decoder per label on a profile would cost too much battery; [supports] says which files are drawn.
@@ -27,6 +27,7 @@ class LabelPicture extends StatefulWidget {
     this.maxWidth = 160,
     this.animate = true,
     @visibleForTesting this.svgaLoader,
+    @visibleForTesting this.imageLoader,
   });
 
   final String url;
@@ -39,6 +40,9 @@ class LabelPicture extends StatefulWidget {
 
   /// Replaces reading the SVGA file (tests).
   final SvgaLoader? svgaLoader;
+
+  /// Replaces reading an SVG file (tests).
+  final ImageBytesLoader? imageLoader;
 
   /// Can this file be drawn by a [LabelPicture]?
   static bool supports(String url) => mediaKindFor(url) != MediaKind.video;
@@ -109,6 +113,13 @@ class _LabelPictureState extends State<LabelPicture> {
           // if it cannot play after all, the stand-in scales to the box instead of overflowing it
           fallback: FittedBox(fit: BoxFit.scaleDown, child: widget.fallback),
         ),
+      );
+    }
+    if (kind == MediaKind.svg) {
+      // a vector drawing: read once and drawn at the height asked, so a badge made as an SVG is as sharp as any size needs
+      return SizedBox(
+        height: widget.height,
+        child: RemoteMedia(widget.url, key: ValueKey('label-svg-${widget.url}'), fit: BoxFit.contain, imageLoader: widget.imageLoader, fallback: widget.fallback),
       );
     }
     return Image(

@@ -1,3 +1,4 @@
+import 'widgets/profile_labels.dart';
 import 'package:flutter/material.dart' hide Text;
 
 import '../../core/utils/formatters.dart';
@@ -64,9 +65,7 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
                               fontFamily: 'Poppins',
                               fontWeight: FontWeight.w600,
                               fontSize: 13.5)),
-                      subtitle: Text('Visited ${relativeTime(v.visitedAt)}',
-                          style: const TextStyle(
-                              fontSize: 11.5, color: AppColors.textMuted)),
+                      subtitle: PersonLine(profileId: v.user.id, text: 'Visited ${relativeTime(v.visitedAt)}'),
                       trailing: const Icon(Icons.chevron_right_rounded,
                           color: AppColors.textMuted),
                     );
