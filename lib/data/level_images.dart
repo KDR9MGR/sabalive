@@ -12,12 +12,15 @@ import 'level_banner_images.dart';
 ///
 /// Read once and remembered (it shares [LevelBannerImages]' read); everything FAILS OPEN: no server, an old database, or a bad row just means "the star".
 class LevelImageStore extends ChangeNotifier {
-  LevelImageStore({Future<List<LevelBannerStep>?> Function()? loader}) : _loader = loader ?? (() => LevelBannerImages.instance.steps());
+  LevelImageStore({Future<List<LevelBannerStep>?> Function()? loader, VoidCallback? invalidate})
+      : _loader = loader ?? (() => LevelBannerImages.instance.steps()),
+        _invalidate = invalidate ?? (loader == null ? LevelBannerImages.instance.invalidate : null);
 
   /// The one the level chips share.
   static final LevelImageStore instance = LevelImageStore();
 
   final Future<List<LevelBannerStep>?> Function() _loader;
+  final VoidCallback? _invalidate;
   Map<String, String> _urls = const {};
   bool _loading = false;
   DateTime? _at;
@@ -55,6 +58,14 @@ class LevelImageStore extends ChangeNotifier {
     } finally {
       _loading = false;
     }
+  }
+
+  /// Reads the pictures again now, even if the last read is recent (the My Level screen opening, coming back to the app, a pull to refresh), so a picture the panel
+  /// changed shows at once. A failed read keeps what is there. A read already under way is not doubled.
+  Future<void> refresh() async {
+    _at = null;
+    _invalidate?.call();
+    await ensureLoaded();
   }
 
   static bool _isStill(String url) {

@@ -26,8 +26,8 @@ class LabelPicture extends StatefulWidget {
     required this.fallback,
     this.maxWidth = 160,
     this.animate = true,
-    @visibleForTesting this.svgaLoader,
-    @visibleForTesting this.imageLoader,
+    this.svgaLoader,
+    this.imageLoader,
   });
 
   final String url;
@@ -100,18 +100,22 @@ class _LabelPictureState extends State<LabelPicture> {
       final movie = _movie;
       if (movie == null) return widget.fallback;
       final width = labelPictureWidth(widget.height, movie.params.viewBoxWidth, movie.params.viewBoxHeight, maxWidth: widget.maxWidth);
+      // Clipped to its own box: the player draws outside its frame by default, and an animation may carry a layer wider than its canvas (the owner's Host tag has a 500 px
+      // wide light sweep on a 310 px canvas), which showed as a grey strip beside the tag every time it played. An SVGA is meant to be seen inside its canvas.
       return SizedBox(
         width: width,
         height: widget.height,
-        child: RemoteMedia(
-          widget.url,
-          key: ValueKey('label-svga-${widget.url}'),
-          fit: BoxFit.contain,
-          loop: true,
-          animate: widget.animate,
-          svgaLoader: (_) async => movie,
-          // if it cannot play after all, the stand-in scales to the box instead of overflowing it
-          fallback: FittedBox(fit: BoxFit.scaleDown, child: widget.fallback),
+        child: ClipRect(
+          child: RemoteMedia(
+            widget.url,
+            key: ValueKey('label-svga-${widget.url}'),
+            fit: BoxFit.contain,
+            loop: true,
+            animate: widget.animate,
+            svgaLoader: (_) async => movie,
+            // if it cannot play after all, the stand-in scales to the box instead of overflowing it
+            fallback: FittedBox(fit: BoxFit.scaleDown, child: widget.fallback),
+          ),
         ),
       );
     }

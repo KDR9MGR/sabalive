@@ -6,6 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_client.dart';
 import '../data/social_repository.dart';
 
+/// The bottom bar's tab numbers that other screens need to know (the shell keeps every tab alive, so a screen asks whether its own tab is the selected one).
+const int kProfileTab = 4;
+
 /// Follows (real, backed by the `follows` table), liked streams (local for
 /// now — no per-user likes table), and the selected bottom-nav tab.
 class SessionController extends ChangeNotifier {

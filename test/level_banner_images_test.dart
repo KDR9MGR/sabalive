@@ -43,6 +43,25 @@ void main() {
       expect(reads, 2, reason: 'a changed picture in the panel shows up within the ttl');
     });
 
+    test('invalidate makes the next read go to the database even inside the ttl, and a failure then keeps the old pictures', () async {
+      var reads = 0;
+      var fail = false;
+      final images = LevelBannerImages(loader: () async {
+        reads++;
+        if (fail) throw Exception('offline');
+        return [_row(1, 'a$reads')];
+      });
+      expect(await images.charmImage(1), 'a1');
+      expect(await images.charmImage(1), 'a1');
+      expect(reads, 1);
+      images.invalidate();
+      expect(await images.charmImage(1), 'a2', reason: 'a picture changed in the panel, read again at once');
+      expect(reads, 2);
+      images.invalidate();
+      fail = true;
+      expect(await images.charmImage(1), 'a2', reason: 'offline: the pictures already on hand stay');
+    });
+
     test('a failed read gives null, is not remembered, and a later read works', () async {
       var fail = true;
       final images = LevelBannerImages(loader: () async {

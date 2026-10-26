@@ -1,5 +1,7 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../state/remote_config_controller.dart';
 
 /// Switches for UI that's deliberately hidden during the alpha because the
@@ -65,10 +67,32 @@ class FeatureFlags {
       pkLayerEnabledFor(config) && config.flag('pk_video', defaultValue: false);
   static const bool callsEnabled = false;
 
+  /// For tests: pretend to be (true) or not to be (false) an iPhone. Null = the real platform.
+  @visibleForTesting
+  static bool? isIOSOverride;
+
+  /// Is this an iPhone / iPad? (The App Store has rules the Play Store does not; see below.)
+  static bool get isIOS => isIOSOverride ?? Platform.isIOS;
+
+  /// App Store review (2026-10-27): Apple refuses a screen that only says "coming soon", so every entry that leads to one is HIDDEN on iOS (Room Effects, Family, Request Withdrawal,
+  /// Funny voice, Invite someone, password reset by mobile number, the Games tab, Video PK). Android is unchanged. When one of them is really built, show it on iOS too by removing its check.
+  static bool get comingSoonVisible => !isIOS;
+
+  /// The Games tab and its entries. iOS has no games yet (the game panel is the Android WebView), so there it would only say "coming soon": hidden.
+  static bool get gamesEntryVisible => !isIOS;
+
+  /// "Buy Coins" and every "top up" prompt. The Buy Coins screen is not wired to a payment service (its Pay button says "coming soon"), and Apple requires In-App Purchase for coins
+  /// sold in an iOS app (guideline 3.1.1), so on iOS there is no way to buy coins from the app until In-App Purchase is built.
+  static bool get buyCoinsVisible => !isIOS;
+
+  /// Invite PK / Random PK in a live's tools. On iOS only where they really work: PK is on in the panel, and the live is audio (video PK needs its own switch).
+  static bool pkToolsVisible({required bool audioOnly}) => comingSoonVisible || (pkBattleEnabled && (audioOnly || pkVideoEnabled));
+
   /// The "Buy from Offline Seller" button (coin sellers). Always shown on Android. On iOS it follows the server switch `coin_seller_ios` (Application Config ->
-  /// Release controls: "Coin sellers on iOS"), so it can be hidden for App Store review without a release. The default is ON: nothing changes until the switch is turned off.
-  static bool get coinSellerVisible => coinSellerVisibleFor(RemoteConfigController.instance, isIOS: Platform.isIOS);
+  /// Release controls: "Coin sellers on iOS"). The default is OFF on iOS (2026-10-27): an offline seller is a way of buying coins outside In-App Purchase, which Apple does not allow, so an
+  /// iPhone shows it only when someone turns the switch ON.
+  static bool get coinSellerVisible => coinSellerVisibleFor(RemoteConfigController.instance, isIOS: isIOS);
 
   /// The rule behind [coinSellerVisible], for any [RemoteConfigController] and platform (tests use their own).
-  static bool coinSellerVisibleFor(RemoteConfigController config, {required bool isIOS}) => !isIOS || config.flag('coin_seller_ios', defaultValue: true);
+  static bool coinSellerVisibleFor(RemoteConfigController config, {required bool isIOS}) => !isIOS || config.flag('coin_seller_ios', defaultValue: false);
 }

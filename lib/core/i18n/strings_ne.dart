@@ -312,7 +312,7 @@ const Map<String, String> neStrings = {
   'My Invites': 'मेरा आमन्त्रणहरू',
   'My Level': 'मेरो लेभल',
   'My Profile': 'मेरो प्रोफाइल',
-  'Need a hand during the alpha? Email support@sabalive.app and include your username and what you were doing.': 'अल्फाको बेला मद्दत चाहियो? support@sabalive.app मा इमेल गर्नुहोस् र आफ्नो प्रयोगकर्ता नाम र तपाईं के गर्दै हुनुहुन्थ्यो लेख्नुहोस्।',
+  'Need a hand? Email support@sabalive.app and include your username and what you were doing.': 'मद्दत चाहियो? support@sabalive.app मा इमेल गर्नुहोस् र आफ्नो प्रयोगकर्ता नाम र तपाईं के गर्दै हुनुहुन्थ्यो लेख्नुहोस्।',
   'Net Banking': 'नेट बैंकिङ',
   'New': 'नयाँ',
   'New Group': 'नयाँ समूह',

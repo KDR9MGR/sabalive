@@ -312,7 +312,7 @@ const Map<String, String> bnStrings = {
   'My Invites': 'আমার আমন্ত্রণ',
   'My Level': 'আমার লেভেল',
   'My Profile': 'আমার প্রোফাইল',
-  'Need a hand during the alpha? Email support@sabalive.app and include your username and what you were doing.': 'আলফার সময় সাহায্য দরকার? support@sabalive.app-এ ইমেল করুন এবং আপনার ইউজারনেম ও আপনি কী করছিলেন তা লিখুন।',
+  'Need a hand? Email support@sabalive.app and include your username and what you were doing.': 'সাহায্য দরকার? support@sabalive.app-এ ইমেল করুন এবং আপনার ইউজারনেম ও আপনি কী করছিলেন তা লিখুন।',
   'Net Banking': 'নেট ব্যাংকিং',
   'New': 'নতুন',
   'New Group': 'নতুন গ্রুপ',

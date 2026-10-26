@@ -1262,21 +1262,24 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     final tools = <ToolSpec>[
       // The PK entry points inside a live (audio and video). They stay visible; they become the real Invite / Random PK
       // (the PK battle layer, see HANDOFF.md) and until then only point to Go Live -> PK, or say "coming soon" while PK is off.
-      ToolSpec(
-        Icons.bolt_rounded,
-        'Invite PK',
-        const Color(0xFFFF7A45),
-        () => _pkFromHere(0),
-      ),
-      ToolSpec(
-        Icons.casino_rounded,
-        'Random PK',
-        const Color(0xFFFF5C5C),
-        () => _pkFromHere(1),
-      ),
+      // on iOS only where PK really works (the App Store refuses a tool that only says "coming soon")
+      if (FeatureFlags.pkToolsVisible(audioOnly: widget.audioOnly)) ...[
+        ToolSpec(
+          Icons.bolt_rounded,
+          'Invite PK',
+          const Color(0xFFFF7A45),
+          () => _pkFromHere(0),
+        ),
+        ToolSpec(
+          Icons.casino_rounded,
+          'Random PK',
+          const Color(0xFFFF5C5C),
+          () => _pkFromHere(1),
+        ),
+      ],
       if (_pk?.phase == PkPhase.live && _pk!.amHost)
         ToolSpec(Icons.stop_circle_outlined, 'End PK', AppColors.danger, () => confirmEndPk(context, _pk!)),
-      ToolSpec(
+      if (FeatureFlags.gamesEntryVisible) ToolSpec(
         Icons.sports_esports_rounded,
         'Games',
         AppColors.primaryBright,
@@ -1296,12 +1299,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           AppColors.pink,
           _openMusic,
         ),
-      ToolSpec(
-        Icons.campaign_rounded,
-        'Funny voice',
-        AppColors.magenta,
-        () => _soon('Voice effects'),
-      ),
+      if (FeatureFlags.comingSoonVisible)
+        ToolSpec(
+          Icons.campaign_rounded,
+          'Funny voice',
+          AppColors.magenta,
+          () => _soon('Voice effects'),
+        ),
       ToolSpec(
         Icons.wallpaper_rounded,
         'Room skin',
@@ -1737,7 +1741,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                     onTap: () =>
                         Navigator.pop(context, 'approve:${r.requestId}'),
                   ),
-            ] else
+            ] else if (FeatureFlags.comingSoonVisible)
+              // only says "coming soon": hidden on iOS
               ListTile(
                 leading: const Icon(Icons.person_add_alt_1_rounded),
                 title: const Text('Invite someone'),

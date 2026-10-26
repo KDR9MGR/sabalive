@@ -8,6 +8,7 @@ import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/auth_scaffold.dart';
 import '../../core/i18n/text.dart';
+import '../../config/feature_flags.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -83,12 +84,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SegmentedTabs(
-                  tabs: const ['Email', 'Mobile'],
-                  index: _tab,
-                  onChanged: (i) => setState(() => _tab = i),
-                ),
-                const SizedBox(height: 18),
+                // resetting by mobile number only says "coming soon": the tab is hidden on iOS (the App Store refuses placeholder screens)
+                if (FeatureFlags.comingSoonVisible) ...[
+                  SegmentedTabs(
+                    tabs: const ['Email', 'Mobile'],
+                    index: _tab,
+                    onChanged: (i) => setState(() => _tab = i),
+                  ),
+                  const SizedBox(height: 18),
+                ],
                 TextField(
                   controller: _target,
                   keyboardType: _tab == 0

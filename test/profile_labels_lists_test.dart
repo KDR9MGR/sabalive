@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/widgets.dart' as w;
+import 'package:flutter_svga/flutter_svga.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/core/i18n/app_language.dart';
 import 'package:sabalive/core/i18n/i18n.dart';
@@ -7,7 +10,7 @@ import 'package:sabalive/data/profile_labels_repository.dart';
 import 'package:sabalive/features/profile/widgets/profile_labels.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Badges and tags beyond the profile: a plate tag that is exactly as wide as its name, bigger badges, the one-line version for lists, and the cache that
+/// Badges and tags beyond the profile: a plate tag that is exactly as big as its artwork, bigger badges, the one-line version for lists, and the cache that
 /// reads a whole list of people with two database reads.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,46 +26,99 @@ void main() {
   ProfileTag pill(String id, String name) => ProfileTag(id: id, name: name, color: const Color(0xFF7C3AED));
 
   group('a plate tag', () {
-    testWidgets('is as wide as its name needs, not as wide as the row it sits in (it used to stretch across the whole row)', (t) async {
+    // the artwork of the owner's staff tags: an SVGA, 4:1 (400 x 100), the text is part of the picture
+    const svga = 'https://x.supabase.co/storage/v1/object/public/gift-assets/tags/agency.svga';
+    Future<MovieEntity> banner(String _) async => MovieEntity()
+      ..params = (MovieParams()
+        ..viewBoxWidth = 400
+        ..viewBoxHeight = 100
+        ..fps = 20
+        ..frames = 10);
+    ProfileTag onBanner(String id, String name) => ProfileTag(id: id, name: name, color: const Color(0xFF118833), look: TagLook.plate, imageUrl: svga);
+
+    Future<void> show(WidgetTester t, ProfileTag tag, {LabelSizes sizes = LabelSizes.profile, double width = 360}) async {
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(body: SizedBox(width: width, child: Wrap(children: [TagPill(tag: tag, sizes: sizes, svgaLoader: banner)]))),
+      ));
+      await t.pump();
+      await t.pump();
+    }
+
+    testWidgets('is as big as its artwork at the tag height: the whole picture, not cut to the size of its name', (t) async {
+      await show(t, onBanner('p', '.'));
+      final size = t.getSize(find.byKey(const ValueKey('tag-p')));
+      expect(size.height, LabelSizes.profile.tag);
+      expect(size.width, LabelSizes.profile.tag * 4, reason: 'a 4:1 banner, every pixel of it; a "." used to make a tiny box that showed "Hos"');
+    });
+
+    testWidgets('a name with no letter or digit ("." or "-") is not written over the picture', (t) async {
+      await show(t, onBanner('p', '.'));
+      expect(find.text('.'), findsNothing);
+      await show(t, onBanner('p', ' - '));
+      expect(find.text('-'), findsNothing);
+      expect(TagPill.nameIsWritten('.'), isFalse);
+      expect(TagPill.nameIsWritten('...'), isFalse);
+      expect(TagPill.nameIsWritten('Admin'), isTrue);
+      expect(TagPill.nameIsWritten('७'), isTrue, reason: 'digits and letters of every script count');
+    });
+
+    testWidgets('does not stretch across the row it sits in, in a Wrap or in a stretching Column', (t) async {
+      await show(t, onBanner('p', 'Agency'));
+      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).width, LabelSizes.profile.tag * 4);
       await t.pumpWidget(MaterialApp(
         home: Scaffold(
           body: SizedBox(
             width: 360,
-            child: Wrap(children: [TagPill(tag: plate('p', 'Admin'))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [TagPill(tag: onBanner('p', 'Agency'), svgaLoader: banner)]),
           ),
         ),
       ));
-      final size = t.getSize(find.byKey(const ValueKey('tag-p')));
-      expect(size.height, LabelSizes.profile.tag);
-      expect(size.width, lessThan(140), reason: 'a name and a little padding, not 360');
-      expect(size.width, greaterThan(40));
+      await t.pump();
+      await t.pump();
+      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).width, LabelSizes.profile.tag * 4);
     });
 
-    testWidgets('a longer name makes a wider plate, and the name is centred on it', (t) async {
-      Future<Size> width(String name) async {
-        await t.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: Wrap(children: [TagPill(tag: plate('p', name))])))));
-        return t.getSize(find.byKey(const ValueKey('tag-p')));
+    testWidgets('a name with letters is written once, centred on the picture, and never makes the plate bigger than the picture', (t) async {
+      await show(t, onBanner('p', 'Agency'));
+      final center = t.getCenter(find.byKey(const ValueKey('tag-p')));
+      expect(find.text('Agency'), findsOneWidget);
+      expect(t.getCenter(find.text('Agency')).dx, closeTo(center.dx, 1));
+      await show(t, onBanner('p', 'A very long staff title that cannot fit on one small picture at all'));
+      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).width, LabelSizes.profile.tag * 4, reason: 'the name shrinks to fit the picture');
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets('while the artwork is read, and if it fails, a coloured capsule stands in: one copy of the name, or nothing for "."', (t) async {
+      final never = Completer<MovieEntity>();
+      Future<void> pending(ProfileTag tag) async {
+        await t.pumpWidget(MaterialApp(home: Scaffold(body: Wrap(children: [TagPill(tag: tag, svgaLoader: (_) => never.future)]))));
+        await t.pump();
       }
 
-      final short = await width('Admin');
-      final long = await width('Country Admin of India');
-      expect(long.width, greaterThan(short.width + 40));
-      final center = t.getCenter(find.byKey(const ValueKey('tag-p')));
-      expect(t.getCenter(find.text('Country Admin of India')).dx, closeTo(center.dx, 1));
+      await pending(onBanner('p', 'Agency'));
+      expect(find.text('Agency'), findsOneWidget, reason: 'written once, not on the capsule and again on the picture');
+      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).height, LabelSizes.profile.tag);
+      await pending(onBanner('p', '.'));
+      expect(find.text('.'), findsNothing);
+      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).height, LabelSizes.profile.tag, reason: 'it keeps its place in the row');
+
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: Wrap(children: [TagPill(tag: onBanner('p', 'Agency'), svgaLoader: (_) async => throw Exception('offline'))]))));
+      await t.pump();
+      await t.pump();
+      expect(find.text('Agency'), findsOneWidget, reason: 'the tag never vanishes');
     });
 
-    testWidgets('inside a Row or Column that stretches it still stays the width of its name', (t) async {
-      await t.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: SizedBox(width: 360, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [TagPill(tag: plate('p', 'Admin'))])),
-        ),
-      ));
-      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).width, lessThan(140));
+    testWidgets('a plate on a plain still picture (PNG) is as tall as the tag and keeps the name on it', (t) async {
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: Wrap(children: [TagPill(tag: plate('p', 'Admin'))])))));
+      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).height, LabelSizes.profile.tag);
+      expect(find.text('Admin'), findsOneWidget);
     });
 
     testWidgets('the compact size is smaller than the profile size', (t) async {
-      await t.pumpWidget(MaterialApp(home: Scaffold(body: Wrap(children: [TagPill(tag: plate('p', 'Admin'), sizes: LabelSizes.compact)]))));
-      expect(t.getSize(find.byKey(const ValueKey('tag-p'))).height, LabelSizes.compact.tag);
+      await show(t, onBanner('p', '.'), sizes: LabelSizes.compact);
+      final compact = t.getSize(find.byKey(const ValueKey('tag-p')));
+      expect(compact.height, LabelSizes.compact.tag);
+      expect(compact.width, LabelSizes.compact.tag * 4);
       expect(LabelSizes.compact.tag, lessThan(LabelSizes.profile.tag));
     });
   });

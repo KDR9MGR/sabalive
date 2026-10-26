@@ -56,12 +56,14 @@ class WalletScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                GradientButton(
-                  label: 'Buy Coins',
-                  height: 44,
-                  gradient: AppColors.goldGradient,
-                  onPressed: () => AppNav.buyCoins(context),
-                ),
+                // coins cannot be bought from an iPhone app until In-App Purchase is built (App Store 3.1.1): no Buy Coins there
+                if (FeatureFlags.buyCoinsVisible)
+                  GradientButton(
+                    label: 'Buy Coins',
+                    height: 44,
+                    gradient: AppColors.goldGradient,
+                    onPressed: () => AppNav.buyCoins(context),
+                  ),
                 // coin sellers: always on Android; on iOS the panel's "Coin sellers on iOS" switch decides (it can change while this screen is open)
                 ListenableBuilder(
                   listenable: RemoteConfigController.instance,

@@ -116,7 +116,12 @@ Production is shared with the live Play app: follow "Production safety" in the r
   panel only falls back to them): a person is at the HIGHEST level whose XP they reached, so out-of-order numbers are allowed (My Level shows a level unlocked only when it is theirs or they reached its XP). Fixed rules:
   level 1 needs 0 XP, the next new level is highest + 1, XP is a whole number up to 2,147,483,647 (integer column). v2's shift stopped at 2,000,000,000 and production's Wealth ladder ends exactly there, so Wealth edits
   needing a shift always failed while Charm worked. Level pictures are cached 5 minutes
-  (`LevelBannerImages` + `LevelImageStore`), so a picture changed in the panel shows within a few minutes.
+  (`LevelBannerImages` + `LevelImageStore`), so a picture changed in the panel shows within a few minutes in chat and on profiles. **My Level** (2026-10-26) shows each level's picture in its card (dimmed with a lock until reached, the
+  medal when the panel set none or while it loads; the header shows the picture of the person's level) in a lazy grid, and stays in step with the panel: it reads when it opens, every 20 s while open and the app is in front
+  (`kMyLevelRefresh`; `track_levels` is not in the Realtime publication, so it polls), when the app returns to the front and on a pull down (the last two and the opening also force the pictures:
+  `LevelImageStore.refresh()` / `LevelBannerImages.invalidate()`), redraws only when something changed (value equality on `MyLevel`), and keeps what is on screen if a read fails. **My Profile's level stars** come from `AuthController.user` (the profile read at sign-in), so they used to stay stale until a restart: while the Profile tab is the selected one and the app is in front, `RefreshWhileVisible`
+  (`lib/core/widgets/refresh_while_visible.dart`, `active:` from `SessionController.tab == kProfileTab`; an IndexedStack keeps hidden tabs' tickers running, so Flutter's own visibility cannot be used) calls `AuthController.refreshLevels()` when the tab
+  opens, on resume and every 30 s (two small columns of one row), and My Level hands every read to `AuthController.applyLevels`, so the two screens never disagree. Check a whole project with `scripts/prod/check_levels.sh` (read-only, counts only: ladder gaps, wrong levels, XP versus gift coins; `SUPABASE_WORKDIR=...` for staging).
 
 ## Gifts: quantity (1x / 10x), Send to All, who hears the sound (2026-10-25, migration `20261025100000_gift_quantity_and_receivers`)
 - One tap on 10x is ONE call and ONE chat line, not ten: `send_gift_v2(gift, receiver, stream, quantity)` and `send_gift_to_all_v2(gift, stream, quantity)` (quantity 1..99, balance checked up front for
@@ -129,9 +134,13 @@ Production is shared with the live Play app: follow "Production safety" in the r
   plays for everyone as before, because the receivers are unknown. Send to All lists everyone except the sender. A new gift entry point must go through `GiftSender` and pass `playSound: false` for the sender's own effect.
 
 ## Share and invite links
-- The invite link opens the Play Store listing directly: `inviteShareUrl(code)` in `lib/core/utils/share_links.dart` is `https://play.google.com/store/apps/details?id=com.sabalive.in&referrer=utm_source%3Dinvite...utm_content%3D<CODE>`
-  (it used to be `sabalive.app/invite/<code>`, a page that does not exist, so the link did nothing). The code is also in the share text (`inviteShareText`). Reading the referrer back automatically on first launch would need the Play
-  Install Referrer plugin and a Play build (not done); today the new user types the code. The public landing site's `STORE_LINKS.android` (`sabaliveadmin/landing/src/lib/site.js`) points at the same listing.
+- The invite link is `https://sabalive.in/invite/<CODE>` (`inviteShareUrl(code)` in `lib/core/utils/share_links.dart`; also the QR code on the invite screen). It is a page of OUR site
+  (`sabaliveadmin/landing/src/pages/Invite.jsx`, pure rules in `landing/src/lib/invite.js`, tested) that looks at the phone: **Android** goes straight to the Google Play listing with the code as the Play
+  "referrer" (`utm_source=invite&utm_medium=referral&utm_content=<CODE>`), an **iPhone** is told the iPhone app is coming soon (the App Store link goes in `STORE_LINKS.ios` in `landing/src/lib/site.js`; once set,
+  iPhones are redirected there), a computer sees both. The page also shows the code with a Copy button, because the friend still types it in the app (reading the Play referrer on first launch would need the
+  Install Referrer plugin and a Play build: not done). Before 2026-10-26 the link was the Play URL itself (no use on an iPhone), and before that `sabalive.app/invite/<code>`, which never existed. The app's App Links
+  claim only `/live/`, so `/invite/...` always opens in the browser. **The page must be live on sabalive.in (the panel/landing repo deployed) before a build that uses the new link is shared**, or the link shows the site's
+  "not found" page. The public site's `STORE_LINKS.android` points at the same listing.
 
 ## Who reports to whom (Global > Country > Sub > Agency)
 `agencies.sub_admin_id` -> the Sub Admin; `staff_roles.country_admin_id` (on a sub admin) -> the Country Admin; `staff_roles.global_admin_id` (on a country admin) -> the Global Admin (migration `20261026100000`:
@@ -146,6 +155,8 @@ runs in OUR page (`sabaliveadmin/landing`, `/sud/play`), opened in the same bott
 Sync cannot switch them off), internal ids start at 1,000,000, the SUD game id is TEXT, the app launches through the `sud` Edge Function (`sud/launch`, deployed `--no-verify-jwt`; it verifies the user and
 SUD's HMAC-SHA1 signed callbacks itself), and two switches default OFF (`sud_games_enabled`, `sud_coin_games_enabled`; both need `games_enabled`). Coin games reuse `game_config`, `game_transactions` and the
 `game_bet` / `game_win` ledger kinds (`sud_apply_score`). Secrets `SUD_APP_ID`, `SUD_APP_KEY`, `SUD_APP_SECRET` are set by the owner, never by an assistant or in chat. Staging check: `scripts/staging/verify_sud_games.sh`.
+**Game panel close button** (`lib/features/games/game_panel.dart`, owner 2026-10-26): the round X sits in its own row ABOVE the panel (`kGameCloseRow`, right-aligned, outside the game, in the dimmed room above it), no longer floating over the game's top right where it
+covered the game's own controls. The panel is at most the screen minus the status bar and that row (`gamePanelHeight(topInset:)`); a very tall game on a short phone is narrowed at its own proportions rather than cropped.
 
 ## Monthly diamond reset (2026-10-26, built, not shipped: `docs/DIAMOND_RESET.md`)
 Master / Super Admin (never a lower role, even with Run payroll) clear a FINISHED month's gift diamonds, Lucky Box reward diamonds, or both from the wallets that still hold them (panel: Economy -> Diamond Reset).
@@ -157,8 +168,9 @@ buttons use (runs have `auto = true`, no person; no catch-up if a day is missed)
 
 ## Quick-fix batch of 2026-10-26 (owner's list of nine; migration `20261026140000`)
 - **Profile labels.** `ProfileLabelsRow` (`lib/features/profile/widgets/profile_labels.dart`) draws badges first, then staff tags. Sizes are `LabelSizes.profile` (badge pictures 34, tags 28, chip text 12.5) or `LabelSizes.compact`
-  (22 / 20 / 10) for a ONE-LINE row in a list (`compact: true`, at most 3, clipped never wrapped). A **plate** tag is exactly as wide as its name (a Row, not a Center: a Center/Container-with-alignment fills the row, which
-  stretched the artwork and floated the name) and its picture is `cover`, not stretched. The Store's own items are never drawn on a profile; the dead "VIP · Luxury Privileges" banner on My Profile was removed (it opened "coming soon").
+  (22 / 20 / 10) for a ONE-LINE row in a list (`compact: true`, at most 3, clipped never wrapped). A **plate** tag is exactly as big as its ARTWORK at the tag height (2026-10-26: `LabelPicture` reads the real proportions of an SVGA / SVG, the whole picture is shown, never cropped or stretched) with the name
+  centred on it, shrinking to fit; a name with no letter or digit (".", "-") is not written at all (`TagPill.nameIsWritten`: the owner's single tag is named "." because its SVGA already carries the text). Until the
+  artwork is read, or if it fails, a coloured capsule with room for the name stands in (the name is written once). It used to be sized by the NAME, which cut a "." tag's artwork to a tiny box ("Hos"). `LabelPicture` clips an SVGA to its own box (`ClipRect`): the player draws outside its canvas by default, and the owner's Host tag has a 500 px light-sweep layer on a 310 px canvas, which showed as a grey strip beside the tag every time it played. The Store's own items are never drawn on a profile; the dead "VIP · Luxury Privileges" banner on My Profile was removed (it opened "coming soon").
   Lists of people (followers / following / fans, search, profile visitors, rankings) show the compact row under the name through `PersonLine`, and the live-room user card (`user_actions_sheet.dart`) shows the full row. They read
   through `ProfileLabelsCache` (`profile_labels_repository.dart`): asks made in the same moment become ONE `loadMany` (two database reads in all), answers kept 5 minutes, pieces of 60. Not in chat lines (a read per line).
 - **SVG** (plain vector drawings, not SVGA) are a media kind of their own: `MediaKind.svg`, drawn by `RemoteMedia` (`_SvgMedia`, `flutter_svg`, read once and kept on the phone), `LabelPicture`, `LevelPicture` and still effects. The panel
@@ -167,8 +179,23 @@ buttons use (runs have `auto = true`, no person; no catch-up if a day is missed)
   a seat: `send_gift_to_all_v3` (v2 stays for old builds; `GiftSender.sendToAll` tries v3, then v2, then the old ones); the "All" count is every person in the sheet (`giftSendAllPeople`). A gift tile shows a quiet shape (not the emoji)
   while its artwork loads, the emoji only if there is none or it fails (an MP4 tile keeps the emoji: only a few video stills are held at once). `GiftArtworkWarmer` (`lib/core/media/`) puts the first 60 gifts' files on the phone, two at a
   time, when a live opens (`WalletController.refreshCatalog`), NOT at app start (egress). SVGA files go to flutter_svga's own disk cache (raw bytes, no decode).
-- **iOS coin sellers.** `FeatureFlags.coinSellerVisible`: Android always; iOS follows the panel's Release control `coin_seller_ios` (default ON = unchanged); the wallet screen's "Buy from Offline Seller" button listens to it.
+- **iOS coin sellers.** `FeatureFlags.coinSellerVisible`: Android always; iOS follows the panel's Release control `coin_seller_ios` (default OFF since 2026-10-27, see "Apple App Store review" below); the wallet screen's "Buy from Offline Seller" button listens to it.
 - **Diamond reset is a permission**: `reset_diamonds` (Access Control, on by default for a Master, never for a lower role; `_diamond_reset_actor_ok()` reads it). See `docs/DIAMOND_RESET.md`.
+
+## Apple App Store review (iOS) (2026-10-27; Apple's message about version 1.0 (2) of 2026-09-19)
+iOS has never been published. Apple's message (4.1(a) copycat, 5.2.1 China live-streaming licence, 2.1(a) iPad bugs, 2.3.6 age rating x2) and what was done in code; the rest is the owner's (App Store Connect, artwork, licences):
+- **Rules that apply on iOS only** (`FeatureFlags`, with `isIOSOverride` for tests; Android unchanged): `comingSoonVisible` / `gamesEntryVisible` / `buyCoinsVisible` are false on iOS. Hidden there: Room Effects and Family in the Profile menu, Request Withdrawal, Funny voice,
+  "Invite someone" on a seat, the Mobile tab of Forgot Password, the Games tab / tools / strip, Invite PK / Random PK unless PK really works (`pkToolsVisible`), Buy Coins and every "top up" prompt (no In-App Purchase yet; Apple 3.1.1). `coin_seller_ios` now
+  defaults to OFF (an offline seller buys coins outside In-App Purchase); the panel's switch (Super Admin, Application Config -> Release Settings -> "Coin sellers on iOS" -> Save release controls) turns it ON. Test: `test/ios_review_rules_test.dart`.
+- **Device and orientation**: the iOS target is iPhone only (`TARGETED_DEVICE_FAMILY = 1`) and portrait only (Info.plist), so the app is not reviewed in an iPad layout (the iPad review is where the unresponsive chat / live reports came from; the cause was never
+  reproduced: it needs a signed-in run on a real device). Camera / microphone permission wiring (Podfile `PERMISSION_*` flags, usage strings) was checked and is fine.
+- **Google sign-in crashed the whole app on iOS** (found by running the app in the iPhone simulator): the native plugin needs `GIDClientID` in Info.plist, which does not exist (the Firebase file has no CLIENT_ID), and its missing configuration is a native exception Dart cannot catch.
+  `GoogleConfig.nativeSignInSupported(isIOS:)` makes iOS use the browser sign-in (the one Apple uses; it works: opens accounts.google.com in the in-app Safari view). To bring the native picker back: create the iOS OAuth client in Google Cloud, add its id as `GIDClientID` and the reversed id as a URL scheme.
+- **"alpha" wording** is gone: Settings shows the real version (`PackageInfo`), the Help text no longer says "during the alpha" (translations updated).
+- **Building for iOS**: `flutter build ios --simulator` fails under Xcode 27 / Flutter 3.41.5 at `debug_unpack_ios` ("does not contain architectures arm64 x86_64" although lipo lists both). Workaround that works: `xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ONLY_ACTIVE_ARCH=YES ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build`,
+  then ad-hoc sign every `Frameworks/*.framework` and the app (`codesign --force --sign -`) or the simulator refuses to load Agora. The app launches, onboarding and login work on an iPhone 17 simulator (iOS 27).
+- **Still open (owner)**: Age Rating "Messaging and Chat" = Yes and "User-Generated Content" = Yes (App Store Connect); China mainland removed from availability + a reply that the app is for India (5.2.1); the icon and splash artwork carry a red "play button + LIVE" pill (and a small red play button inside the S) that looks like YouTube's (4.1(a)): needs new artwork (an automatic fill of the pill looked wrong,
+  so the icon was NOT changed); check the App Store name / description / screenshots for lookalike content; a demo login for App Review and a live running during review; test the new build on a real iPhone and iPad.
 
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`

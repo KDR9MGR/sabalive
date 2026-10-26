@@ -312,7 +312,7 @@ const Map<String, String> hiStrings = {
   'My Invites': 'मेरे आमंत्रण',
   'My Level': 'मेरा लेवल',
   'My Profile': 'मेरी प्रोफ़ाइल',
-  'Need a hand during the alpha? Email support@sabalive.app and include your username and what you were doing.': 'अल्फ़ा के दौरान मदद चाहिए? support@sabalive.app पर ईमेल करें और अपना यूज़रनेम तथा आप क्या कर रहे थे, यह लिखें।',
+  'Need a hand? Email support@sabalive.app and include your username and what you were doing.': 'मदद चाहिए? support@sabalive.app पर ईमेल करें और अपना यूज़रनेम तथा आप क्या कर रहे थे, यह लिखें।',
   'Net Banking': 'नेट बैंकिंग',
   'New': 'नया',
   'New Group': 'नया ग्रुप',

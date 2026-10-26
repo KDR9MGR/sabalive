@@ -76,6 +76,15 @@ class AppUser {
   /// shown on profiles and next to a name when someone joins a live.
   int wealthLevel;
   int charmLevel;
+
+  /// Takes the levels the server holds now (the panel can re-level everyone when it edits the XP a level needs). True when something changed.
+  bool setLevels({required int wealth, required int charm}) {
+    if (wealth == wealthLevel && charm == charmLevel) return false;
+    wealthLevel = wealth;
+    charmLevel = charm;
+    return true;
+  }
+
   int followers;
   int following;
   int fans;

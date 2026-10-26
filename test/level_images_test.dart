@@ -82,6 +82,39 @@ void main() {
       expect(store.urlFor('wealth', 2), png, reason: 'a failure is not remembered');
     });
 
+    test('refresh reads again right away, ignoring how recent the last read was, and tells the store\'s source to read afresh', () async {
+      var asked = 0;
+      var invalidated = 0;
+      var rows = [const LevelBannerStep('wealth', 2, png)];
+      final store = LevelImageStore(
+        loader: () async {
+          asked++;
+          return rows;
+        },
+        invalidate: () => invalidated++,
+      );
+      await store.ensureLoaded();
+      await store.ensureLoaded();
+      expect(asked, 1);
+      rows = [const LevelBannerStep('wealth', 2, webp)];
+      await store.refresh();
+      expect(asked, 2);
+      expect(invalidated, 1);
+      expect(store.urlFor('wealth', 2), webp, reason: 'the picture changed in the panel shows now, not in five minutes');
+    });
+
+    test('a failed refresh keeps the pictures that were there', () async {
+      var fail = false;
+      final store = LevelImageStore(loader: () async {
+        if (fail) throw Exception('offline');
+        return [const LevelBannerStep('wealth', 2, png)];
+      });
+      await store.ensureLoaded();
+      fail = true;
+      await store.refresh();
+      expect(store.urlFor('wealth', 2), png);
+    });
+
     test('a level whose picture is removed in the panel goes back to the star', () async {
       var rows = [const LevelBannerStep('wealth', 2, png)];
       final store = LevelImageStore(loader: () async => rows);

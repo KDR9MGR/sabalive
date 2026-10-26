@@ -7,16 +7,19 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/level_star.dart';
+import '../../core/widgets/refresh_while_visible.dart';
 import '../../data/mock_data.dart';
 import '../../data/models.dart';
 import '../../router/app_nav.dart';
 import '../../state/auth_controller.dart';
+import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'blocked_users_screen.dart';
 import 'widgets/profile_labels.dart';
 import '../../core/i18n/language_picker.dart';
 import '../../core/i18n/text.dart';
+import '../../config/feature_flags.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -32,7 +35,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthController>().user ?? Mock.me;
     final wallet = context.watch<WalletController>();
+    final onThisTab = context.select<SessionController, bool>((s) => s.tab == kProfileTab);
 
+    // the levels shown here come from the profile read at sign-in: while this tab is open, look again (a level the panel changed, XP earned) so the stars are never stale
+    return RefreshWhileVisible(
+      active: onThisTab,
+      onRefresh: () => context.read<AuthController>().refreshLevels(),
+      child: _screen(context, user, wallet),
+    );
+  }
+
+  Widget _screen(BuildContext context, AppUser user, WalletController wallet) {
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -371,13 +384,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const BlockedUsersScreen())),
       ),
-      (Icons.auto_awesome_outlined, 'Room Effects', () => _soon(context, 'Room Effects')),
+      // entries that only say "coming soon" are hidden on iOS (the App Store refuses placeholder screens)
+      if (FeatureFlags.comingSoonVisible) (Icons.auto_awesome_outlined, 'Room Effects', () => _soon(context, 'Room Effects')),
       (Icons.feedback_outlined, 'Feedback', () => AppNav.feedback(context)),
       (Icons.notifications_none_rounded, 'Notifications', () => AppNav.notifications(context)),
       (Icons.translate_rounded, 'Language', () => showLanguagePicker(context)),
       (Icons.shield_outlined, 'Privacy & Safety', () => AppNav.settings(context)),
       (Icons.help_outline_rounded, 'Help & Support', () => AppNav.settings(context)),
-      (Icons.groups_rounded, 'Family', () => _soon(context, 'Family')),
+      if (FeatureFlags.comingSoonVisible) (Icons.groups_rounded, 'Family', () => _soon(context, 'Family')),
       (Icons.settings_outlined, 'Settings', () => AppNav.settings(context)),
     ];
     return Padding(

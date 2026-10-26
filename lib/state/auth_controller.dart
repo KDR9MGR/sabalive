@@ -20,6 +20,7 @@ import 'access_guard.dart';
 import 'maintenance_controller.dart';
 import 'session_guard.dart';
 import 'staff_account_gate.dart';
+import '../config/feature_flags.dart';
 
 enum AuthStatus { unknown, onboarding, unauthenticated, authenticated }
 
@@ -377,6 +378,27 @@ class AuthController extends ChangeNotifier {
     if (uid != null) await _refreshProfile(uid);
   }
 
+  /// Shows these Wealth / Charm levels on the signed-in user's own screens (My Profile). The profile is read at sign-in, so without this a level the panel changed
+  /// later would stay as it was until the app was restarted. Redraws only when something changed.
+  bool applyLevels({required int wealth, required int charm}) {
+    final changed = _user?.setLevels(wealth: wealth, charm: charm) ?? false;
+    if (changed) notifyListeners();
+    return changed;
+  }
+
+  /// Reads just the two level numbers (one small row) and shows them. Fails quietly: the levels already on screen stay.
+  Future<void> refreshLevels() async {
+    final uid = supabase.auth.currentUser?.id;
+    if (uid == null) return;
+    try {
+      final row = await supabase.from('profiles').select('wealth_level, charm_level').eq('id', uid).maybeSingle();
+      if (row == null) return;
+      applyLevels(wealth: row['wealth_level'] as int? ?? 1, charm: row['charm_level'] as int? ?? 1);
+    } catch (_) {
+      // keep what is shown
+    }
+  }
+
   Future<void> _refreshProfile(String userId) async {
     final row = await supabase
         .from('profiles')
@@ -486,7 +508,7 @@ class AuthController extends ChangeNotifier {
     clearNotice();
     await _requireLoginsOpen();
     await _requireDeviceAllowed(showNotice: true);
-    if (provider == 'Google' && GoogleConfig.isConfigured) {
+    if (provider == 'Google' && GoogleConfig.nativeSignInSupported(isIOS: FeatureFlags.isIOS)) {
       // The on-device Google picker needs its Android plugin and Play Services. If either
       // is not working on this phone (it answers `channel-error`, or Google refuses the
       // build's signature), fall through to the browser sign-in below, which needs
@@ -721,6 +743,7 @@ class AuthController extends ChangeNotifier {
   /// device, not in the app build. Safe to call unconditionally even for a
   /// password/phone/Apple session that never touched Google sign-in.
   Future<void> _signOutOfGoogle() async {
+    if (!GoogleConfig.nativeSignInSupported(isIOS: FeatureFlags.isIOS)) return; // the native plugin was never used here (iOS signs in through the browser)
     try {
       await GoogleSignIn().signOut();
     } catch (_) {}

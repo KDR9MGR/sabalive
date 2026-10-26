@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/i18n/text.dart';
-import '../../../core/media/disk_cached_image.dart';
 import '../../../core/widgets/label_picture.dart';
-import '../../../core/widgets/remote_media.dart' show MediaKind, RemoteMedia, mediaKindFor;
+import '../../../core/widgets/remote_media.dart' show ImageBytesLoader, SvgaLoader;
 import '../../../data/profile_labels_repository.dart';
 import '../../../theme/app_colors.dart';
 
@@ -165,15 +164,23 @@ class _ProfileLabelsRowState extends State<ProfileLabelsRow> {
 /// The height of a tag that is a picture or a plate on a profile.
 const double kTagPictureHeight = 28;
 
-/// One staff tag, in the look the panel chose: a PICTURE shown as it is (the name is part of the artwork), a PLATE (a background picture with the name
-/// written on it) or a solid coloured PILL. A picture that can't be loaded (offline, a deleted file) falls back to the pill, so a tag never vanishes.
+/// One staff tag, in the look the panel chose: a PICTURE shown as it is (the name is part of the artwork), a PLATE (a background picture, with the name written on it when the
+/// name has any letters or digits) or a solid coloured PILL. A picture that can't be loaded (offline, a deleted file) falls back to the pill, so a tag never vanishes.
 ///
-/// A plate is exactly as wide as its name needs (plus a little), as tall as [sizes] say, and its picture fills it, cropped rather than stretched: it used to
-/// expand to the whole width of the row, which stretched the artwork and left the name floating in the middle of it.
+/// A plate is exactly as big as its ARTWORK at the tag's height (the whole picture, never cropped or stretched), and wider only if the name needs more room. It used to be
+/// sized by the name: a tag named "." (the way to show only the picture, when the artwork already carries its text) became a tiny box that cut the artwork off ("Hos"), and
+/// before that a plate stretched across the whole row. A name with no letter or digit ("." or "-") is not written at all.
 class TagPill extends StatelessWidget {
-  const TagPill({super.key, required this.tag, this.sizes = LabelSizes.profile});
+  const TagPill({super.key, required this.tag, this.sizes = LabelSizes.profile, @visibleForTesting this.svgaLoader, @visibleForTesting this.imageLoader});
   final ProfileTag tag;
   final LabelSizes sizes;
+
+  /// Replace reading the artwork (tests).
+  final SvgaLoader? svgaLoader;
+  final ImageBytesLoader? imageLoader;
+
+  /// Does the name say anything? ("." or "-" only keeps the picture clean.)
+  static bool nameIsWritten(String label) => RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(label);
 
   String get _label => tag.emoji == null ? tag.name : '${tag.emoji} ${tag.name}';
 
@@ -199,46 +206,65 @@ class TagPill extends StatelessWidget {
       // the artwork exactly as uploaded: a picture, a GIF / WebP, an SVG or an SVGA animation; the pill stands in while it loads and if it can't be drawn
       return Semantics(
         label: tag.name,
-        child: LabelPicture(key: ValueKey('tag-${tag.id}'), url: url, height: sizes.tag, maxWidth: sizes.tag * 8, fallback: _pill()),
+        child: LabelPicture(
+          key: ValueKey('tag-${tag.id}'),
+          url: url,
+          height: sizes.tag,
+          maxWidth: sizes.tag * 8,
+          fallback: _pill(),
+          svgaLoader: svgaLoader,
+          imageLoader: imageLoader,
+        ),
       );
     }
-    final plate = DecoratedBox(decoration: BoxDecoration(color: tag.color));
-    final kind = mediaKindFor(url);
-    return ClipRRect(
+    // a PLATE: the picture at its own proportions (LabelPicture reads the real size of an SVGA / SVG; a still sizes itself) with the name centred on it when it has letters.
+    // The stand-in (while the picture loads, or if it can't be drawn) is a coloured capsule with room for the name, so the name written over it is never doubled.
+    final written = nameIsWritten(tag.name);
+    final nameStyle = TextStyle(
+      fontSize: sizes.pillText,
+      fontWeight: FontWeight.w800,
+      color: tag.textColor ?? Colors.white,
+      shadows: const [Shadow(color: Color(0x99000000), blurRadius: 2, offset: Offset(0, 1))],
+    );
+    final standInWidth = written ? _textWidth(context, nameStyle) + 2 * (sizes.padX + 4) : sizes.tag * 2.4;
+    final standIn = SizedBox(
+      width: standInWidth,
+      height: sizes.tag,
+      child: DecoratedBox(decoration: BoxDecoration(color: written ? tag.color : tag.color.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(sizes.tag / 2))),
+    );
+    return Stack(
       key: ValueKey('tag-${tag.id}'),
-      borderRadius: BorderRadius.circular(sizes.tag / 2),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(
-            child: kind == MediaKind.svga || kind == MediaKind.svg
-                ? RemoteMedia(url, fit: BoxFit.cover, loop: true, fallback: plate)
-                : Image(image: DiskCachedNetworkImage(url), fit: BoxFit.cover, errorBuilder: (_, _, _) => plate),
-          ),
-          // the name decides the width: a row (not a Center) so the plate does not grow to fill the space it is given
-          Container(
+      alignment: Alignment.center,
+      children: [
+        Semantics(
+          label: tag.name,
+          child: LabelPicture(
+            key: ValueKey('tag-art-${tag.id}'),
+            url: url,
             height: sizes.tag,
-            padding: EdgeInsets.symmetric(horizontal: sizes.padX + 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  _label,
-                  style: TextStyle(
-                    fontSize: sizes.pillText,
-                    fontWeight: FontWeight.w800,
-                    color: tag.textColor ?? Colors.white,
-                    shadows: const [Shadow(color: Color(0x99000000), blurRadius: 2, offset: Offset(0, 1))],
-                  ),
-                ),
-              ],
+            maxWidth: sizes.tag * 8,
+            fallback: standIn,
+            svgaLoader: svgaLoader,
+            imageLoader: imageLoader,
+          ),
+        ),
+        // Positioned.fill adds nothing to the Stack's size: the plate is exactly as big as the picture, and a name wider than the picture shrinks to fit it
+        if (written)
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: sizes.padX),
+              child: FittedBox(fit: BoxFit.scaleDown, child: Text(_label, style: nameStyle)),
             ),
           ),
-        ],
-      ),
+      ],
     );
+  }
+
+  double _textWidth(BuildContext context, TextStyle style) {
+    final painter = TextPainter(text: TextSpan(text: _label, style: style), textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
   }
 }
 

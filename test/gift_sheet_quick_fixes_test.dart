@@ -196,9 +196,9 @@ void main() {
       expect(FeatureFlags.coinSellerVisibleFor(RemoteConfigController(), isIOS: false), isTrue);
     });
 
-    test('iOS shows it by default (nothing changes until the panel switch is turned off)', () async {
-      expect(FeatureFlags.coinSellerVisibleFor(RemoteConfigController(), isIOS: true), isTrue);
-      expect(FeatureFlags.coinSellerVisibleFor(await config({}), isIOS: true), isTrue, reason: 'a server row without the key');
+    test('iOS hides it by default: an offline seller is buying coins outside In-App Purchase, so someone has to turn it ON', () async {
+      expect(FeatureFlags.coinSellerVisibleFor(RemoteConfigController(), isIOS: true), isFalse);
+      expect(FeatureFlags.coinSellerVisibleFor(await config({}), isIOS: true), isFalse, reason: 'a server row without the key');
     });
 
     test('turned ON in the panel iOS shows it; turned OFF it hides it', () async {

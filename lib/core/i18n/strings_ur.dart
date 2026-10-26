@@ -312,7 +312,7 @@ const Map<String, String> urStrings = {
   'My Invites': 'میری دعوتیں',
   'My Level': 'میرا لیول',
   'My Profile': 'میری پروفائل',
-  'Need a hand during the alpha? Email support@sabalive.app and include your username and what you were doing.': 'الفا کے دوران مدد چاہیے؟ support@sabalive.app پر ای میل کریں اور اپنا یوزر نیم اور آپ کیا کر رہے تھے، یہ لکھیں۔',
+  'Need a hand? Email support@sabalive.app and include your username and what you were doing.': 'مدد چاہیے؟ support@sabalive.app پر ای میل کریں اور اپنا یوزر نیم اور آپ کیا کر رہے تھے، یہ لکھیں۔',
   'Net Banking': 'نیٹ بینکنگ',
   'New': 'نیا',
   'New Group': 'نیا گروپ',

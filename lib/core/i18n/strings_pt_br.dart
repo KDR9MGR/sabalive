@@ -312,7 +312,7 @@ const Map<String, String> ptBrStrings = {
   'My Invites': 'Meus convites',
   'My Level': 'Meu nível',
   'My Profile': 'Meu perfil',
-  'Need a hand during the alpha? Email support@sabalive.app and include your username and what you were doing.': 'Precisa de ajuda durante o alpha? Escreva para support@sabalive.app e inclua seu nome de usuário e o que você estava fazendo.',
+  'Need a hand? Email support@sabalive.app and include your username and what you were doing.': 'Precisa de ajuda? Escreva para support@sabalive.app e inclua seu nome de usuário e o que você estava fazendo.',
   'Net Banking': 'Internet banking',
   'New': 'Novo',
   'New Group': 'Novo grupo',

@@ -32,6 +32,7 @@ import 'widgets/pk_opponent_picker_sheet.dart';
 import 'widgets/pk_score_bar.dart';
 import 'widgets/tool_grid.dart';
 import '../../core/i18n/text.dart';
+import '../../config/feature_flags.dart';
 
 /// Host-side PK battle room. Room chat/gifts and your own audio are real, as
 /// always. The opponent and scoring are now real too: `pk_battles` is the
@@ -1261,7 +1262,7 @@ class _PkBattleScreenState extends State<PkBattleScreen>
       context,
       title: 'More',
       tools: [
-        ToolSpec(
+        if (FeatureFlags.gamesEntryVisible) ToolSpec(
           Icons.sports_esports_rounded,
           'Games',
           AppColors.primaryBright,

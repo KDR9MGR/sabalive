@@ -6,6 +6,12 @@ class LevelThreshold {
   LevelThreshold(this.level, this.xpRequired);
   final int level;
   final int xpRequired;
+
+  @override
+  bool operator ==(Object other) => other is LevelThreshold && other.level == level && other.xpRequired == xpRequired;
+
+  @override
+  int get hashCode => Object.hash(level, xpRequired);
 }
 
 class MyLevel {
@@ -20,6 +26,13 @@ class MyLevel {
     }
     return null;
   }
+
+  // equal when the person's level, XP and every level's XP are the same: a refresh that changed nothing redraws nothing
+  @override
+  bool operator ==(Object other) => other is MyLevel && other.level == level && other.xp == xp && listEquals(other.thresholds, thresholds);
+
+  @override
+  int get hashCode => Object.hash(level, xp, Object.hashAll(thresholds));
 
   LevelThreshold? get current => _find(level);
   LevelThreshold? get next => _find(level + 1);
@@ -140,4 +153,10 @@ class WealthCharmLevels {
 
   final MyLevel wealth;
   final MyLevel charm;
+
+  @override
+  bool operator ==(Object other) => other is WealthCharmLevels && other.wealth == wealth && other.charm == charm;
+
+  @override
+  int get hashCode => Object.hash(wealth, charm);
 }

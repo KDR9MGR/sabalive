@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
+import '../../config/feature_flags.dart';
 import '../../router/app_nav.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
@@ -84,7 +85,7 @@ class _BottomBar extends StatelessWidget {
       child: Row(
         children: [
           for (var i = 0; i < tabs.length; i++)
-            if (i == MainShell._rankingsIndex && index == MainShell._liveIndex)
+            if (i == MainShell._rankingsIndex && index == MainShell._liveIndex && FeatureFlags.gamesEntryVisible)
               _item(
                 icon: Icons.sports_esports_rounded,
                 label: 'Games',

@@ -33,4 +33,10 @@ class GoogleConfig {
       '350645363676-lk53ek8gfttb1322aijqe832ojqhrs3b.apps.googleusercontent.com';
 
   static bool get isConfigured => webClientId.isNotEmpty;
+
+  /// Is the on-device Google picker usable here? NOT on iOS (2026-10-27): the iOS plugin needs the iOS client's `GIDClientID` in Info.plist, which this app does not have
+  /// (the Firebase file has no CLIENT_ID), and without it the plugin raises a native exception that Dart cannot catch: tapping "Google" closed the whole app, which an App
+  /// Store review would count as a crash. On iOS Google signs in through the browser flow (the same one Apple uses) until the iOS client is created and its id added
+  /// to Info.plist (step 5 above); then this can be switched back on.
+  static bool nativeSignInSupported({required bool isIOS}) => isConfigured && !isIOS;
 }

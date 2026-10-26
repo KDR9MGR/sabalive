@@ -34,6 +34,7 @@ import 'widgets/pk_arena.dart';
 import 'widgets/pk_score_bar.dart';
 import 'widgets/tool_grid.dart';
 import '../../core/i18n/text.dart';
+import '../../config/feature_flags.dart';
 
 /// Viewer of a PK battle — same proven audience-join + chat/gift chrome as
 /// [WatchAudioRoomScreen]/[WatchLiveScreen], with a PK-themed shell instead
@@ -914,7 +915,7 @@ class _WatchPkBattleScreenState extends State<WatchPkBattleScreen>
       context,
       title: 'More',
       tools: [
-        ToolSpec(
+        if (FeatureFlags.gamesEntryVisible) ToolSpec(
           Icons.sports_esports_rounded,
           'Games',
           AppColors.primaryBright,

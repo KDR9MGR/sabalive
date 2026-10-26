@@ -12,17 +12,14 @@ const shareHost = 'sabalive.in';
 /// page it lands on offers "Open in SABALIVE" and tries to open the app itself.
 String liveShareUrl(String streamId) => 'https://$shareHost/live/$streamId';
 
-/// The app's id on Google Play.
-const playPackageId = 'com.sabalive.in';
-
-/// The link a person shares to invite a friend: the app's Google Play page, opened straight in the Play Store on an Android phone (WhatsApp, SMS and the
-/// rest hand `play.google.com` links to the Play Store app). It used to point at `sabalive.app/invite/<code>`, a page that does not exist, so the link did
-/// nothing. The invite code rides along as the Play "referrer" (`utm_source=invite`, `utm_content=<code>`): Play keeps it with the install, so the app can
-/// read it on first launch later without the link changing. Until then the friend types the code (it is also written in the share text).
+/// The link a person shares to invite a friend (and the QR code on the invite screen): `https://sabalive.in/invite/<code>`. It is a page of our site
+/// (`sabaliveadmin/landing/src/pages/Invite.jsx`) that looks at the phone it is opened on: Android goes straight to the app's Google Play page (with the invite code as the
+/// Play "referrer", which Play keeps with the install), an iPhone is told the iPhone app is coming soon (and goes to the App Store once the site has that link), and a
+/// computer is offered both. One link works for everybody the person sends it to, which a Play link could not (it was no use on an iPhone). The page does not exist for old
+/// app versions' links: they keep pointing where they pointed. The friend still types the code until the app reads the Play referrer on first launch.
 String inviteShareUrl(String code) {
   final clean = code.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
-  final referrer = Uri.encodeQueryComponent('utm_source=invite&utm_medium=referral${clean.isEmpty ? '' : '&utm_content=$clean'}');
-  return 'https://play.google.com/store/apps/details?id=$playPackageId&referrer=$referrer';
+  return clean.isEmpty ? 'https://$shareHost/invite' : 'https://$shareHost/invite/$clean';
 }
 
 /// The message that goes out with the invite link.

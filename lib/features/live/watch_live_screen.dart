@@ -1227,7 +1227,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           AppColors.gold,
           _openGifts,
         ),
-        ToolSpec(
+        if (FeatureFlags.gamesEntryVisible) ToolSpec(
           Icons.sports_esports_rounded,
           'Games',
           AppColors.primaryBright,

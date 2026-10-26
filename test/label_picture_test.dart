@@ -73,6 +73,23 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
+    testWidgets('an SVGA is drawn inside its own box, clipped: a layer wider than its canvas must not paint beside it (a grey strip next to the tag)', (t) async {
+      MovieEntity wide() => MovieEntity()
+        ..params = (MovieParams()
+          ..viewBoxWidth = 310
+          ..viewBoxHeight = 110
+          ..fps = 20
+          ..frames = 10);
+      await show(t, svga, loader: (_) async => wide());
+      await t.pump();
+      await t.pump();
+      expect(find.text('STAND-IN'), findsNothing, reason: 'the animation is ready');
+      final clip = find.descendant(of: find.byType(LabelPicture), matching: find.byType(ClipRect));
+      expect(clip, findsOneWidget);
+      expect(t.getSize(clip), Size(labelPictureWidth(26, 310, 110), 26), reason: 'exactly the picture\'s own box');
+      await t.pumpWidget(const SizedBox()); // the looping animation is stopped with the widget
+    });
+
     testWidgets('a video file is not drawn: the stand-in stays', (t) async {
       await show(t, mp4);
       expect(find.text('STAND-IN'), findsOneWidget);

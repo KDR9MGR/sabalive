@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide Text;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -29,10 +30,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
   SharedPreferences? _sp;
 
+  /// The installed app's real version ("1.0.0"); it used to be the fixed text "v1.0.0-alpha", which a store reviewer reads as an unfinished app.
+  String _version = '';
+
   @override
   void initState() {
     super.initState();
     _restore();
+    _readVersion();
+  }
+
+  Future<void> _readVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _version = 'v${info.version}');
+    } catch (_) {
+      // no version shown
+    }
   }
 
   Future<void> _restore() async {
@@ -103,7 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _tile(Icons.privacy_tip_outlined, 'Privacy Policy',
               onTap: () => _legal('privacy', 'Privacy Policy')),
           _tile(Icons.info_outline_rounded, 'About SABALIVE',
-              trailing: 'v1.0.0-alpha', onTap: _about),
+              trailing: _version.isEmpty ? null : _version, onTap: _about),
           _section('Danger zone'),
           _tile(Icons.delete_outline_rounded, 'Delete account',
               danger: true, onTap: _deleteAccount),
@@ -147,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showAboutDialog(
       context: context,
       applicationName: 'SABALIVE',
-      applicationVersion: 'v1.0.0-alpha',
+      applicationVersion: _version.isEmpty ? null : _version,
       applicationLegalese: 'Live streaming, calls & virtual gifting.',
     );
   }
@@ -159,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: AppColors.bgElevated,
         title: const Text('Help & Support'),
         content: const Text(
-            'Need a hand during the alpha? Email support@sabalive.app and '
+            'Need a hand? Email support@sabalive.app and '
             'include your username and what you were doing.'),
         actions: [
           TextButton(

@@ -312,7 +312,7 @@ const Map<String, String> arStrings = {
   'My Invites': 'دعواتي',
   'My Level': 'مستواي',
   'My Profile': 'ملفي الشخصي',
-  'Need a hand during the alpha? Email support@sabalive.app and include your username and what you were doing.': 'تحتاج مساعدة أثناء التجربة؟ راسلنا على support@sabalive.app واذكر اسم المستخدم وما كنت تفعله.',
+  'Need a hand? Email support@sabalive.app and include your username and what you were doing.': 'تحتاج مساعدة؟ راسلنا على support@sabalive.app واذكر اسم المستخدم وما كنت تفعله.',
   'Net Banking': 'الخدمات المصرفية عبر الإنترنت',
   'New': 'جديد',
   'New Group': 'مجموعة جديدة',

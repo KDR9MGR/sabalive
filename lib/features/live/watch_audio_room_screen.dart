@@ -1186,7 +1186,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           AppColors.gold,
           _openGifts,
         ),
-        ToolSpec(
+        if (FeatureFlags.gamesEntryVisible) ToolSpec(
           Icons.sports_esports_rounded,
           'Games',
           AppColors.primaryBright,

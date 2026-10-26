@@ -8,6 +8,7 @@ import '../../data/host_repository.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import '../../core/i18n/text.dart';
+import '../../config/feature_flags.dart';
 
 class HostDashboardScreen extends StatefulWidget {
   const HostDashboardScreen({super.key});
@@ -138,13 +139,16 @@ class _HostDashboardScreenState extends State<HostDashboardScreen> {
                   style: const TextStyle(color: Colors.white70, fontSize: 13)),
             ],
           ),
-          const SizedBox(height: 14),
-          GradientButton(
-            label: 'Request Withdrawal',
-            icon: Icons.account_balance_rounded,
-            height: 44,
-            onPressed: _withdraw,
-          ),
+          // the button only says "coming soon": hidden on iOS (the App Store refuses placeholder screens)
+          if (FeatureFlags.comingSoonVisible) ...[
+            const SizedBox(height: 14),
+            GradientButton(
+              label: 'Request Withdrawal',
+              icon: Icons.account_balance_rounded,
+              height: 44,
+              onPressed: _withdraw,
+            ),
+          ],
         ],
       ),
     );

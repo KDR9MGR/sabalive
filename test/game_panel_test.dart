@@ -81,11 +81,12 @@ void main() {
       expect(gamePanelHeight(screen: const Size(400, 900), bottomInset: 20, aspect: 1.6), 640 + 20);
     });
 
-    test('a tall game gets the height its layout asks for, up to the whole screen (over the status bar if it must)', () {
+    test('a tall game gets the height its layout asks for, up to what is left under the close button\'s row (and the status bar)', () {
       // 750 x 1334 on a 400 x 800 screen needs 400 x 1.78 = 711: no header and no 90% cap in the way
       expect(gamePanelHeight(screen: const Size(400, 800), bottomInset: 0, aspect: kEngineDefaultAspect), closeTo(400 * kEngineDefaultAspect, 0.001));
-      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 2.5), 700); // capped by the screen itself, not by a share of it
-      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 1.7), 680);
+      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 2.5), 700 - kGameCloseRow); // the close button's row is kept above the panel
+      expect(gamePanelHeight(screen: const Size(400, 700), bottomInset: 0, aspect: 1.5), 600); // fits: its own height
+      expect(gamePanelHeight(screen: const Size(400, 800), bottomInset: 0, topInset: 40, aspect: 3), 800 - 40 - kGameCloseRow, reason: 'and under the status bar');
     });
 
     test('a tall ratio is no longer cut at 2.5', () {
@@ -155,7 +156,7 @@ void main() {
       expect(t.getCenter(find.text('THE LIVE ROOM')).dy, lessThan(t.getTopLeft(panel).dy));
     });
 
-    testWidgets('a game gets the full screen width and edge to edge: no header, no rounded corners, the close button floats on it', (t) async {
+    testWidgets('a game gets the full screen width and edge to edge: no header, no rounded corners, and the close button is NOT on it', (t) async {
       t.view.physicalSize = const Size(400, 900);
       t.view.devicePixelRatio = 1.0;
       addTearDown(t.view.reset);
@@ -172,13 +173,37 @@ void main() {
       final decorated = t.widget<AnimatedContainer>(find.byKey(const ValueKey('game-panel')));
       expect((decorated.decoration as BoxDecoration?)?.borderRadius, isNull, reason: 'no rounded corners');
       expect(decorated.clipBehavior, Clip.none, reason: 'nothing clips the edges of the game');
-      final close = t.getRect(find.byKey(const ValueKey('game-panel-close')));
-      expect(close.right, lessThanOrEqualTo(panel.right));
-      expect(close.top, greaterThanOrEqualTo(panel.top));
-      expect(panel.contains(close.center), isTrue, reason: 'the close button floats over the game');
     });
 
-    testWidgets('a tall game on a short portrait phone grows over the status bar rather than lose its top or get narrower', (t) async {
+    testWidgets('the close button sits above the panel, outside the game, at the right: it never covers the game', (t) async {
+      await open(t, aspect: 1.0, onResult: (_) {});
+      final panel = t.getRect(find.byKey(const ValueKey('game-panel')));
+      final area = t.getRect(find.byKey(const ValueKey('game-area')));
+      final close = t.getRect(find.byKey(const ValueKey('game-panel-close')));
+      expect(close.bottom, lessThanOrEqualTo(panel.top), reason: 'above the panel, not over it');
+      expect(close.overlaps(area), isFalse, reason: 'nothing of the game is under it');
+      expect(close.right, lessThanOrEqualTo(400));
+      expect(close.right, greaterThan(400 - 24), reason: 'at the right edge');
+      expect(panel.top - close.bottom, kGameCloseMargin, reason: 'a small gap above the game');
+      expect(close.size, const Size(kGameCloseSize, kGameCloseSize));
+    });
+
+    testWidgets('under a status bar the button and the game keep below it', (t) async {
+      t.view.physicalSize = const Size(400, 800);
+      t.view.devicePixelRatio = 1.0;
+      t.view.padding = const FakeViewPadding(top: 40);
+      t.view.viewPadding = const FakeViewPadding(top: 40);
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        home: GamePanelFrame(title: 'Fishing', aspect: 3, onClose: () {}, child: const ColoredBox(color: Colors.green)),
+      ));
+      await t.pumpAndSettle();
+      expect(t.getTopLeft(find.byKey(const ValueKey('game-close-row'))).dy, greaterThanOrEqualTo(40), reason: 'not under the status bar icons');
+      expect(t.getRect(find.byKey(const ValueKey('game-panel-close'))).top, greaterThanOrEqualTo(40));
+      expect(t.getBottomLeft(find.byKey(const ValueKey('game-panel'))).dy, 800);
+    });
+
+    testWidgets('a tall game on a short portrait phone gives up only the close button\'s row, and is narrowed at its own proportions rather than lose its top', (t) async {
       t.view.physicalSize = const Size(360, 640); // an old 16:9 phone
       t.view.devicePixelRatio = 1.0;
       addTearDown(t.view.reset);
@@ -186,9 +211,10 @@ void main() {
         home: GamePanelFrame(title: 'Fishing', aspect: kEngineDefaultAspect, onClose: () {}, child: const ColoredBox(color: Colors.green)),
       ));
       await t.pumpAndSettle();
-      expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, 640); // all of the screen, not 90% of it
+      expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, 640 - kGameCloseRow); // the whole screen but the close button's row
       final area = t.getSize(find.byKey(const ValueKey('game-area')));
-      expect(area.width, closeTo(360, 0.5)); // as wide as the phone
+      expect(area.width, lessThan(360));
+      expect(area.height / area.width, closeTo(kEngineDefaultAspect, 0.01), reason: 'its whole layout is still on screen');
     });
 
     testWidgets('only a game that cannot fit even the whole screen is narrowed, at its own proportions (a phone turned sideways)', (t) async {
@@ -199,7 +225,7 @@ void main() {
         home: GamePanelFrame(title: 'Fishing', aspect: kEngineDefaultAspect, onClose: () {}, child: const ColoredBox(color: Colors.green)),
       ));
       await t.pumpAndSettle();
-      expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, 360);
+      expect(t.getSize(find.byKey(const ValueKey('game-panel'))).height, 360 - kGameCloseRow);
       final area = t.getSize(find.byKey(const ValueKey('game-area')));
       expect(area.width, lessThan(800));
       expect(area.height / area.width, closeTo(kEngineDefaultAspect, 0.01)); // its whole layout is on screen

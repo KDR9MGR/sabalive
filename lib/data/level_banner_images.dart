@@ -93,6 +93,11 @@ class LevelBannerImages {
     }
   }
 
+  /// The next read goes to the database even if the last one is recent (the My Level screen opening, a pull to refresh). The old list is kept as the fallback if that read fails.
+  void invalidate() {
+    _at = null;
+  }
+
   /// For tests: forget everything read.
   void clear() {
     _steps = null;

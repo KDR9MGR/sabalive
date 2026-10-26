@@ -312,7 +312,7 @@ const Map<String, String> filStrings = {
   'My Invites': 'Mga Imbitasyon Ko',
   'My Level': 'Level Ko',
   'My Profile': 'Profile Ko',
-  'Need a hand during the alpha? Email support@sabalive.app and include your username and what you were doing.': 'Kailangan ng tulong habang alpha? Mag-email sa support@sabalive.app at isama ang username mo at kung ano ang ginagawa mo.',
+  'Need a hand? Email support@sabalive.app and include your username and what you were doing.': 'Kailangan ng tulong? Mag-email sa support@sabalive.app at isama ang username mo at kung ano ang ginagawa mo.',
   'Net Banking': 'Net Banking',
   'New': 'Bago',
   'New Group': 'Bagong Group',

@@ -9,6 +9,7 @@ import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
 import 'gift_icon.dart';
 import '../../../core/i18n/text.dart';
+import '../../../config/feature_flags.dart';
 
 /// What the sheet resolves to: which gift, how many copies, and who it goes
 /// to. [recipient] is the picked person (null when [sendToAll] is true, or
@@ -150,10 +151,13 @@ class _GiftSheetState extends State<_GiftSheet> {
                 ),
                 const Spacer(),
                 GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    AppNav.buyCoins(context);
-                  },
+                  // no top-up on iOS (coins cannot be bought from an iPhone app until In-App Purchase is built)
+                  onTap: !FeatureFlags.buyCoinsVisible
+                      ? null
+                      : () {
+                          Navigator.pop(context);
+                          AppNav.buyCoins(context);
+                        },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -181,11 +185,12 @@ class _GiftSheetState extends State<_GiftSheet> {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        Icon(
-                          Icons.add_circle,
-                          color: AppColors.primaryBright,
-                          size: 16,
-                        ),
+                        if (FeatureFlags.buyCoinsVisible)
+                          Icon(
+                            Icons.add_circle,
+                            color: AppColors.primaryBright,
+                            size: 16,
+                          ),
                       ],
                     ),
                   ),
@@ -322,14 +327,16 @@ class _GiftSheetState extends State<_GiftSheet> {
                         ? 'Pick who to send to'
                         : canAfford
                         ? (_sendToAll ? 'Send All · $total' : 'Send · $total')
-                        : 'Not enough coins — top up',
+                        : (FeatureFlags.buyCoinsVisible ? 'Not enough coins — top up' : 'Not enough coins'),
                     gradient: _sendToAll ? AppColors.goldGradient : null,
                     onTap: !canSend
                         ? null
                         : () {
                             if (!canAfford) {
-                              Navigator.pop(context);
-                              AppNav.buyCoins(context);
+                              if (FeatureFlags.buyCoinsVisible) {
+                                Navigator.pop(context);
+                                AppNav.buyCoins(context);
+                              }
                               return;
                             }
                             Navigator.pop(context, (
