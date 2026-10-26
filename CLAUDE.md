@@ -140,6 +140,21 @@ Country Admin, if that creator is a Global Admin); set automatically when a Glob
 `transfer_country_admin(country_admin, to_global_admin)` (Master / Super Admin any, a Global Admin only their own) from the panel's Transfer Global page. `salary_agency_map()` reads it, so the exports and tables show
 Sub / Country / Global Admin each with name + app User ID ("Not assigned" when the system has none). Check coverage with `scripts/staging/verify_global_link.sh`.
 
+## Games: Tulasi and SUD (two providers, one panel in the app)
+Tulasi games (`merchant_games`, a game URL in a WebView) are described in `docs/TULASI_GAMES.md`. **SUD games** (2026-10-26, built and tested, NOT shipped: `docs/SUD_GAMES.md`) are a second provider: their web SDK
+runs in OUR page (`sabaliveadmin/landing`, `/sud/play`), opened in the same bottom game panel. Rules that keep the two apart: SUD games live in their own table `sud_games` (old apps never see them and Tulasi's
+Sync cannot switch them off), internal ids start at 1,000,000, the SUD game id is TEXT, the app launches through the `sud` Edge Function (`sud/launch`, deployed `--no-verify-jwt`; it verifies the user and
+SUD's HMAC-SHA1 signed callbacks itself), and two switches default OFF (`sud_games_enabled`, `sud_coin_games_enabled`; both need `games_enabled`). Coin games reuse `game_config`, `game_transactions` and the
+`game_bet` / `game_win` ledger kinds (`sud_apply_score`). Secrets `SUD_APP_ID`, `SUD_APP_KEY`, `SUD_APP_SECRET` are set by the owner, never by an assistant or in chat. Staging check: `scripts/staging/verify_sud_games.sh`.
+
+## Monthly diamond reset (2026-10-26, built, not shipped: `docs/DIAMOND_RESET.md`)
+Master / Super Admin (never a lower role, even with Run payroll) clear a FINISHED month's gift diamonds, Lucky Box reward diamonds, or both from the wallets that still hold them (panel: Economy -> Diamond Reset).
+`admin_diamond_reset_preview` / `admin_reset_diamonds(month, 'gift'|'reward'|'both', typed month)` / `admin_undo_diamond_reset` (migration `20261026120000`); the amounts come from ONE function (`_diamond_reset_plan`): the
+month's credits, capped by the balance minus positive credits that arrived after the month (withdrawals use the oldest diamonds first). Each (month, kind) once; each wallet gets one negative `grant_reversal` ledger row
+(`reference_table = 'diamond_reset_runs'`), which the Salary reports do not count, so only the wallet balance changes. Hosts get the standard "reclaimed by an admin" notification. **Automatic version** (migration `20261026130000`): `diamond_reset_settings` (switch OFF by default, gifting / reward checkboxes, run day 1-28) set with
+`admin_set_diamond_reset_auto`; the pg_cron job `diamond-reset-auto` (18:35 UTC = 00:05 India time daily) calls `run_diamond_reset_auto()`, which acts only on the chosen day and resets the PREVIOUS month through the same `_diamond_reset_run_one` the
+buttons use (runs have `auto = true`, no person; no catch-up if a day is missed). Check: `scripts/staging/verify_diamond_reset.sh`.
+
 ## Translations (9 languages)
 - Every screen imports `package:flutter/material.dart' hide Text;` plus `core/i18n/text.dart`, whose `Text`
   translates its English string at build time. Hints / tooltips use `tr('...')`. English in code is the key.
