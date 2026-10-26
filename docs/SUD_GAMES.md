@@ -32,6 +32,19 @@ The page asks `sud/refresh` (proved by the launch token) for a new code when the
 | Panel | Games page: "SUD games" card (`src/pages/master/games.jsx`, `src/lib/sudGames.js`, `src/data/sudGames.js` = 59 presets from SUD's list); switches in Config > Release controls |
 | Tests | `scripts/db/tests/sud_games_test.sql`, `sud_games_rollback_test.sql`, `scripts/test_functions.sh`, `test/sud_games_test.dart`, panel `npm test`; staging: `scripts/staging/verify_sud_games.sh` |
 
+## SUD's test environment and the four callbacks (their message of 2026-10-26)
+SUD's team: "Deploying the game takes 1-2 days; we will first deploy a test environment for you to use, and in the meantime you can prepare the four server-side callbacks required for testing"
+(get_sstoken, update_sstoken, get_account, update_score). All four are live in the `sud` function on production (verified against SUD's docs field by field on 2026-10-26: request fields, response
+fields, `ret_code` 0 = success, the special codes 9000 insufficient balance / 9001 duplicate order id, HMAC-SHA1 signature verification mandatory for get_account and update_score). The addresses to give SUD
+(the console only has fields for the first two; the two coin callbacks are configured by SUD's staff, "test and production URLs are separate and Sud configures both"):
+  get_sstoken     https://<project-ref>.supabase.co/functions/v1/sud/get_sstoken
+  update_sstoken  https://<project-ref>.supabase.co/functions/v1/sud/update_sstoken
+  get_account     https://<project-ref>.supabase.co/functions/v1/sud/get_account
+  update_score    https://<project-ref>.supabase.co/functions/v1/sud/update_score
+(plus report_game_info and notify, which have console fields). Things that must be true for a coin game to work in their test: the game is ADDED in the panel (Games > SUD games) with its SUD game id and
+"Stakes wallet coins: Yes" (update_score for a game that is not in `sud_games` as a coin game is refused with ret_code 1), the 'SUD games' and 'SUD coin games' switches are on, and the player is 18+ with a date of
+birth. The secrets are read ignoring capitals (`env.ts`), so SUD_App_Key and SUD_APP_KEY are the same setting. `scripts/prod/setup_sud.sh --check` shows which secrets exist (names only).
+
 ## Why it is isolated from the Tulasi games
 SUD games live in their OWN table `sud_games`, not in `merchant_games`: an old app build reads `merchant_games` and would show a game it cannot open, and Tulasi's
 "Sync Game List" switches every row that is not Tulasi's off. Old builds never read or call anything SUD. Internal ids start at 1,000,000 (Tulasi's are in the thousands) so
@@ -50,7 +63,8 @@ A switch-off or a Hide reaches open phones at once (Realtime on `sud_games` and 
 ## What the owner has to do (nobody else can)
 1. **SUD console** (console.sud.tech): finish the enterprise verification, top up the balance if needed (billing is per game per monthly active user, about USD 0.12-0.15), and note
    the application's App ID, App Key and App Secret. **Never paste them in chat.**
-2. Set the three Supabase secrets himself, on the project he is working on (staging first):
+2. Set the Supabase secrets and deploy the function on PRODUCTION with ONE command, run by him in his own terminal: `scripts/prod/setup_sud.sh` (hidden prompts for the App Key and App Secret, asks him to type
+   `production`, sets SUD_APP_ID / _KEY / _SECRET / SUD_TEST_ENV=1, deploys `sud --no-verify-jwt`, checks that it answers; `--check` only looks). The values never go through chat or a file that stays. (Manual way, for staging first):
    `SUD_APP_ID`, `SUD_APP_KEY`, `SUD_APP_SECRET` (optional `SUD_GAME_PAGE_URL`, default `https://sabalive.in/sud/play`; `SUD_TEST_ENV` default `1` = SUD's test environment, set `0` at launch).
 3. Deploy: `supabase functions deploy sud --no-verify-jwt` (after the migration).
 4. In the SUD console, application settings: **Web bundle_id = `sabalive.in`** (the page's hostname; the SDK sends `location.hostname`), and the callback URLs

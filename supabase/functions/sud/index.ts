@@ -5,7 +5,7 @@
 //   POST .../sud/get_sstoken, update_sstoken, get_user_info, report_game_info, notify     SUD's servers (the first four are the callback URLs to save in the console)
 //   POST .../sud/get_account, get_score, update_score                                      coin games: a valid Sud-Signature is mandatory
 // Callback base URL for the console (no trailing slash needed): https://<project-ref>.supabase.co/functions/v1/sud/<route>
-// Secrets (set by the owner, never printed or committed):
+// Secrets (set by the owner, never printed or committed; a name is matched ignoring capitals, so SUD_App_Key works as SUD_APP_KEY, see env.ts):
 //   SUD_APP_ID      the application id (a long number)
 //   SUD_APP_KEY     the application key (the SDK's client key: it goes to the game page)
 //   SUD_APP_SECRET  the application secret: signs our tokens and verifies SUD's callbacks. It never leaves this server.
@@ -15,16 +15,19 @@ import { createClient } from "@supabase/supabase-js";
 import { handleCallback, routeOf } from "./protocol.ts";
 import { verifySudRequest } from "./signature.ts";
 import { buildLaunch, refreshCode } from "./launch.ts";
+import { envValue } from "./env.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const APP_ID = Deno.env.get("SUD_APP_ID") ?? "";
-const APP_KEY = Deno.env.get("SUD_APP_KEY") ?? "";
-const APP_SECRET = Deno.env.get("SUD_APP_SECRET") ?? "";
-const PAGE_URL = Deno.env.get("SUD_GAME_PAGE_URL") ?? "https://sabalive.in/sud/play";
+// matched ignoring capitals: the dashboard keeps a secret's name as typed (SUD_App_Key), which Deno would treat as another variable (see env.ts)
+const ENV = Deno.env.toObject();
+const APP_ID = envValue(ENV, "SUD_APP_ID");
+const APP_KEY = envValue(ENV, "SUD_APP_KEY");
+const APP_SECRET = envValue(ENV, "SUD_APP_SECRET");
+const PAGE_URL = envValue(ENV, "SUD_GAME_PAGE_URL") || "https://sabalive.in/sud/play";
 // SUD has a test and a production environment. Until SUD has put the application live the SDK must use the test one: SUD_TEST_ENV=1. Set it to 0 (or delete it) at launch.
-const TEST_ENV = (Deno.env.get("SUD_TEST_ENV") ?? "1") !== "0";
+const TEST_ENV = (envValue(ENV, "SUD_TEST_ENV") || "1") !== "0";
 const MAX_BODY = 256 * 1024;
 
 const cors = {
