@@ -21,6 +21,10 @@ const double kDefaultEffectSpeed = 0.75;
 /// One full-screen effect to play in a room: a gift somebody sent, or the entry
 /// effect / vehicle somebody walked in with. A 5x gift, or one gift to everyone,
 /// arrives as a single combo rather than five long animations.
+/// Does the person who SENDS a gift hear its sound on their own phone? Yes, unless their microphone is open (the host, or someone on a seat): then the speaker would play it
+/// back into the room as an echo. (Until 2026-10-28 the sender never heard it, so a viewer who sent an MP4 gift with sound heard nothing at all.)
+bool senderHearsOwnGift({required bool micOpen}) => !micOpen;
+
 class RoomEffect {
   RoomEffect._({
     required this.kind,
@@ -103,9 +107,10 @@ class RoomEffect {
   /// A sound the panel attached.
   final String? soundUrl;
 
-  /// Does THIS phone play the sound? A gift's sound is for the people it was sent to only: everybody else sees the animation silently, and so does the
-  /// sender. (A microphone near a speaker sends what the speaker plays back into the room: the sound used to be played on every phone and returned
-  /// as an echo.) Entries always play theirs; a gift whose receivers are not known (a row from an older app) plays as it always did.
+  /// Does THIS phone play the sound? A gift's sound is for the people it was sent to, and for the person who sent it unless their microphone is open
+  /// ([senderHearsOwnGift]): everybody else sees the animation silently. (A microphone near a speaker sends what the speaker plays back into the room:
+  /// the sound used to be played on every phone and returned as an echo.) Entries always play theirs; a gift whose receivers are not known (a row from
+  /// an older app) plays as it always did.
   final bool playSound;
 
   /// For a gift to everyone: how many people got it (null = not known).

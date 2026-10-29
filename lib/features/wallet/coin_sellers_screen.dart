@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/widgets/app_avatar.dart';
+import '../../core/widgets/level_star.dart';
 import '../../data/models.dart';
 import '../../data/offline_sellers_repository.dart';
 import '../../theme/app_colors.dart';
@@ -148,9 +149,15 @@ class _CoinSellersScreenState extends State<CoinSellersScreen> {
                         fontSize: 14)),
                 if (s.profile case final p?) ...[
                   const SizedBox(height: 2),
-                  Text('ID ${p.displayId} · Lv. ${p.level}',
-                      style: const TextStyle(
-                          fontSize: 11.5, color: AppColors.textSecondary)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('ID ${p.displayId} · ',
+                          style: const TextStyle(
+                              fontSize: 11.5, color: AppColors.textSecondary)),
+                      LevelStar.wealth(level: p.wealthLevel, size: 18),
+                    ],
+                  ),
                 ],
                 if (s.note != null && s.note!.isNotEmpty) ...[
                   const SizedBox(height: 2),

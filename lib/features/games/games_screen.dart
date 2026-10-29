@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/utils/formatters.dart';
 import '../../core/media/disk_cached_image.dart';
@@ -11,6 +13,7 @@ import '../../state/remote_config_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'game_launcher.dart';
+import 'games_sort.dart';
 import '../../core/i18n/text.dart';
 
 /// Are the games on for this phone? The panel's `games_enabled` switch (default off), and Android only for now (iOS waits for store review).
@@ -59,11 +62,131 @@ class _GamesScreenState extends State<GamesScreen> {
 
   bool get _on => gamesAvailable(_config, isAndroid: widget.isAndroid);
 
+  // How the cards are ordered and which kind is shown: remembered on this phone, so the tab opens the way the person left it.
+  static const _sortKey = 'games.sort.v1';
+  static const _kindKey = 'games.kind.v1';
+  GameSort _sort = GameSort.topPicks;
+  GameKind _kind = GameKind.all;
+
+  Future<void> _loadChoice() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sort = GameSort.values.asNameMap()[prefs.getString(_sortKey)];
+      final kind = GameKind.values.asNameMap()[prefs.getString(_kindKey)];
+      if (!mounted || (sort == null && kind == null)) return;
+      setState(() {
+        _sort = sort ?? _sort;
+        _kind = kind ?? _kind;
+      });
+    } catch (_) {
+      // not remembered: the tab opens with the top picks
+    }
+  }
+
+  Future<void> _remember(String key, String value) async {
+    try {
+      await (await SharedPreferences.getInstance()).setString(key, value);
+    } catch (_) {}
+  }
+
+  void _setSort(GameSort sort) {
+    setState(() => _sort = sort);
+    unawaited(_remember(_sortKey, sort.name));
+  }
+
+  void _setKind(GameKind kind) {
+    setState(() => _kind = kind);
+    unawaited(_remember(_kindKey, kind.name));
+  }
+
+  static String _sortLabel(GameSort s) => switch (s) {
+    GameSort.topPicks => 'Top picks',
+    GameSort.mostPlayed => 'Most played',
+    GameSort.newest => 'Newest first',
+    GameSort.oldest => 'Oldest first',
+    GameSort.nameAz => 'A to Z',
+  };
+
+  static String _kindLabel(GameKind k) => switch (k) {
+    GameKind.all => 'All',
+    GameKind.coin => 'Coin games',
+    GameKind.party => 'Party games',
+  };
+
+  Future<void> _openSort() async {
+    final picked = await showModalBottomSheet<GameSort>(
+      context: context,
+      backgroundColor: AppColors.bgElevated,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Sort by', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700, fontSize: 15)),
+              ),
+            ),
+            for (final s in GameSort.values)
+              ListTile(
+                key: ValueKey('games-sort-${s.name}'),
+                title: Text(_sortLabel(s)),
+                trailing: s == _sort ? Icon(Icons.check_rounded, color: AppColors.primaryBright) : null,
+                onTap: () => Navigator.pop(sheet, s),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) _setSort(picked);
+  }
+
+  /// The filter chips (only with BOTH kinds of game: a filter that cannot change anything is not offered) and the sort button.
+  Widget _controls({required bool bothKinds, required GameKind kind}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: bothKinds
+                ? SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final k in GameKind.values)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              key: ValueKey('games-kind-${k.name}'),
+                              label: Text(_kindLabel(k)),
+                              selected: kind == k,
+                              onSelected: (_) => _setKind(k),
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          TextButton.icon(
+            key: const ValueKey('games-sort'),
+            onPressed: _openSort,
+            icon: const Icon(Icons.swap_vert_rounded, size: 18),
+            label: Text(_sortLabel(_sort)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _config.addListener(_onConfig);
     if (_on) _store.start();
+    unawaited(_loadChoice());
   }
 
   @override
@@ -130,22 +253,33 @@ class _GamesScreenState extends State<GamesScreen> {
         ),
       );
     }
+    // a remembered "Coin games" filter does nothing when only one kind is left (SUD switched off, say): then everything shows
+    final bothKinds = hasBothKinds(games);
+    final kind = bothKinds ? _kind : GameKind.all;
+    final shown = arrangeGames(games, sort: _sort, kind: kind, popularity: _store.popularity);
     return RefreshIndicator(
       onRefresh: _store.refresh,
-      child: GridView.count(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.95,
-        children: [
-          for (final g in games)
-            ValueListenableBuilder<int?>(
-              valueListenable: _launcher.launching,
-              builder: (context, launching, _) =>
-                  GameCard(game: g, busy: launching == g.id, onTap: () => _launcher.play(context, g)),
+        slivers: [
+          if (games.length > 1) SliverToBoxAdapter(child: _controls(bothKinds: bothKinds, kind: kind)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+            sliver: SliverGrid.count(
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.95,
+              children: [
+                for (final g in shown)
+                  ValueListenableBuilder<int?>(
+                    valueListenable: _launcher.launching,
+                    builder: (context, launching, _) =>
+                        GameCard(game: g, busy: launching == g.id, onTap: () => _launcher.play(context, g)),
+                  ),
+              ],
             ),
+          ),
         ],
       ),
     );

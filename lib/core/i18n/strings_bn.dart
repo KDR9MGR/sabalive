@@ -834,4 +834,12 @@ const Map<String, String> bnStrings = {
   'Luxury': 'লাক্সারি',
   'Vehicle': 'যানবাহন',
   'Special': 'বিশেষ',
+  'Sort by': 'এভাবে সাজান',
+  'Top picks': 'টপ পিকস',
+  'Most played': 'সবচেয়ে বেশি খেলা',
+  'Newest first': 'নতুন আগে',
+  'Oldest first': 'পুরনো আগে',
+  'A to Z': 'A থেকে Z',
+  'Coin games': 'কয়েন গেম',
+  'Party games': 'পার্টি গেম',
 };

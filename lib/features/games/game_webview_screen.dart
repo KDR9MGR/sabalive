@@ -42,6 +42,8 @@ class _GameWebViewScreenState extends State<GameWebViewScreen> {
   bool _loading = true;
   bool _failed = false;
   late double _aspect = widget.initialAspect ?? gameAspectGuess(widget.sizeKey);
+  // a game that never says how big it is gets the biggest panel, so none of it is cut off (see [shouldFillPanel])
+  bool _fill = false;
   Timer? _measure;
 
   @override
@@ -94,6 +96,7 @@ class _GameWebViewScreenState extends State<GameWebViewScreen> {
     _measure?.cancel();
     final started = DateTime.now();
     var settled = false;
+    var gotAny = false; // any readable answer at all (the engine's own starting size counts: that is a game that talks, it is just not believed yet)
     _measure = Timer.periodic(const Duration(milliseconds: 500), (t) async {
       if (!mounted) {
         t.cancel();
@@ -102,12 +105,22 @@ class _GameWebViewScreenState extends State<GameWebViewScreen> {
       if (settled && t.tick % 6 != 0) return;
       try {
         final aspect = parseDesignAspect(await _controller.runJavaScriptReturningResult(kDesignSizeScript));
-        if (aspect == null || !mounted || !acceptAspectReading(aspect, DateTime.now().difference(started))) return;
+        if (aspect != null) gotAny = true;
+        if (aspect == null || !mounted || !acceptAspectReading(aspect, DateTime.now().difference(started))) {
+          if (mounted && !_fill && shouldFillPanel(hasReading: gotAny, sincePageLoaded: DateTime.now().difference(started))) setState(() => _fill = true);
+          return;
+        }
         settled = true;
         rememberGameAspect(widget.sizeKey, aspect);
-        if ((aspect - _aspect).abs() > 0.01) setState(() => _aspect = aspect);
+        if (_fill || (aspect - _aspect).abs() > 0.01) {
+          setState(() {
+            _fill = false; // it has said how big it is: follow it
+            _aspect = aspect;
+          });
+        }
       } catch (_) {
         // the page is not ready for scripts yet: ask again
+        if (mounted && !_fill && shouldFillPanel(hasReading: gotAny, sincePageLoaded: DateTime.now().difference(started))) setState(() => _fill = true);
       }
     });
   }
@@ -134,7 +147,7 @@ class _GameWebViewScreenState extends State<GameWebViewScreen> {
   Widget build(BuildContext context) {
     return GamePanelFrame(
       title: widget.title,
-      aspect: _aspect,
+      aspect: _fill ? gameFillAspect(MediaQuery.of(context)) : _aspect,
       onClose: () => _close(GameExit.closed),
       child: Stack(
         children: [

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +12,8 @@ import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'game_panel.dart';
 import 'game_webview_screen.dart';
+import 'sud_game_screen.dart';
+import 'sud_launch.dart';
 import '../../core/i18n/text.dart';
 
 /// Opens a game: gets the session's token and shows the game. Returns why the game closed. Replaced in tests.
@@ -19,7 +23,13 @@ typedef OpenGame = Future<GameExit?> Function(BuildContext context, MerchantGame
 /// (dimmed), stays visible above it. `Navigator.of(context)` is the live room's own navigator while a live is on screen, so the live
 /// keeps running behind; a plain full-screen route here would replace it.
 Future<GameExit?> openGameInWebView(BuildContext context, MerchantGame game, GameSession session) {
-  final sud = session.url != null; // a SUD game opens the page our server addressed, at the proportions SUD gave it; a Tulasi game builds its URL here
+  final sud = session.url != null; // a SUD game is described by the address our server gave, at the proportions SUD gave it; a Tulasi game builds its URL here
+  if (sud) {
+    // SUD's NATIVE SDK (their plugin) plays it in the panel: their web SDK is refused for our app (error 10005) and SUD says the games are for Android and iOS
+    final launch = SudLaunch.fromUrl(session.url!);
+    if (launch == null) throw Exception('This game is not available right now');
+    return showGamePanel<GameExit>(context, page: SudGameScreen(launch: launch, title: game.name, aspect: kSudGameAspect));
+  }
   return showGamePanel<GameExit>(
     context,
     page: GameWebViewScreen(
@@ -95,6 +105,8 @@ class GameLauncher {
         roomId: game.isSud ? currentLiveRoomId(context) : null,
         lang: Localizations.maybeLocaleOf(context)?.languageCode ?? 'en',
       );
+      // the launch went through: count it (for "Most played"); it never delays or fails the game
+      unawaited(_repo.recordPlay(game));
       if (!context.mounted) return;
       final why = await openGame(context, game, session);
       if (why == GameExit.recharge) {

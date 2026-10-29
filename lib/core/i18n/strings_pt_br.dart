@@ -834,4 +834,12 @@ const Map<String, String> ptBrStrings = {
   'Luxury': 'Luxo',
   'Vehicle': 'Veículo',
   'Special': 'Especial',
+  'Sort by': 'Ordenar por',
+  'Top picks': 'Destaques',
+  'Most played': 'Mais jogados',
+  'Newest first': 'Mais novos primeiro',
+  'Oldest first': 'Mais antigos primeiro',
+  'A to Z': 'De A a Z',
+  'Coin games': 'Jogos com moedas',
+  'Party games': 'Jogos de festa',
 };

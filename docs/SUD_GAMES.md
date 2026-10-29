@@ -1,33 +1,36 @@
 # SUD games (a second game provider, next to Tulasi)
 
-Status (2026-10-26): built and unit-tested; the database part is applied to STAGING and passes `scripts/staging/verify_sud_games.sh`. Nothing of this is on production,
-nothing is committed or pushed, and the `sud` Edge Function is NOT deployed anywhere yet (it needs the owner's SUD secrets). Both switches are OFF by default.
-Android only (the game panel is the Android WebView); iOS keeps "coming soon" like the Tulasi games.
+Status (2026-10-28): the games run in SUD's **NATIVE Android / iOS SDK** (their Flutter plugin `sud_gip_plugin`), inside the same game panel as every other game. The first version used SUD's WEB SDK in a page of
+ours; SUD's test environment answered it with **error 10005 ("Invalid app platform information") for every game** (Ludo too, with either bundle id) and SUD's team then said the games are for Android and iOS, not the web.
+The native route is built and unit-tested (fake SDK); it has NOT yet been run against SUD's servers with a real game (needs a phone and the owner's keys): the owner's first test decides. The database part and the `sud` Edge Function
+(deployed on production by the owner) are unchanged: the callbacks are platform independent. Switches `sud_games_enabled` / `sud_coin_games_enabled` are the panel's; Android only for now (iOS hides the Games entries).
 
 ## What it is
 SUD ("GI Cloud", console.sud.tech) hosts multiplayer party games (Ludo, Domino, UNO-style cards, Carrom, Okey, ...) and a few games that stake coins
-(Teen Patti, Texas Hold'em, ...). Unlike Tulasi (a game URL we open), SUD gives a **web SDK** (`sudmgp-sdk-js`) that must run inside a page of OURS; the games are drawn
-into it. Players in the same live room play at the same table (room id = the live's id; outside a live the table is private to the person).
+(Teen Patti, Texas Hold'em, ...). Unlike Tulasi (a game URL we open), SUD gives an **SDK**: a native view that draws the game inside our app (their plugin wraps the Android / iOS SDK).
+Players in the same live room play at the same table (room id = the live's id; outside a live the table is private to the person).
 
 ```
 app (Android)  --POST sud/launch (user JWT)-->  Edge Function `sud`  --sud_launch_check-->  database (switches, age, ghost, hidden/off)
-      |                                               | mints a one-time login CODE (HS256) + a longer LAUNCH token
-      | opens the address it gets in the game panel   v
-      +--> https://sabalive.in/sud/play?appId=..&gameId=..&roomId=..&userId=..&code=..&t=..&api=..  (landing site, SDK runs here)
-                      |  SudMGP.initSDK / loadMG(userId, roomId, code, gameId, lang, ...)
-                      v
-                SUD's servers --signed callbacks--> Edge Function `sud`:
-                    get_sstoken, update_sstoken, get_user_info, report_game_info, notify          (every game)
-                    get_account, get_score, update_score                                          (coin games only)
+      |                                               | mints a one-time login CODE (HS256) + a longer LAUNCH token, answers with an address
+      |  (the address only CARRIES the values: appId, appKey, gameId, roomId, userId, code, t, api, test, lang)
+      v
+SudGameScreen (lib/features/games/sud_game_screen.dart) in the game panel: native view -> SudGipPlugin.initSDKWithEnv -> loadGame(userId, roomId, code, gameId, language, view info, config)
+      |  code expired -> POST <api>/refresh {t}  (the launch token proves it)     "back to lobby" state -> closes the panel
+      v
+SUD's servers --signed callbacks--> Edge Function `sud`:
+    get_sstoken, update_sstoken, get_user_info, report_game_info, notify          (every game)
+    get_account, get_score, update_score                                          (coin games only)
 ```
-The page asks `sud/refresh` (proved by the launch token) for a new code when the SDK reports `onExpireCode`.
+The old web page (`/sud/play` on the landing site) is no longer used by the app; it stays deployed (harmless) and can be removed later.
 
 ## Where things are
 | Part | Files |
 |---|---|
 | Database (additive, one migration) | `supabase/migrations/20261026110000_sud_games.sql`, rollback `supabase/rollbacks/20261026110000_down.sql` |
 | Edge Function (deploy `--no-verify-jwt`; it checks everything itself) | `supabase/functions/sud/` (`auth.ts` tokens, `signature.ts` HMAC-SHA1 check, `protocol.ts` callbacks, `launch.ts`, `index.ts`) + `*.test.ts` |
-| Hosted game page | `sabaliveadmin/landing/src/pages/SudPlay.jsx` (+ `lib/sudGame.js`, `lib/sudParams.js`), route `/sud/play`, outside the site layout |
+| Native game screen (what the app uses) | `lib/features/games/sud_game_screen.dart` (panel + loading / failure / renew code / pause), `sud_bridge.dart` (the plugin behind a small interface, so tests use a fake), `sud_launch.dart` (reads the launch address, view info, config, failure text); Android: `android/gradle.properties` (`sudGipArtifact`), `android/app/proguard-rules.pro`; tests `test/sud_native_game_test.dart` |
+| Old hosted game page (NOT used any more) | `sabaliveadmin/landing/src/pages/SudPlay.jsx` (+ `lib/sudGame.js`, `lib/sudParams.js`), route `/sud/play`, outside the site layout |
 | App | `lib/data/games_repository.dart` (`GameProvider`, `sud_games` read, `sud/launch`), `lib/features/games/*`, `lib/state/games_store.dart` |
 | Panel | Games page: "SUD games" card (`src/pages/master/games.jsx`, `src/lib/sudGames.js`, `src/data/sudGames.js` = 59 presets from SUD's list); switches in Config > Release controls |
 | Tests | `scripts/db/tests/sud_games_test.sql`, `sud_games_rollback_test.sql`, `scripts/test_functions.sh`, `test/sud_games_test.dart`, panel `npm test`; staging: `scripts/staging/verify_sud_games.sh` |
@@ -65,9 +68,9 @@ A switch-off or a Hide reaches open phones at once (Realtime on `sud_games` and 
    the application's App ID, App Key and App Secret. **Never paste them in chat.**
 2. Set the Supabase secrets and deploy the function on PRODUCTION with ONE command, run by him in his own terminal: `scripts/prod/setup_sud.sh` (hidden prompts for the App Key and App Secret, asks him to type
    `production`, sets SUD_APP_ID / _KEY / _SECRET / SUD_TEST_ENV=1, deploys `sud --no-verify-jwt`, checks that it answers; `--check` only looks). The values never go through chat or a file that stays. (Manual way, for staging first):
-   `SUD_APP_ID`, `SUD_APP_KEY`, `SUD_APP_SECRET` (optional `SUD_GAME_PAGE_URL`, default `https://sabalive.in/sud/play`; `SUD_TEST_ENV` default `1` = SUD's test environment, set `0` at launch).
+   `SUD_APP_ID`, `SUD_APP_KEY`, `SUD_APP_SECRET` (optional `SUD_GAME_PAGE_URL`, default `https://www.sabalive.in/sud/play`; `SUD_TEST_ENV` default `1` = SUD's test environment, set `0` at launch).
 3. Deploy: `supabase functions deploy sud --no-verify-jwt` (after the migration).
-4. In the SUD console, application settings: **Web bundle_id = `sabalive.in`** (the page's hostname; the SDK sends `location.hostname`), and the callback URLs
+4. In the SUD console, application settings: **Web bundle_id = `www.sabalive.in`** (the page's hostname; the SDK sends `location.hostname`, and `sabalive.in` redirects to `www.sabalive.in`, so the page runs on www; a mismatch is SUD error 10005; it was `sabalive.in` until 2026-10-28), and the callback URLs
    `https://<project-ref>.supabase.co/functions/v1/sud/<route>` for `get_sstoken`, `update_sstoken`, `get_user_info`, `report_game_info` and `notify`, plus `get_account`, `get_score`
    and `update_score` for coin games. SUD has a TEST and a PRODUCTION environment with separate configuration; SUD staff set the URLs per environment, so ask them to
    enable both and to enable the optional callbacks.
@@ -75,11 +78,16 @@ A switch-off or a Hide reaches open phones at once (Realtime on `sud_games` and 
 6. Panel: Games > SUD games > Add game; then switch `sud_games_enabled` on (test accounts first; the staging project is the place).
 
 ## Known unknowns / things to watch
-- Not yet run against SUD's real servers: everything above is built from SUD's documentation and unit-tested with signed simulated callbacks; the first real test needs the
-  owner's secrets and the console set-up. The staging DB part is proven; the staging Edge Function has NOT been deployed.
+- **10005 on the web SDK (2026-10-28) is why the games moved to the native SDK.** `initSDK` -> `POST https://sg-sim-mg-sdk.s00.tech/v1/sdk/get_token` (SUD's TEST environment) answered "Invalid app platform information" for Teen Patti Pro, Pirate Fishing, Fruit Party and Ludo alike,
+  with `sabalive.in` and `www.sabalive.in` as bundle id, while the console listed both; SUD's team then said the games work on Android and iOS, not on the web. (Earlier fixes that were real but not the cause: the WebView refused the apex -> www redirect, the
+  console's Web bundle_id lacked `www.sabalive.in`, the page sent `www.`.) The app is registered for the native route already (console: Android and iOS `com.sabalive.in`).
+- **Which SDK edition:** SUD has a Standard SDK (`tech.sud.gip:SudGIP`, small) and a Pro SDK (`SudGIP-pro`, all games). The Ludo / Teen Patti / Texas Hold'em / Domino / UMO / Carrom / Okey / Liar's Dice rows of SUD's table are "Standard or Pro". We ship the Standard, STATIC build
+  (`SudGIP-static`, about 20 MB for the ABIs we ship): the plain artifact downloads native libraries at run time, which Google Play does not allow. **Pirate Fishing and Fruit Party are not in SUD's public table**: ask SUD which edition they need. `SudGIP-pro-static` is about 130 MB for four ABIs (the Play bundle would grow to roughly 300 MB in total; Play's own size table allows 500 MB and counts the download for ONE phone, so it is likely fine, and x86 can be dropped with `flutter build appbundle --target-platform android-arm,android-arm64` if needed); the Pro SDK also needs the second platform-view kind, which `PluginSudBridge` already uses.
+- **iOS**: the plugin is in the iOS build too (CocoaPods `SudGIP`), but the Games entries are hidden on iOS for App Store review; the iOS Info.plist / SUD console iOS entry are untested.
+- Not yet run against SUD's servers with a real game through the native SDK (callbacks are unit-tested with signed simulated requests; the first real test needs a phone). The staging DB part is proven.
 - "Pro" TeenPatti / Texas Hold'em need the entry-with-score API (a second phase); the plain coin games use `update_score` as built.
 - Some games (e.g. Carrom) are not on the web SDK yet: they are in the preset list only if SUD lists them for the web.
-- The game panel draws at the height / width SUD gives (`sud_games.aspect`, from SUD's minimum-size table) at full width, with no header; the round close button floats at the top
+- The game panel is 1080 x 1669 px (`kSudGameAspect` = 1669 / 1080 = 1.545) for every SUD game: the owner's choice on 2026-10-28 from a screenshot of a game on their phone (the game fills it edge to edge); SUD's per-game minimum sizes and the panel's per-game proportions are no longer used by the native screen. The round close button sits in a row above the panel, outside the game.
   right and may sit over a game's own top-right control: tune on a phone.
 - Per-game cost: every game added raises the monthly bill by its price x monthly active users; add only what is wanted.
 - The database has 60 connections: the callbacks are short, one RPC each; do not add polling.

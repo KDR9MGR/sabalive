@@ -1111,7 +1111,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       // a gift to either host of a battle counts for that host's side (the other host is a recipient in the sheet)
       final side = await sendPkGift(context, pk, gift, giftChoice.quantity, to: pkSide);
       if (side != null && mounted) {
-        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity, playSound: false));
+        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity, playSound: senderHearsOwnGift(micOpen: _mySeat != null)));
       }
       return;
     }
@@ -1164,7 +1164,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         count: giftChoice.quantity,
         toAll: giftChoice.sendToAll,
         recipientCount: giftChoice.sendToAll ? (toAllCount ?? recipients.length) : null,
-        playSound: false, // the sender sees their own gift silently: its sound is for the receivers
+        playSound: senderHearsOwnGift(micOpen: _mySeat != null), // the sender hears their own gift unless a microphone is open (a seat)
       ),
     );
     if (!_isReal) {

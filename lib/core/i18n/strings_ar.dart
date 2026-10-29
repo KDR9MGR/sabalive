@@ -834,4 +834,12 @@ const Map<String, String> arStrings = {
   'Luxury': 'فاخر',
   'Vehicle': 'مركبة',
   'Special': 'خاص',
+  'Sort by': 'ترتيب حسب',
+  'Top picks': 'الأفضل',
+  'Most played': 'الأكثر لعبًا',
+  'Newest first': 'الأحدث أولًا',
+  'Oldest first': 'الأقدم أولًا',
+  'A to Z': 'من A إلى Z',
+  'Coin games': 'ألعاب العملات',
+  'Party games': 'ألعاب جماعية',
 };

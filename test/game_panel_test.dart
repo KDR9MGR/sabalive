@@ -9,19 +9,43 @@ import 'package:sabalive/features/games/game_webview_screen.dart';
 
 void main() {
   group('what the page reports about its size', () {
-    test('a width-scaled game gives height / width, quotes or not (Android wraps a string result in quotes)', () {
+    test('a game gives height / width, quotes or not (Android wraps a string result in quotes)', () {
       expect(parseDesignAspect('750x1200xFixedWidth'), closeTo(1.6, 0.0001));
       expect(parseDesignAspect('"750x750xFixedWidth"'), closeTo(1.0, 0.0001));
       expect(parseDesignAspect('"750x1050xFixedWidth"'), closeTo(1.4, 0.0001));
     });
 
-    test('nothing yet, nonsense, or a game that is not scaled by width gives no answer (the first guess stays)', () {
+    test('whatever scaling rule a game uses, its design shape is the panel that shows all of it (a game that scales another way used to keep a guess and was cut off)', () {
+      expect(parseDesignAspect('750x1200xShowAll'), closeTo(1.6, 0.0001));
+      expect(parseDesignAspect('1334x750xFixedHeight'), closeTo(0.5622, 0.0001), reason: 'a landscape-designed game gets a wide, short panel: nothing cropped at the sides');
+      expect(parseDesignAspect('750x1624xNoBorder'), closeTo(2.165, 0.001), reason: 'taller than the old 1.78 guess');
+      expect(parseDesignAspect('750x1200xExactFit'), closeTo(1.6, 0.0001));
+      expect(parseDesignAspect('750x1200x'), closeTo(1.6, 0.0001), reason: 'the rule could not be read, the size could');
+    });
+
+    test('the run-time size is not always the truth: the taller of it and the game\'s own settings wins (Monkey Pro says 750 x 750 while running, its settings say 750 x 902)', () {
+      expect(parseDesignAspect('750x750xFixedWidth|750x902'), closeTo(902 / 750, 0.0001));
+      expect(parseDesignAspect('"750x750xFixedWidth|750x902"'), closeTo(902 / 750, 0.0001), reason: 'Android wraps the answer in quotes');
+      expect(parseDesignAspect('750x1200xFixedWidth|750x1200'), closeTo(1.6, 0.0001), reason: 'the same twice: nothing changes');
+      expect(parseDesignAspect('750x1200xFixedWidth|750x900'), closeTo(1.6, 0.0001), reason: 'a smaller settings value never shrinks a bigger run-time one');
+    });
+
+    test('the engine template\'s 750 x 1334 in a game\'s settings means nobody chose a size, so it is ignored (a square game stays square)', () {
+      expect(parseDesignAspect('750x750xFixedWidth|750x1334'), closeTo(1.0, 0.0001));
+      expect(parseDesignAspect('750x1050xFixedWidth|750x1334'), closeTo(1.4, 0.0001));
+    });
+
+    test('a settings value that cannot be read changes nothing', () {
+      expect(parseDesignAspect('750x750xFixedWidth|'), closeTo(1.0, 0.0001));
+      expect(parseDesignAspect('750x750xFixedWidth|0x0'), closeTo(1.0, 0.0001));
+      expect(parseDesignAspect('750x750x|750x902'), closeTo(902 / 750, 0.0001), reason: 'the rule could not be read, the sizes could');
+    });
+
+    test('nothing yet or nonsense gives no answer (the first guess stays)', () {
       expect(parseDesignAspect(null), isNull);
       expect(parseDesignAspect(''), isNull);
       expect(parseDesignAspect('""'), isNull);
       expect(parseDesignAspect('0x0xFixedWidth'), isNull);
-      expect(parseDesignAspect('750x1200xShowAll'), isNull);
-      expect(parseDesignAspect('750x1200x'), isNull);
       expect(parseDesignAspect('undefined'), isNull);
     });
 
@@ -37,7 +61,29 @@ void main() {
     test('the script asks the engine for the design size and the policy, and never throws', () {
       expect(kDesignSizeScript, contains('getDesignResolutionSize'));
       expect(kDesignSizeScript, contains('_contentStrategy.name'));
+      expect(kDesignSizeScript, contains("querySettings('screen','designResolution')"), reason: 'the game\'s own settings are read too');
       expect('try'.allMatches(kDesignSizeScript).length, greaterThanOrEqualTo(2));
+    });
+  });
+
+  group('a game that never says how big it is', () {
+    test('gets the biggest panel the screen allows, at the full width, so none of it can be cut off', () {
+      const mq = MediaQueryData(size: Size(400, 800), viewPadding: EdgeInsets.only(top: 24, bottom: 16));
+      final aspect = gameFillAspect(mq);
+      expect(aspect, closeTo((800 - 24 - kGameCloseRow - 16) / 400, 1e-9));
+      final height = gamePanelHeight(screen: mq.size, bottomInset: 16, topInset: 24, aspect: aspect);
+      expect(height, closeTo(800 - 24 - kGameCloseRow, 0.001), reason: 'everything below the status bar and the close button row');
+      expect(gamePanelGameWidth(screenWidth: 400, panelHeight: height, bottomInset: 16, aspect: aspect), closeTo(400, 0.001), reason: 'never narrowed');
+    });
+
+    test('only after it has been silent for a while, and never when it is talking', () {
+      expect(shouldFillPanel(hasReading: false, sincePageLoaded: const Duration(seconds: 3)), isFalse, reason: 'the engine takes a few seconds to start');
+      expect(shouldFillPanel(hasReading: false, sincePageLoaded: kSizeReadingPatience), isTrue);
+      expect(shouldFillPanel(hasReading: true, sincePageLoaded: const Duration(minutes: 5)), isFalse);
+    });
+
+    test('a nonsense screen never gives nonsense', () {
+      expect(gameFillAspect(const MediaQueryData(size: Size(0, 0))), kUnknownGameAspect);
     });
   });
 
@@ -47,6 +93,8 @@ void main() {
       expect(gameAspectGuess('roulette'), 1.6);
       expect(gameAspectGuess('greedy'), 1.6);
       expect(gameAspectGuess('fruitMachine'), 1.4);
+      expect(gameAspectGuess('greedyMonkey'), closeTo(1.2027, 0.0001), reason: 'Monkey Pro opens at its real size at once');
+      expect(gameAspectGuess('greedyBaby'), 1.6);
       expect(gameAspectGuess('somethingNew'), kUnknownGameAspect);
       expect(gameAspectGuess(null), kUnknownGameAspect);
       expect(kUnknownGameAspect, kEngineDefaultAspect); // unknown = as tall as the engine's template, never cut off

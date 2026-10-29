@@ -84,6 +84,19 @@ void main() {
     test('a game on a custom domain may navigate on that domain', () {
       expect(decideGameNavigation('https://games.example.com/g1/x', gameHost: 'games.example.com'), GameNavigation.allow);
     });
+
+    test('a site and its www twin are one place: our own site redirects sabalive.in to www.sabalive.in, and a refused redirect left the game panel black', () {
+      const launch = 'https://sabalive.in/sud/play?gameId=1';
+      expect(decideGameNavigation(launch, gameHost: 'sabalive.in'), GameNavigation.allow);
+      expect(decideGameNavigation('https://www.sabalive.in/sud/play?gameId=1', gameHost: 'sabalive.in'), GameNavigation.allow);
+      expect(decideGameNavigation(launch, gameHost: 'www.sabalive.in'), GameNavigation.allow, reason: 'and the other way round');
+    });
+
+    test('only the www twin is added: other subdomains and look-alikes are still blocked', () {
+      for (final bad in ['https://admin.sabalive.in/', 'https://wwww.sabalive.in/', 'https://www.sabalive.in.evil.com/', 'https://notsabalive.in/', 'http://www.sabalive.in/']) {
+        expect(decideGameNavigation(bad, gameHost: 'sabalive.in'), GameNavigation.block, reason: bad);
+      }
+    });
   });
 
   group('the Games tab', () {

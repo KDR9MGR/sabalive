@@ -26,6 +26,7 @@ class MerchantGame {
     this.provider = GameProvider.tulasi,
     this.aspect,
     this.usesCoins = false,
+    this.addedAt,
   });
 
   factory MerchantGame.fromRow(Map<String, dynamic> row) => MerchantGame(
@@ -35,6 +36,7 @@ class MerchantGame {
         imageUrl: _clean(row['image_url']),
         description: _clean(row['description']),
         gameDomain: _clean(row['game_domain']),
+        addedAt: _date(row['added_at']),
       );
 
   /// A row of `sud_games`. Its id starts at 1,000,000 so it never meets a Tulasi id in the one merged list; the game's own id stays in the path-like
@@ -48,7 +50,10 @@ class MerchantGame {
         provider: GameProvider.sud,
         aspect: (row['aspect'] as num?)?.toDouble(),
         usesCoins: row['uses_coins'] == true,
+        addedAt: _date(row['added_at']),
       );
+
+  static DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v) : null;
 
   static String? _clean(Object? v) {
     final s = v is String ? v.trim() : null;
@@ -74,10 +79,23 @@ class MerchantGame {
   /// Whether players stake wallet coins in it (a SUD coin game; every Tulasi game does).
   final bool usesCoins;
 
+  /// When we first stored the game (the database's `added_at`), for "Newest / Oldest". Null on a server that does not have the column yet.
+  final DateTime? addedAt;
+
+  /// A game you stake coins in: every Tulasi game, and a SUD game marked as a coin game. The others are party games.
+  bool get stakesCoins => !isSud || usesCoins;
+
   bool get isSud => provider == GameProvider.sud;
 
   /// Can it be opened at all (it needs a path)?
   bool get launchable => identification != null;
+}
+
+/// How much a game was opened in the last 14 days: times, and by how many different people (`game_popularity`, rebuilt every 15 minutes).
+class GamePopularity {
+  const GamePopularity({required this.plays, required this.players});
+  final int plays;
+  final int players;
 }
 
 /// A launch: for a Tulasi game the one-time token the platform will present back to us and our permanent numeric player id; for a SUD game the ready address
@@ -151,9 +169,12 @@ GameNavigation decideGameNavigation(String url, {required String gameHost}) {
   if (u.scheme == 'about' || u.scheme == 'blob' || u.scheme == 'data') return GameNavigation.allow;
   if (u.scheme != 'https') return GameNavigation.block;
   final h = u.host.toLowerCase();
-  if (h == gameHost.toLowerCase() || h == 'tulasigame.com' || h.endsWith('.tulasigame.com')) return GameNavigation.allow;
+  if (_withoutWww(h) == _withoutWww(gameHost.toLowerCase()) || h == 'tulasigame.com' || h.endsWith('.tulasigame.com')) return GameNavigation.allow;
   return GameNavigation.block;
 }
+
+/// A site and its `www.` twin are one place: our own site redirects `sabalive.in` to `www.sabalive.in`, and refusing that redirect left a SUD game's panel black (2026-10-28).
+String _withoutWww(String host) => host.startsWith('www.') ? host.substring(4) : host;
 
 class GamesRepository {
   GamesRepository({@visibleForTesting Future<dynamic> Function(String function, Map<String, dynamic> body)? invoke})
@@ -173,6 +194,30 @@ class GamesRepository {
         if ((r['name'] as String?)?.trim().isNotEmpty == true) MerchantGame.fromRow(r),
       ...await _sudGames(),
     ];
+  }
+
+  /// What the games were opened how often in the last 14 days, by the game's id. Never fails the list: a server without the table (an older
+  /// database), or a read that fails, simply has no counts, and "Most played" then keeps the panel's order.
+  Future<Map<int, GamePopularity>> popularity() async {
+    try {
+      final rows = await supabase.from('game_popularity').select();
+      return {
+        for (final r in rows)
+          if (r['game_id'] is num)
+            (r['game_id'] as num).toInt(): GamePopularity(plays: (r['plays'] as num?)?.toInt() ?? 0, players: (r['players'] as num?)?.toInt() ?? 0),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Tells the server that this person opened [game] (it counts once a minute per person and game). Never fails the launch.
+  Future<void> recordPlay(MerchantGame game) async {
+    try {
+      await supabase.rpc('record_game_play', params: {'p_game_id': game.id});
+    } catch (_) {
+      // an older server has no such function: nothing is counted, nothing is shown
+    }
   }
 
   /// SUD's games. Never fails the list: a server without the table (or a read that fails) simply has no SUD games, and Tulasi's still show.

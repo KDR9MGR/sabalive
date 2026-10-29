@@ -11,7 +11,7 @@
 #
 # It refuses to run unless the link folder is really production, asks you to type `production` before it changes anything, and afterwards checks that the function answers.
 # It sets SUD_TEST_ENV=1: the SUD web SDK talks to SUD's TEST environment until SUD has put the application live (then set SUD_TEST_ENV=0 the same way).
-# What this does NOT do: the SUD console settings (Web bundle_id sabalive.in and the callback URLs), the panel's games, or the switches: see docs/SUD_GAMES.md.
+# What this does NOT do: the SUD console settings (Web bundle_id www.sabalive.in and the callback URLs), the panel's games, or the switches: see docs/SUD_GAMES.md.
 set -euo pipefail
 cd "$(dirname "$0")/../.."    # sabalive/
 . scripts/lib/supabase_login.sh   # the sabalive account token from ~/sabalive-secrets/supabase.env, so a wrong stored login cannot redirect this
@@ -84,7 +84,7 @@ OUT=$(curl -s -m 20 -o /tmp/sud_check.$$ -w '%{http_code}' -X POST "$BASE/get_ss
 BODY=$(cat /tmp/sud_check.$$ 2>/dev/null || true); rm -f /tmp/sud_check.$$
 if [ "$OUT" = "200" ] && printf '%s' "$BODY" | grep -q '"ret_code"'; then
   say "CHECK OK: the sud function is live and configured (HTTP 200, answers in SUD's format)."
-  say "Next: SUD console > your application > Edit: set the Web bundle_id to  sabalive.in  and the four callback URLs above, then Submit."
+  say "Next: SUD console > your application > Edit: set the Web bundle_id to  www.sabalive.in  and the four callback URLs above, then Submit."
 else
   say "CHECK FAILED: HTTP $OUT. The function may still be starting: run  $0 --check  in a minute, or look at the function's logs in the Supabase dashboard."
   exit 1

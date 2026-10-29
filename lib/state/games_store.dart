@@ -38,6 +38,8 @@ class GamesStore extends ChangeNotifier with WidgetsBindingObserver {
   late final CoalescedRunner _runner;
 
   List<MerchantGame>? _games;
+  Map<int, GamePopularity> _popularity = const {};
+  DateTime? _popularityAt;
   String? _error;
   bool _started = false;
   bool _loading = false;
@@ -51,6 +53,9 @@ class GamesStore extends ChangeNotifier with WidgetsBindingObserver {
   }
   String? get error => _error;
   bool get started => _started;
+
+  /// How often each game was opened in the last 14 days, by game id (empty until loaded, and on a server without it).
+  Map<int, GamePopularity> get popularity => _popularity;
 
   /// Begins listening and loads the list. Safe to call again.
   void start() {
@@ -82,6 +87,23 @@ class GamesStore extends ChangeNotifier with WidgetsBindingObserver {
       _loading = false;
     }
     notifyListeners();
+    if (_games != null) unawaited(_loadPopularity());
+  }
+
+  /// The play counts change slowly (the server rebuilds them every 15 minutes): read them with the first list and then at most every 5 minutes,
+  /// however often the list itself reloads.
+  Future<void> _loadPopularity() async {
+    final at = _popularityAt;
+    if (at != null && DateTime.now().difference(at) < const Duration(minutes: 5)) return;
+    _popularityAt = DateTime.now();
+    try {
+      final p = await _repo.popularity();
+      if (!_started && _games == null) return;
+      _popularity = p;
+      notifyListeners();
+    } catch (_) {
+      // counts are a bonus: the order falls back to the panel's
+    }
   }
 
   void stop() {

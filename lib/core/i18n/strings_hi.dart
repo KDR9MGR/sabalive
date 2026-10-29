@@ -834,4 +834,12 @@ const Map<String, String> hiStrings = {
   'Luxury': 'लक्ज़री',
   'Vehicle': 'वाहन',
   'Special': 'विशेष',
+  'Sort by': 'इसके अनुसार क्रमबद्ध करें',
+  'Top picks': 'टॉप पिक्स',
+  'Most played': 'सबसे ज़्यादा खेले गए',
+  'Newest first': 'सबसे नए पहले',
+  'Oldest first': 'सबसे पुराने पहले',
+  'A to Z': 'A से Z',
+  'Coin games': 'कॉइन गेम',
+  'Party games': 'पार्टी गेम',
 };

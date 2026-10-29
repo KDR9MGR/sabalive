@@ -834,4 +834,12 @@ const Map<String, String> filStrings = {
   'Luxury': 'Luxury',
   'Vehicle': 'Sasakyan',
   'Special': 'Espesyal',
+  'Sort by': 'Pagbukud-bukurin ayon sa',
+  'Top picks': 'Top picks',
+  'Most played': 'Pinakamaraming nalaro',
+  'Newest first': 'Pinakabago muna',
+  'Oldest first': 'Pinakaluma muna',
+  'A to Z': 'A hanggang Z',
+  'Coin games': 'Mga coin game',
+  'Party games': 'Mga party game',
 };

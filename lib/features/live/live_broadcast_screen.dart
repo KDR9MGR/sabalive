@@ -1414,7 +1414,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
             senderName: 'You',
             senderId: supabase.auth.currentUser?.id,
             count: choice.quantity,
-            playSound: false,
+            playSound: senderHearsOwnGift(micOpen: true), // the host's microphone is open
           ),
         );
       }
@@ -1455,7 +1455,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         toAll: true,
         count: quantity,
         recipientCount: people > 0 ? people : null,
-        playSound: false, // the sender sees their own gift silently: its sound is for the receivers
+        playSound: senderHearsOwnGift(micOpen: true), // the host's microphone is open: silent here, the receivers hear it
       ),
     );
   }
@@ -1488,7 +1488,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           gift: gift,
           senderName: 'You',
           senderId: supabase.auth.currentUser?.id,
-          playSound: false, // the sender sees their own gift silently: its sound is for the receivers
+          playSound: senderHearsOwnGift(micOpen: true), // the host's microphone is open: silent here, the receivers hear it
           count: sent,
         ),
       );

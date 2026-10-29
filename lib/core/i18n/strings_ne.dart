@@ -834,4 +834,12 @@ const Map<String, String> neStrings = {
   'Luxury': 'लक्जरी',
   'Vehicle': 'सवारी',
   'Special': 'विशेष',
+  'Sort by': 'यसअनुसार क्रमबद्ध गर्नुहोस्',
+  'Top picks': 'टप पिक्स',
+  'Most played': 'सबैभन्दा धेरै खेलिएको',
+  'Newest first': 'सबैभन्दा नयाँ पहिले',
+  'Oldest first': 'सबैभन्दा पुरानो पहिले',
+  'A to Z': 'A देखि Z',
+  'Coin games': 'कोइन गेम',
+  'Party games': 'पार्टी गेम',
 };

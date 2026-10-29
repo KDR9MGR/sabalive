@@ -35,6 +35,8 @@ const Map<String, double> _knownAspect = {
   'dragonTigerBattle': 1.0,
   'fruitMachine': 1.4,
   'greedy': 1.6,
+  'greedyBaby': 1.6,
+  'greedyMonkey': 902 / 750, // Monkey Pro: says 750 x 750 while running, but its settings (and its layout) are 750 x 902
   'roulette': 1.6,
 };
 
@@ -71,26 +73,49 @@ void rememberGameAspect(String? identification, double aspect) {
 const double kMinGameAspect = 0.25;
 const double kMaxGameAspect = 4.0;
 
-/// Reads the answer of the measuring script (`<design width>x<design height>x<policy name>`, possibly wrapped in quotes) and
-/// returns height / width. Null when it is not usable: nothing yet (the engine is still starting), no sensible numbers, or a
-/// game that is not scaled by width (then the panel's size is a guess and stays so).
+/// Reads the answer of the measuring script (`<design width>x<design height>x<policy name>`, then, when the page has it, `|<settings width>x<settings height>`; possibly wrapped in
+/// quotes) and returns height / width: the shape of panel that shows ALL of the game with nothing cut off and nothing empty, whatever scaling rule it uses. Null when it is not usable.
+///
+/// Two numbers can describe a game, and the RUN-TIME one is not always the truth: Monkey Pro (`greedyMonkey`) says 750 x 750 while it runs, but its own settings say 750 x 902 and 902 is what
+/// its layout uses (the top of its wheel was cut off in a square panel, owner 2026-10-29). So the taller of the two wins. The settings value only counts when it is a real choice of the
+/// game's makers: the engine template's 750 x 1334 ([kEngineDefaultAspect]) is what a game has when nobody set a size, so it says nothing.
+/// (It used to believe only fixed-width games and kept a guess for the rest; that cut off a game that scales another way.)
 double? parseDesignAspect(Object? raw) {
   if (raw == null) return null;
-  final m = RegExp(r'(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)x(\w*)').firstMatch(raw.toString());
+  final m = RegExp(r'(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)x(\w*)(?:\|(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?))?').firstMatch(raw.toString());
   if (m == null) return null;
   final w = double.tryParse(m.group(1)!);
   final h = double.tryParse(m.group(2)!);
   if (w == null || h == null || w <= 0 || h <= 0) return null;
-  if (m.group(3) != 'FixedWidth') return null;
-  final aspect = h / w;
+  var aspect = h / w;
+  final sw = double.tryParse(m.group(4) ?? '');
+  final sh = double.tryParse(m.group(5) ?? '');
+  if (sw != null && sh != null && sw > 0 && sh > 0) {
+    final fromSettings = sh / sw;
+    if (!isEngineDefaultAspect(fromSettings) && fromSettings > aspect) aspect = fromSettings;
+  }
   return aspect < kMinGameAspect || aspect > kMaxGameAspect ? null : aspect;
 }
 
+/// The proportions (height / width) of the biggest panel the screen allows: what a game that never says how big it is gets, so that none of it can be cut off. The game
+/// still gets the full screen width (see [gamePanelGameWidth]).
+double gameFillAspect(MediaQueryData mq) {
+  final room = mq.size.height - mq.viewPadding.top - kGameCloseRow - mq.viewPadding.bottom;
+  return mq.size.width <= 0 || room <= 0 ? kUnknownGameAspect : room / mq.size.width;
+}
+
+/// How long after its page loaded a game may stay silent about its size before it is given the whole panel instead of a guess.
+const Duration kSizeReadingPatience = Duration(seconds: 12);
+
+/// Should a game that has given no usable size by now get the biggest panel? (A wrong small panel cuts the game off; a too tall one only leaves empty space.)
+bool shouldFillPanel({required bool hasReading, required Duration sincePageLoaded}) => !hasReading && sincePageLoaded >= kSizeReadingPatience;
+
 /// The script that asks a loaded game for its design size.
 const String kDesignSizeScript =
-    "(function(){try{var s=cc.view.getDesignResolutionSize();var p='';"
+    "(function(){try{var s=cc.view.getDesignResolutionSize();var p='';var t='';"
     "try{p=cc.view.getResolutionPolicy()._contentStrategy.name}catch(e){}"
-    "return s.width+'x'+s.height+'x'+p}catch(e){return ''}})()";
+    "try{var d=cc.settings.querySettings('screen','designResolution');t='|'+d.width+'x'+d.height}catch(e){}"
+    "return s.width+'x'+s.height+'x'+p+t}catch(e){return ''}})()";
 
 /// How tall the panel is: the game at the screen's width x [aspect], plus the system bar's inset. A game gets exactly the height its own layout asks for, with no
 /// header above it. The panel is never taller than what is left of the screen under the status bar ([topInset]) and the close button's row above it ([kGameCloseRow]),

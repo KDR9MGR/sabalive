@@ -9,7 +9,7 @@
 //   SUD_APP_ID      the application id (a long number)
 //   SUD_APP_KEY     the application key (the SDK's client key: it goes to the game page)
 //   SUD_APP_SECRET  the application secret: signs our tokens and verifies SUD's callbacks. It never leaves this server.
-//   SUD_GAME_PAGE_URL (optional)  where the web SDK page lives; default https://sabalive.in/sud/play
+//   SUD_GAME_PAGE_URL (optional)  where the web SDK page lives; default https://www.sabalive.in/sud/play (the real host: sabalive.in redirects to www, and the SDK sends the page's host as the bundle id)
 //   SUD_TEST_ENV (optional)       "1" (the default) = the SDK uses SUD's test environment; "0" once SUD has put the application live
 import { createClient } from "@supabase/supabase-js";
 import { handleCallback, routeOf } from "./protocol.ts";
@@ -25,7 +25,7 @@ const ENV = Deno.env.toObject();
 const APP_ID = envValue(ENV, "SUD_APP_ID");
 const APP_KEY = envValue(ENV, "SUD_APP_KEY");
 const APP_SECRET = envValue(ENV, "SUD_APP_SECRET");
-const PAGE_URL = envValue(ENV, "SUD_GAME_PAGE_URL") || "https://sabalive.in/sud/play";
+const PAGE_URL = envValue(ENV, "SUD_GAME_PAGE_URL") || "https://www.sabalive.in/sud/play";
 // SUD has a test and a production environment. Until SUD has put the application live the SDK must use the test one: SUD_TEST_ENV=1. Set it to 0 (or delete it) at launch.
 const TEST_ENV = (envValue(ENV, "SUD_TEST_ENV") || "1") !== "0";
 const MAX_BODY = 256 * 1024;

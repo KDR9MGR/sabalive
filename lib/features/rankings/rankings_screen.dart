@@ -4,12 +4,19 @@ import 'package:flutter/material.dart' hide Text;
 import '../../core/utils/errors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_avatar.dart';
+import '../../core/widgets/level_star.dart';
 import '../../core/widgets/pills.dart';
 import '../../data/models.dart';
 import '../../data/rankings_repository.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
 import '../../core/i18n/text.dart';
+
+/// The level a Rankings row shows: Charm on the Hosts board (0), Wealth on the Gifters board (1). A level belongs to the person, so it is the same
+/// in Daily, Weekly and Monthly. (The old combined `profiles.level` is not used: the panel's Levels page edits Wealth and Charm.)
+Widget rankingLevelStar({required int board, required AppUser user, double size = 20}) => board == 0
+    ? LevelStar.charm(level: user.charmLevel, size: size)
+    : LevelStar.wealth(level: user.wealthLevel, size: size);
 
 class RankingsScreen extends StatefulWidget {
   const RankingsScreen({super.key});
@@ -300,11 +307,9 @@ class _RankingsScreenState extends State<RankingsScreen> {
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,
                         fontSize: 13.5)),
-                PersonLine(
-                  profileId: e.user.id,
-                  text: 'Lv ${e.user.level}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                ),
+                const SizedBox(height: 2),
+                rankingLevelStar(board: _board, user: e.user),
+                ProfileLabelsRow(profileId: e.user.id, compact: true),
               ],
             ),
           ),

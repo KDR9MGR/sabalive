@@ -50,9 +50,15 @@ void main() {
       c.dispose();
     });
 
-    test('the sender plays their own gift from their own phone (not the row), and it is silent', () {
-      final e = RoomEffect.gift(gift: rose, senderName: 'You', senderId: me, playSound: false);
-      expect(e.playSound, isFalse);
+    test('the sender hears their own gift unless a microphone is open (the host, or someone on a seat): then it would echo into the room', () {
+      expect(senderHearsOwnGift(micOpen: false), isTrue, reason: 'a viewer who sends an MP4 gift hears its sound');
+      expect(senderHearsOwnGift(micOpen: true), isFalse);
+      final viewer = RoomEffect.gift(gift: rose, senderName: 'You', senderId: me, playSound: senderHearsOwnGift(micOpen: false));
+      final host = RoomEffect.gift(gift: rose, senderName: 'You', senderId: me, playSound: senderHearsOwnGift(micOpen: true));
+      expect((viewer.playSound, host.playSound), (true, false));
+    });
+
+    test('the sender plays their own gift from their own phone (not the row)', () {
       final c = RoomEffectController();
       expect(c.onChatRow(row(sender: me, receivers: ['x']), meId: me, senderName: 'You', giftById: (_) => rose), isFalse, reason: 'their own row is ignored: already played');
       c.dispose();

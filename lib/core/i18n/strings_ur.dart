@@ -834,4 +834,12 @@ const Map<String, String> urStrings = {
   'Luxury': 'لگژری',
   'Vehicle': 'گاڑی',
   'Special': 'خصوصی',
+  'Sort by': 'ترتیب بلحاظ',
+  'Top picks': 'ٹاپ پکس',
+  'Most played': 'سب سے زیادہ کھیلے گئے',
+  'Newest first': 'نئے پہلے',
+  'Oldest first': 'پرانے پہلے',
+  'A to Z': 'A سے Z',
+  'Coin games': 'کوائن گیمز',
+  'Party games': 'پارٹی گیمز',
 };
