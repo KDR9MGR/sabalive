@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_client.dart';
 import '../core/media/gift_artwork_warmer.dart';
+import '../core/media/gift_movie_cache.dart';
+import '../core/widgets/remote_media.dart' show MediaKind, mediaKindFor;
 import '../data/gift_catalog_cache.dart';
 import '../data/gift_sender.dart';
 import '../data/gift_sender.dart' as gift_sender show isMissingFunction;
@@ -79,6 +81,9 @@ class WalletController extends ChangeNotifier {
   /// a live opens (see [refreshCatalog]).
   static const giftsWarmedAtStart = 16;
 
+  /// How many of those are also decoded into memory (one screenful of tiles).
+  static const giftsDecodedAtStart = 8;
+
   /// The gift list the last run saved, available before the network answers (only if the network has not answered already).
   Future<void> _restoreCatalog() async {
     final rows = await GiftCatalogCache.read();
@@ -94,7 +99,12 @@ class WalletController extends ChangeNotifier {
 
   void _warmFirstPage() {
     if (_profileId == null || _gifts.isEmpty) return;
-    unawaited(GiftArtworkWarmer.instance.warm(_gifts.take(giftsWarmedAtStart).toList()));
+    final first = _gifts.take(giftsWarmedAtStart).toList();
+    unawaited(GiftArtworkWarmer.instance.warm(first).then((_) {
+      // the files are on the phone: decode the first screenful of tiles quietly, one every 0.4 s, so the sheet opens with them drawn
+      final svgas = [for (final g in first.take(giftsDecodedAtStart)) if (g.iconUrl != null && mediaKindFor(g.iconUrl!) == MediaKind.svga) g.iconUrl!];
+      return GiftMovieCache.instance.prewarm(svgas);
+    }));
   }
 
   Future<void> _loadCatalog() async {

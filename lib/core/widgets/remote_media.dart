@@ -252,7 +252,8 @@ class _SvgaMediaState extends State<_SvgaMedia>
     try {
       final movie = await widget.loader(widget.url);
       if (!mounted || generation != _generation) {
-        if (!mounted) movie.dispose();
+        // a movie from the shared cache (autorelease false) belongs to the cache: only a movie nobody else holds is freed here
+        if (!mounted && movie.autorelease) movie.dispose();
         return;
       }
       _ctl.videoItem = movie;

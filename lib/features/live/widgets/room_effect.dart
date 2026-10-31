@@ -1,3 +1,4 @@
+import '../../../core/media/gift_movie_cache.dart';
 import 'dart:async';
 import 'dart:collection';
 
@@ -577,6 +578,8 @@ class _RoomEffectViewState extends State<_RoomEffectView> {
             child: RemoteMedia(
               url,
               loop: false,
+              // a gift sent again (10x, or by several people) plays from the decoded movie kept in memory instead of decoding the file each time
+              svgaLoader: GiftMovieCache.instance.load,
               // an MP4 effect carries its own soundtrack: it is heard only on the phones the gift was sent to (see RoomEffect.playSound)
               muted: !e.playSound,
               speed: widget.speed,

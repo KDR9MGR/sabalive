@@ -19,7 +19,7 @@ import 'effect_file_cache.dart';
 /// Nothing here can fail loudly: a file that cannot be fetched is simply fetched when it is needed, as before.
 class GiftArtworkWarmer {
   GiftArtworkWarmer({
-    this.limit = 60,
+    this.limit = 100,
     this.parallel = 4,
     Future<bool> Function(String url, MediaKind kind)? warmOne,
   }) : _warmOne = warmOne ?? _defaultWarmOne;
