@@ -843,4 +843,9 @@ const Map<String, String> arStrings = {
   'Coin games': 'ألعاب العملات',
   'Party games': 'ألعاب جماعية',
   'Old': 'قديم',
+  'Today, {0}': 'اليوم، {0}',
+  'Since {0}': 'منذ {0}',
+  'Resets every day at midnight India time': 'يُعاد الضبط كل يوم عند منتصف الليل بتوقيت الهند',
+  'Resets every Monday at midnight India time': 'يُعاد الضبط كل اثنين عند منتصف الليل بتوقيت الهند',
+  'Resets on the 1st of each month at midnight India time': 'يُعاد الضبط في الأول من كل شهر عند منتصف الليل بتوقيت الهند',
 };

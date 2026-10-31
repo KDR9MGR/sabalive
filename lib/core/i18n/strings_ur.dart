@@ -843,4 +843,9 @@ const Map<String, String> urStrings = {
   'Coin games': 'کوائن گیمز',
   'Party games': 'پارٹی گیمز',
   'Old': 'پرانا',
+  'Today, {0}': 'آج، {0}',
+  'Since {0}': '{0} سے',
+  'Resets every day at midnight India time': 'ہر دن بھارتی وقت کے مطابق آدھی رات کو ری سیٹ ہوتا ہے',
+  'Resets every Monday at midnight India time': 'ہر پیر کو بھارتی وقت کے مطابق آدھی رات کو ری سیٹ ہوتا ہے',
+  'Resets on the 1st of each month at midnight India time': 'ہر مہینے کی 1 تاریخ کو بھارتی وقت کے مطابق آدھی رات کو ری سیٹ ہوتا ہے',
 };

@@ -843,4 +843,9 @@ const Map<String, String> bnStrings = {
   'Coin games': 'কয়েন গেম',
   'Party games': 'পার্টি গেম',
   'Old': 'পুরনো',
+  'Today, {0}': 'আজ, {0}',
+  'Since {0}': '{0} থেকে',
+  'Resets every day at midnight India time': 'প্রতিদিন ভারতীয় সময়ে মধ্যরাতে রিসেট হয়',
+  'Resets every Monday at midnight India time': 'প্রতি সোমবার ভারতীয় সময়ে মধ্যরাতে রিসেট হয়',
+  'Resets on the 1st of each month at midnight India time': 'প্রতি মাসের ১ তারিখে ভারতীয় সময়ে মধ্যরাতে রিসেট হয়',
 };

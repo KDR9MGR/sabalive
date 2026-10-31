@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../profile/widgets/profile_labels.dart';
 import 'package:flutter/material.dart' hide Text;
 
@@ -11,12 +13,19 @@ import '../../data/rankings_repository.dart';
 import '../../router/app_nav.dart';
 import '../../theme/app_colors.dart';
 import '../../core/i18n/text.dart';
+import 'ranking_window.dart';
 
 /// The level a Rankings row shows: Charm on the Hosts board (0), Wealth on the Gifters board (1). A level belongs to the person, so it is the same
 /// in Daily, Weekly and Monthly. (The old combined `profiles.level` is not used: the panel's Levels page edits Wealth and Charm.)
 Widget rankingLevelStar({required int board, required AppUser user, double size = 20}) => board == 0
     ? LevelStar.charm(level: user.charmLevel, size: size)
     : LevelStar.wealth(level: user.wealthLevel, size: size);
+
+/// The icon next to a Rankings score. A host / agency score is DIAMONDS received (1 coin sent = 1 diamond received, so the board counts them as
+/// they are credited); a gifter's score is COINS spent, so the Gifters board (1) gets the coin icon instead of the diamond.
+Widget rankingScoreIcon({required int board, required double size}) => board == 1
+    ? Icon(Icons.monetization_on_rounded, size: size, color: AppColors.coin)
+    : Icon(Icons.diamond_rounded, size: size, color: AppColors.diamond);
 
 class RankingsScreen extends StatefulWidget {
   const RankingsScreen({super.key});
@@ -25,7 +34,7 @@ class RankingsScreen extends StatefulWidget {
   State<RankingsScreen> createState() => _RankingsScreenState();
 }
 
-class _RankingsScreenState extends State<RankingsScreen> {
+class _RankingsScreenState extends State<RankingsScreen> with WidgetsBindingObserver {
   final _repo = RankingsRepository();
 
   int _board = 0; // 0 = Hosts, 1 = Gifters, 2 = Agency
@@ -37,13 +46,40 @@ class _RankingsScreenState extends State<RankingsScreen> {
   List<AgencyRankingEntry> _agencyEntries = const [];
   int _reqSeq = 0;
 
+  // The boards start their day / week / month at INDIA midnight (the database does it). A board left open across that moment would keep showing the
+  // old period, so the screen remembers which period it fetched and fetches again when the period has changed: when the app comes back, and by a
+  // once-a-minute look at the clock (no network unless the period really changed).
+  Timer? _tick;
+  String? _fetchedKey;
+  RankingWindow get _window => RankingWindow.of(RankPeriod.values[_period]);
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) => _fetchIfPeriodChanged());
     _fetch();
   }
 
+  @override
+  void dispose() {
+    _tick?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _fetchIfPeriodChanged();
+  }
+
+  void _fetchIfPeriodChanged() {
+    if (!mounted || _loading) return;
+    if (_window.key != _fetchedKey) _fetch();
+  }
+
   Future<void> _fetch() async {
+    _fetchedKey = _window.key;
     final seq = ++_reqSeq;
     setState(() {
       _loading = true;
@@ -132,11 +168,29 @@ class _RankingsScreenState extends State<RankingsScreen> {
                   onChanged: _setPeriod,
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              SliverToBoxAdapter(child: _periodCaption()),
+              const SliverToBoxAdapter(child: SizedBox(height: 14)),
               ...resultSlivers,
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// What the board covers and when it starts again, in India time ("Since 1 Nov" / "Resets on the 1st of each month at midnight India time").
+  Widget _periodCaption() {
+    final win = _window;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(win.coverage,
+              style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 12.5)),
+          const SizedBox(height: 2),
+          Text(win.resets, style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+        ],
       ),
     );
   }
@@ -315,8 +369,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
           ),
           Row(
             children: [
-              const Icon(Icons.diamond_rounded,
-                  size: 12, color: AppColors.diamond),
+              rankingScoreIcon(board: _board, size: 12),
               const SizedBox(width: 3),
               Text(compactCount(e.score),
                   style: const TextStyle(
@@ -365,8 +418,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.diamond_rounded,
-                    size: 11, color: AppColors.diamond),
+                rankingScoreIcon(board: _board, size: 11),
                 const SizedBox(width: 3),
                 Text(compactCount(e.score),
                     style: const TextStyle(

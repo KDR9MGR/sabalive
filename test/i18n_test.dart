@@ -87,6 +87,23 @@ void main() {
     expect(tr('Room skins are for audio rooms'), 'خلفيات الغرف للغرف الصوتية فقط');
   });
 
+  test('the Rankings period captions are translated, with the date put back in', () async {
+    await I18n.set(languageByCode('hi'));
+    expect(tr('Since 1 Nov'), '1 Nov से');
+    expect(tr('Today, 1 Nov'), 'आज, 1 Nov');
+    expect(tr('Resets every day at midnight India time'), 'हर दिन भारतीय समय के अनुसार आधी रात को रीसेट होता है');
+    await I18n.set(languageByCode('pt_BR'));
+    expect(tr('Since 26 Oct'), 'Desde 26 Oct');
+    expect(tr('Resets every Monday at midnight India time'), 'Reinicia toda segunda-feira à meia-noite no horário da Índia');
+    await I18n.set(languageByCode('ar'));
+    expect(tr('Resets on the 1st of each month at midnight India time'), 'يُعاد الضبط في الأول من كل شهر عند منتصف الليل بتوقيت الهند');
+    // the chat's "Today" separator is its own exact string and is not caught by the "Today, {0}" template
+    await I18n.set(languageByCode('hi'));
+    expect(tr('Today'), isNot(contains('{0}')));
+    await I18n.set(languageByCode('en'));
+    expect(tr('Since 1 Nov'), 'Since 1 Nov');
+  });
+
   test('text with no translation (user content, new strings) passes through', () async {
     await I18n.set(languageByCode('pt_BR'));
     expect(tr('Some host wrote this title'), 'Some host wrote this title');

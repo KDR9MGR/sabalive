@@ -843,4 +843,9 @@ const Map<String, String> hiStrings = {
   'Coin games': 'कॉइन गेम',
   'Party games': 'पार्टी गेम',
   'Old': 'पुराना',
+  'Today, {0}': 'आज, {0}',
+  'Since {0}': '{0} से',
+  'Resets every day at midnight India time': 'हर दिन भारतीय समय के अनुसार आधी रात को रीसेट होता है',
+  'Resets every Monday at midnight India time': 'हर सोमवार भारतीय समय के अनुसार आधी रात को रीसेट होता है',
+  'Resets on the 1st of each month at midnight India time': 'हर महीने की 1 तारीख को भारतीय समय के अनुसार आधी रात को रीसेट होता है',
 };

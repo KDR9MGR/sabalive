@@ -843,4 +843,9 @@ const Map<String, String> neStrings = {
   'Coin games': 'कोइन गेम',
   'Party games': 'पार्टी गेम',
   'Old': 'पुरानो',
+  'Today, {0}': 'आज, {0}',
+  'Since {0}': '{0} देखि',
+  'Resets every day at midnight India time': 'हरेक दिन भारतीय समय अनुसार मध्यरातमा रिसेट हुन्छ',
+  'Resets every Monday at midnight India time': 'हरेक सोमबार भारतीय समय अनुसार मध्यरातमा रिसेट हुन्छ',
+  'Resets on the 1st of each month at midnight India time': 'हरेक महिनाको १ गते भारतीय समय अनुसार मध्यरातमा रिसेट हुन्छ',
 };

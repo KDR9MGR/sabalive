@@ -843,4 +843,9 @@ const Map<String, String> ptBrStrings = {
   'Coin games': 'Jogos com moedas',
   'Party games': 'Jogos de festa',
   'Old': 'Antigo',
+  'Today, {0}': 'Hoje, {0}',
+  'Since {0}': 'Desde {0}',
+  'Resets every day at midnight India time': 'Reinicia todos os dias à meia-noite no horário da Índia',
+  'Resets every Monday at midnight India time': 'Reinicia toda segunda-feira à meia-noite no horário da Índia',
+  'Resets on the 1st of each month at midnight India time': 'Reinicia no dia 1º de cada mês à meia-noite no horário da Índia',
 };

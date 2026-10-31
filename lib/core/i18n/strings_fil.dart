@@ -843,4 +843,9 @@ const Map<String, String> filStrings = {
   'Coin games': 'Mga coin game',
   'Party games': 'Mga party game',
   'Old': 'Luma',
+  'Today, {0}': 'Ngayon, {0}',
+  'Since {0}': 'Mula {0}',
+  'Resets every day at midnight India time': 'Nagre-reset araw-araw sa hatinggabi sa oras ng India',
+  'Resets every Monday at midnight India time': 'Nagre-reset tuwing Lunes sa hatinggabi sa oras ng India',
+  'Resets on the 1st of each month at midnight India time': 'Nagre-reset sa ika-1 ng bawat buwan sa hatinggabi sa oras ng India',
 };
