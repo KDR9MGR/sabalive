@@ -2,7 +2,7 @@ import '../../data/games_repository.dart';
 
 /// How the Games tab orders its cards.
 enum GameSort {
-  /// The platform's own order (Tulasi's list, then SUD's in the panel's order): what the owner put first.
+  /// The platform's own order (the old games' list, then the new ones in the panel's order): what the owner put first.
   topPicks,
 
   /// Opened most in the last 14 days (ties keep the top-picks order).
@@ -15,6 +15,15 @@ enum GameSort {
   /// By name.
   nameAz,
 }
+
+/// The Games tab's two tabs: "New" holds the newer games (the ones from the second provider) and "Old" the first ones. Neither provider is named anywhere in the app.
+enum GameTab { newGames, oldGames }
+
+/// [games] split into the two tabs, each keeping the platform's order.
+({List<MerchantGame> newGames, List<MerchantGame> oldGames}) splitGames(Iterable<MerchantGame> games) => (
+      newGames: [for (final g in games) if (g.isSud) g],
+      oldGames: [for (final g in games) if (!g.isSud) g],
+    );
 
 /// Which games the Games tab shows: all of them, the ones you stake coins in, or the party games (no coins).
 enum GameKind { all, coin, party }

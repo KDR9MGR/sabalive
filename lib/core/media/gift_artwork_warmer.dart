@@ -11,7 +11,7 @@ import 'effect_file_cache.dart';
 /// Puts the gifts' artwork on the phone BEFORE anyone opens the gift sheet, so its tiles draw at once instead of showing a stand-in while each file downloads.
 ///
 /// Every gift is one file the panel uploaded (an SVGA, MP4, GIF / WebP, SVG or picture) and the sheet draws its first frame, so the first time a phone shows the grid it
-/// used to fetch dozens of files together. This reads them quietly in the background, a couple at a time, once the gift list has loaded (and again when the list changes):
+/// used to fetch dozens of files together. This reads them quietly in the background, four at a time, once the gift list has loaded (and again when the list changes):
 ///  - pictures, SVG and GIF / WebP go into the picture cache, MP4 into the effect cache, SVGA into the SVGA cache (raw file only: nothing is decoded here, so it costs no
 ///    CPU worth the name and cannot make a live room stutter);
 ///  - a file already on the phone is skipped, so a later start downloads nothing;
@@ -20,7 +20,7 @@ import 'effect_file_cache.dart';
 class GiftArtworkWarmer {
   GiftArtworkWarmer({
     this.limit = 60,
-    this.parallel = 2,
+    this.parallel = 4,
     Future<bool> Function(String url, MediaKind kind)? warmOne,
   }) : _warmOne = warmOne ?? _defaultWarmOne;
 

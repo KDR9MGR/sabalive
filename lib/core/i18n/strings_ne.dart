@@ -842,4 +842,5 @@ const Map<String, String> neStrings = {
   'A to Z': 'A देखि Z',
   'Coin games': 'कोइन गेम',
   'Party games': 'पार्टी गेम',
+  'Old': 'पुरानो',
 };

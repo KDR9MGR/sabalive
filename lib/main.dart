@@ -1,3 +1,4 @@
+import 'core/media/gift_movie_cache.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ void main() async {
   await I18n.load();
   // the colours and font the panel last set, so the very first frame already wears them
   await ThemeConfigController.restore();
+  configureMediaCaches();
   await PkThemeStore.instance.restore(); // the PK look the panel last set (colours, animations)
   await LiveWarningStore.instance.restore(); // the welcome warning's text and switch the panel last set
   // screenshots / screen recording stay blocked from the first screen if the panel last switched that on

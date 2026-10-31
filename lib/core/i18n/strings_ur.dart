@@ -842,4 +842,5 @@ const Map<String, String> urStrings = {
   'A to Z': 'A سے Z',
   'Coin games': 'کوائن گیمز',
   'Party games': 'پارٹی گیمز',
+  'Old': 'پرانا',
 };

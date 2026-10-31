@@ -188,12 +188,18 @@ void main() {
       expect(find.text('Ludo'), findsNothing);
     });
 
-    testWidgets('with it on, SUD\'s games sit next to Tulasi\'s', (t) async {
+    testWidgets('with it on, the games are in two tabs: New holds SUD\'s, Old holds Tulasi\'s (neither name is shown)', (t) async {
       await t.pumpWidget(screen(_Repo([_tulasi, _ludo, _teen]), await config(sud: true)));
       await t.pumpAndSettle();
-      expect(find.text('Teen Patti Gold'), findsOneWidget);
       expect(find.text('Ludo'), findsOneWidget);
       expect(find.text('TeenPatti'), findsOneWidget);
+      expect(find.text('Teen Patti Gold'), findsNothing, reason: 'the old games are on the other tab');
+      await t.tap(find.byKey(const ValueKey('games-tab-old')));
+      await t.pumpAndSettle();
+      expect(find.text('Teen Patti Gold'), findsOneWidget);
+      expect(find.text('Ludo'), findsNothing);
+      expect(find.textContaining('SUD'), findsNothing);
+      expect(find.textContaining('Tulasi'), findsNothing);
     });
 
     testWidgets('a SUD party game opens at once (no coins, so no "bets" notice), in the live the person is in, in their language', (t) async {

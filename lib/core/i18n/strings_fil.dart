@@ -842,4 +842,5 @@ const Map<String, String> filStrings = {
   'A to Z': 'A hanggang Z',
   'Coin games': 'Mga coin game',
   'Party games': 'Mga party game',
+  'Old': 'Luma',
 };

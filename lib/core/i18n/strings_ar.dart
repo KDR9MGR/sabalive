@@ -842,4 +842,5 @@ const Map<String, String> arStrings = {
   'A to Z': 'من A إلى Z',
   'Coin games': 'ألعاب العملات',
   'Party games': 'ألعاب جماعية',
+  'Old': 'قديم',
 };

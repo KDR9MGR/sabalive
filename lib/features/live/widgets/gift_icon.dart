@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 
+import '../../../core/media/gift_movie_cache.dart';
 import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
@@ -45,6 +46,8 @@ class _GiftIconState extends State<GiftIcon> {
         url,
         fit: BoxFit.contain,
         animate: false,
+        // a decoded animation is kept in memory: the sheet draws every tile at once the second time
+        svgaLoader: GiftMovieCache.instance.load,
         onError: () {
           if (mounted && !_failed) setState(() => _failed = true);
         },

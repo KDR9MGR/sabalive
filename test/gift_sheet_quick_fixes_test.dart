@@ -153,7 +153,7 @@ void main() {
       expect(attempts, 3);
     });
 
-    test('no more than two files are fetched at once', () async {
+    test('no more than four files are fetched at once (the default)', () async {
       var running = 0;
       var peak = 0;
       final warmer = GiftArtworkWarmer(warmOne: (url, kind) async {
@@ -163,8 +163,8 @@ void main() {
         running--;
         return true;
       });
-      await warmer.warm([for (var i = 0; i < 8; i++) gift('$i', 'basic', icon: 'https://x/$i.png')]);
-      expect(peak, 2);
+      await warmer.warm([for (var i = 0; i < 12; i++) gift('$i', 'basic', icon: 'https://x/$i.png')]);
+      expect(peak, 4);
     });
 
     test('a newer list replaces what is still waiting', () async {

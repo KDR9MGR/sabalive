@@ -21,7 +21,7 @@ bool gamesAvailable(RemoteConfigController config, {bool? isAndroid}) =>
     (isAndroid ?? Platform.isAndroid) && config.flag('games_enabled', defaultValue: false);
 
 /// The Games tab. While games are switched off, or on a phone that is not Android, it shows the "coming soon" screen; otherwise the
-/// platform's games, kept in step with the Tulasi panel by [GamesStore] (a change there shows here without a restart).
+/// platform's games in two tabs, New and Old, kept in step with the panel by [GamesStore] (a change there shows here without a restart).
 class GamesScreen extends StatefulWidget {
   const GamesScreen({
     super.key,
@@ -65,18 +65,22 @@ class _GamesScreenState extends State<GamesScreen> {
   // How the cards are ordered and which kind is shown: remembered on this phone, so the tab opens the way the person left it.
   static const _sortKey = 'games.sort.v1';
   static const _kindKey = 'games.kind.v1';
+  static const _tabKey = 'games.tab.v1';
   GameSort _sort = GameSort.topPicks;
   GameKind _kind = GameKind.all;
+  GameTab _tab = GameTab.newGames;
 
   Future<void> _loadChoice() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final sort = GameSort.values.asNameMap()[prefs.getString(_sortKey)];
       final kind = GameKind.values.asNameMap()[prefs.getString(_kindKey)];
-      if (!mounted || (sort == null && kind == null)) return;
+      final tab = GameTab.values.asNameMap()[prefs.getString(_tabKey)];
+      if (!mounted || (sort == null && kind == null && tab == null)) return;
       setState(() {
         _sort = sort ?? _sort;
         _kind = kind ?? _kind;
+        _tab = tab ?? _tab;
       });
     } catch (_) {
       // not remembered: the tab opens with the top picks
@@ -92,6 +96,11 @@ class _GamesScreenState extends State<GamesScreen> {
   void _setSort(GameSort sort) {
     setState(() => _sort = sort);
     unawaited(_remember(_sortKey, sort.name));
+  }
+
+  void _setTab(GameTab tab) {
+    setState(() => _tab = tab);
+    unawaited(_remember(_tabKey, tab.name));
   }
 
   void _setKind(GameKind kind) {
@@ -141,6 +150,47 @@ class _GamesScreenState extends State<GamesScreen> {
       ),
     );
     if (picked != null && mounted) _setSort(picked);
+  }
+
+  /// The New / Old tabs (shown only when both have games: a tab with nothing in it would be pointless).
+  Widget _tabs(GameTab tab) {
+    Widget one(GameTab t, String label) {
+      final on = tab == t;
+      return Expanded(
+        child: GestureDetector(
+          key: ValueKey('games-tab-${t == GameTab.newGames ? 'new' : 'old'}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _setTab(t),
+          child: Container(
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? AppColors.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(19),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.5,
+                    color: on ? AppColors.textOnPrimary : AppColors.textSecondary)),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.stroke),
+        ),
+        child: Row(children: [one(GameTab.newGames, 'New'), one(GameTab.oldGames, 'Old')]),
+      ),
+    );
   }
 
   /// The filter chips (only with BOTH kinds of game: a filter that cannot change anything is not offered) and the sort button.
@@ -253,16 +303,22 @@ class _GamesScreenState extends State<GamesScreen> {
         ),
       );
     }
-    // a remembered "Coin games" filter does nothing when only one kind is left (SUD switched off, say): then everything shows
-    final bothKinds = hasBothKinds(games);
+    // "New" and "Old" tabs, only when both have games; with just one kind of game that list is shown as it is
+    final split = splitGames(games);
+    final bothTabs = split.newGames.isNotEmpty && split.oldGames.isNotEmpty;
+    final tab = bothTabs ? _tab : (split.newGames.isNotEmpty ? GameTab.newGames : GameTab.oldGames);
+    final inTab = tab == GameTab.newGames ? split.newGames : split.oldGames;
+    // a remembered "Coin games" filter does nothing when only one kind is left in this tab: then everything shows
+    final bothKinds = hasBothKinds(inTab);
     final kind = bothKinds ? _kind : GameKind.all;
-    final shown = arrangeGames(games, sort: _sort, kind: kind, popularity: _store.popularity);
+    final shown = arrangeGames(inTab, sort: _sort, kind: kind, popularity: _store.popularity);
     return RefreshIndicator(
       onRefresh: _store.refresh,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          if (games.length > 1) SliverToBoxAdapter(child: _controls(bothKinds: bothKinds, kind: kind)),
+          if (bothTabs) SliverToBoxAdapter(child: _tabs(tab)),
+          if (inTab.length > 1) SliverToBoxAdapter(child: _controls(bothKinds: bothKinds, kind: kind)),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
             sliver: SliverGrid.count(

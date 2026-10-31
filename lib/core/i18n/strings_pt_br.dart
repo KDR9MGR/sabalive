@@ -842,4 +842,5 @@ const Map<String, String> ptBrStrings = {
   'A to Z': 'De A a Z',
   'Coin games': 'Jogos com moedas',
   'Party games': 'Jogos de festa',
+  'Old': 'Antigo',
 };

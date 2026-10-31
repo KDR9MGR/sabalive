@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_client.dart';
 import '../core/media/gift_artwork_warmer.dart';
+import '../data/gift_catalog_cache.dart';
 import '../data/gift_sender.dart';
 import '../data/gift_sender.dart' as gift_sender show isMissingFunction;
 import '../data/models.dart';
@@ -15,6 +16,7 @@ import '../data/models.dart';
 /// through a server-side function (`send_gift`, `request_withdrawal`, …).
 class WalletController extends ChangeNotifier {
   WalletController() {
+    unawaited(_restoreCatalog());
     _loadCatalog();
     _authSub = supabase.auth.onAuthStateChange.listen((state) {
       final uid = state.session?.user.id;
@@ -73,9 +75,32 @@ class WalletController extends ChangeNotifier {
 
   DateTime? _catalogAt;
 
+  /// How many gifts' artwork is put on the phone as soon as someone is signed in and the list is known: the first page of the gift sheet (its Popular tab). The rest follows when
+  /// a live opens (see [refreshCatalog]).
+  static const giftsWarmedAtStart = 16;
+
+  /// The gift list the last run saved, available before the network answers (only if the network has not answered already).
+  Future<void> _restoreCatalog() async {
+    final rows = await GiftCatalogCache.read();
+    if (rows == null || rows.isEmpty || _catalogAt != null || _gifts.isNotEmpty) return;
+    try {
+      _gifts = rows.map(Gift.fromRow).toList();
+    } catch (_) {
+      return; // an old or damaged copy: wait for the network
+    }
+    notifyListeners();
+    _warmFirstPage();
+  }
+
+  void _warmFirstPage() {
+    if (_profileId == null || _gifts.isEmpty) return;
+    unawaited(GiftArtworkWarmer.instance.warm(_gifts.take(giftsWarmedAtStart).toList()));
+  }
+
   Future<void> _loadCatalog() async {
     final giftRows = await supabase.from('gifts').select().eq('status', 'active').order('sort_order', ascending: true);
     final packRows = await supabase.from('coin_packages').select().eq('status', 'active').order('sort_order', ascending: true);
+    unawaited(GiftCatalogCache.write(List<Map<String, dynamic>>.from(giftRows)));
     _gifts = giftRows.map(Gift.fromRow).toList();
     _coinPacks = List.generate(
       packRows.length,
@@ -83,6 +108,7 @@ class WalletController extends ChangeNotifier {
     );
     _catalogAt = DateTime.now();
     notifyListeners();
+    _warmFirstPage();
   }
 
   /// Reads the gift catalog again if it is older than [maxAge]. It was only read when the app started, so a
@@ -111,6 +137,7 @@ class WalletController extends ChangeNotifier {
   Future<void> _bindWallet(String uid) async {
     _loading = true;
     notifyListeners();
+    _warmFirstPage(); // signed in: the first page of gifts is put on the phone while the wallet loads
 
     final walletRow = await supabase.from('wallets').select().eq('profile_id', uid).maybeSingle();
     if (walletRow != null) {

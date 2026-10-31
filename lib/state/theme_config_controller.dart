@@ -13,13 +13,16 @@ import '../theme/app_palette.dart';
 import 'live_warning_store.dart';
 import 'pk_theme_store.dart';
 
-/// The branding the admin panel sets (Site / Branding): brand colour, accent colour, font.
+/// The branding the admin panel sets (Site / Branding): brand colour, accent colour, font, background tone.
 class Branding {
-  const Branding({required this.brand, required this.accent, required this.font});
+  const Branding({required this.brand, required this.accent, required this.font, this.tone = BackgroundTone.rich});
 
   final Color brand;
   final Color accent;
   final String font;
+
+  /// How dark the backgrounds are (`app_config.brand_tone`; a database without it, and any unknown value, means [BackgroundTone.rich]).
+  final BackgroundTone tone;
 
   static const Branding stock = Branding(
     brand: AppPalette.defaultBrand,
@@ -34,6 +37,7 @@ class Branding {
       brand: parseHex(row['brand_color'] as String?) ?? fallback.brand,
       accent: parseHex(row['accent_color'] as String?) ?? fallback.accent,
       font: font == null || font.isEmpty ? fallback.font : font,
+      tone: row.containsKey('brand_tone') ? BackgroundTone.parse(row['brand_tone'] as String?) : fallback.tone,
     );
   }
 
@@ -80,6 +84,7 @@ class ThemeConfigController extends ChangeNotifier with WidgetsBindingObserver {
   static const _kBrand = 'theme.brand';
   static const _kAccent = 'theme.accent';
   static const _kFont = 'theme.font';
+  static const _kTone = 'theme.tone';
 
   static Branding _current = Branding.stock;
 
@@ -91,6 +96,7 @@ class ThemeConfigController extends ChangeNotifier with WidgetsBindingObserver {
         'brand_color': prefs.getString(_kBrand),
         'accent_color': prefs.getString(_kAccent),
         'font_family': prefs.getString(_kFont),
+        if (prefs.containsKey(_kTone)) 'brand_tone': prefs.getString(_kTone),
       });
       _use(saved);
       _systemBarsFollowPalette();
@@ -100,7 +106,7 @@ class ThemeConfigController extends ChangeNotifier with WidgetsBindingObserver {
   /// Makes [b] the live branding. Returns whether the look changed.
   static bool _use(Branding b) {
     _current = b;
-    final palette = AppPalette.fromBrand(b.brand, b.accent);
+    final palette = AppPalette.fromBrand(b.brand, b.accent, tone: b.tone);
     final colorsChanged = palette != AppColors.palette;
     AppColors.apply(palette);
     final fontChanged = AppFont.use(b.font);
@@ -138,7 +144,9 @@ class ThemeConfigController extends ChangeNotifier with WidgetsBindingObserver {
           .select('brand_color, accent_color, font_family')
           .maybeSingle();
       if (row == null) return;
-      final next = Branding.fromRow(row, fallback: _current);
+      // the tone has its own read: a database that does not have the column yet can never hold back the colours and the font
+      final tone = await _readTone();
+      final next = Branding.fromRow({...row, 'brand_tone': ?tone}, fallback: _current);
       final changed = _use(next);
       unawaited(_remember(next));
       if (changed) {
@@ -156,12 +164,29 @@ class ThemeConfigController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  static bool _toneColumnMissing = false;
+
+  Future<String?> _readTone() async {
+    if (_toneColumnMissing) return null;
+    try {
+      final row = await supabase.from('app_config').select('brand_tone').maybeSingle();
+      return row?['brand_tone'] as String?;
+    } on PostgrestException catch (e) {
+      // 42703 = the column does not exist on this project yet: do not ask again this run
+      if (e.code == '42703' || e.message.contains('brand_tone')) _toneColumnMissing = true;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _remember(Branding b) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kBrand, Branding.toHex(b.brand));
       await prefs.setString(_kAccent, Branding.toHex(b.accent));
       await prefs.setString(_kFont, b.font);
+      await prefs.setString(_kTone, b.tone.name);
     } catch (_) {}
   }
 

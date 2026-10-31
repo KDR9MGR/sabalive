@@ -9,13 +9,13 @@ class AppColors {
   /// The brand-driven colours (backgrounds, the purples, the accent) come from the panel's
   /// Site / Branding settings through [apply]; everything else below stays fixed. Read them when a
   /// widget builds, not in a `const` expression, so a recolour reaches a running app.
-  static AppPalette _palette = AppPalette.stock;
+  static AppPalette _palette = AppPalette.initial;
   static AppPalette get palette => _palette;
 
   /// Switch to a new palette. Callers rebuild the UI afterwards (see ThemeConfigController).
   static void apply(AppPalette palette) => _palette = palette;
 
-  // Backgrounds (the brand's hue, turned down to near-black)
+  // Backgrounds (the brand's hue at the brightness of the panel's Background tone)
   static Color get bg => _palette.bg;
   static Color get bgElevated => _palette.bgElevated;
   static Color get surface => _palette.surface;
@@ -45,21 +45,21 @@ class AppColors {
 
   // Text
   static const Color textPrimary = Color(0xFFF6F3FF);
-  static const Color textSecondary = Color(0xFFB6A8DB);
-  static const Color textMuted = Color(0xFF7E719F);
+  static const Color textSecondary = Color(0xFFC2B6E4); // lightened 2026-10-31 (was B6A8DB) for the richer backgrounds
+  static const Color textMuted = Color(0xFF978BB8); // lightened 2026-10-31 so it stays readable on the richer backgrounds
   static const Color textOnPrimary = Color(0xFFFFFFFF);
 
   // Gradients
   static LinearGradient get primaryGradient => LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [primaryBright, identical(_palette, AppPalette.stock) ? const Color(0xFF7C3AED) : _palette.primaryDeep],
+    colors: [primaryBright, _palette.stockBrand ? const Color(0xFF7C3AED) : _palette.primaryDeep],
   );
 
   static LinearGradient get brandGradient => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: identical(_palette, AppPalette.stock)
+    colors: _palette.stockBrand
         ? const [Color(0xFF7C3AED), Color(0xFFC026D3), Color(0xFFF5279B)]
         : [_palette.primaryDeep, Color.lerp(_palette.primary, _palette.magenta, 0.5)!, _palette.magenta],
   );

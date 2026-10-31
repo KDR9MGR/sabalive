@@ -29,6 +29,13 @@ const storeTabs = [
   (StoreCategory.roomSkin, 'Room Skin'),
 ];
 
+/// What a Store item's button says: a price of 0 is free (the panel lets staff set it, like a Lucky ID).
+String storePriceLabel(int priceCoins) => priceCoins == 0 ? 'Free' : '${withThousands(priceCoins)} coins';
+
+/// The snack bar after getting an item: a free one was not bought.
+String storeGotMessage(String name, int priceCoins) => priceCoins == 0 ? '$name added to your Bag!' : '$name purchased!';
+
+
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
 
@@ -94,7 +101,7 @@ class _StoreScreenState extends State<StoreScreen> {
       final equippable = item.category != StoreCategory.vip;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('${item.name} purchased!'),
+          content: Text(storeGotMessage(item.name, item.priceCoins)),
           duration: const Duration(seconds: 6),
           action: equippable
               ? SnackBarAction(label: tr('Put on'), onPressed: () => _putOn(item))
@@ -214,7 +221,7 @@ class _StoreScreenState extends State<StoreScreen> {
                 style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
             const SizedBox(height: 10),
             GradientButton(
-              label: '${withThousands(item.priceCoins)} coins',
+              label: storePriceLabel(item.priceCoins),
               height: 36,
               loading: busy,
               onPressed: () => _buy(item),

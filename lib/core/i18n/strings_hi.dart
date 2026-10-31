@@ -842,4 +842,5 @@ const Map<String, String> hiStrings = {
   'A to Z': 'A से Z',
   'Coin games': 'कॉइन गेम',
   'Party games': 'पार्टी गेम',
+  'Old': 'पुराना',
 };

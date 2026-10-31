@@ -13,20 +13,75 @@ void main() {
   GoogleFonts.config.allowRuntimeFetching = false; // no downloads in tests
 
   tearDown(() {
-    AppColors.apply(AppPalette.stock);
+    AppColors.apply(AppPalette.initial);
     AppFont.use('Poppins');
   });
 
   group('AppPalette', () {
-    test('the panel defaults give exactly the original palette', () {
-      final p = AppPalette.fromBrand(AppPalette.defaultBrand, AppPalette.defaultAccent);
+    test('the default brand with the Deep tone is exactly the original palette', () {
+      final p = AppPalette.fromBrand(AppPalette.defaultBrand, AppPalette.defaultAccent, tone: BackgroundTone.deep);
       expect(p, AppPalette.stock);
       expect(AppPalette.stock.bg, const Color(0xFF0B0716));
       expect(AppPalette.stock.primary, const Color(0xFF9B3DF5));
     });
 
-    test('another brand colour recolours the backgrounds and the purples, keeping them dark', () {
-      final p = AppPalette.fromBrand(const Color(0xFF0E9F6E), const Color(0xFFF5279B)); // green
+    test('the default tone is Rich: the original violet and pink on backgrounds that are no longer black', () {
+      final p = AppPalette.fromBrand(AppPalette.defaultBrand, AppPalette.defaultAccent);
+      expect(p, AppPalette.initial);
+      expect(p, isNot(AppPalette.stock));
+      expect(p.primary, AppPalette.stock.primary);
+      expect(p.primaryDeep, AppPalette.stock.primaryDeep);
+      expect(p.magenta, AppPalette.stock.magenta);
+      expect(p.stockBrand, isTrue, reason: 'the original gradients stay');
+      expect(p.bg.computeLuminance(), greaterThan(AppPalette.stock.bg.computeLuminance() * 3));
+      AppColors.apply(p);
+      expect(AppColors.brandGradient.colors.first, const Color(0xFF7C3AED));
+    });
+
+    test('an unknown or missing tone means Rich', () {
+      expect(BackgroundTone.parse(null), BackgroundTone.rich);
+      expect(BackgroundTone.parse('sideways'), BackgroundTone.rich);
+      expect(BackgroundTone.parse(' SOFT '), BackgroundTone.soft);
+      expect(BackgroundTone.parse('deep'), BackgroundTone.deep);
+    });
+
+    test('every tone of every hue has the same brightness, so a green is not murkier than a violet', () {
+      double y(Color c) => c.computeLuminance();
+      for (final brand in [const Color(0xFF0E9F6E), const Color(0xFF45D93A), const Color(0xFF7C3AED), const Color(0xFFE11D48), const Color(0xFFFACC15), const Color(0xFF2563EB)]) {
+        final rich = AppPalette.fromBrand(brand, const Color(0xFFF5279B));
+        final soft = AppPalette.fromBrand(brand, const Color(0xFFF5279B), tone: BackgroundTone.soft);
+        expect(y(rich.bg), closeTo(0.026, 0.004), reason: 'rich bg of $brand');
+        expect(y(rich.card), closeTo(0.049, 0.005), reason: 'rich card of $brand');
+        expect(y(soft.bg), closeTo(0.06, 0.006), reason: 'soft bg of $brand');
+        expect(y(soft.card), closeTo(0.092, 0.008), reason: 'soft card of $brand');
+        expect(y(soft.bg), greaterThan(y(rich.bg)));
+      }
+    });
+
+    test('rich and soft backgrounds are colours, not black, and the light text stays readable on every surface', () {
+      // WCAG contrast of the lightest-needed text colours against the page and the surfaces stacked on it
+      double contrast(Color a, Color b) {
+        final la = a.computeLuminance(), lb = b.computeLuminance();
+        return (la > lb ? la + 0.05 : lb + 0.05) / (la > lb ? lb + 0.05 : la + 0.05);
+      }
+
+      for (final tone in [BackgroundTone.rich, BackgroundTone.soft]) {
+        for (final brand in [const Color(0xFF45D93A), const Color(0xFFFACC15), const Color(0xFF7C3AED), const Color(0xFF2563EB)]) {
+          final p = AppPalette.fromBrand(brand, const Color(0xFFF5279B), tone: tone);
+          final bg = HSLColor.fromColor(p.bg);
+          expect(bg.saturation, greaterThan(0.3), reason: '$tone $brand is a colour');
+          for (final c in [p.bg, p.bgElevated, p.surface, p.surfaceAlt, p.card, p.stroke]) {
+            if (c == p.stroke) continue; // a border line, no text sits on it
+            expect(contrast(AppColors.textPrimary, c), greaterThan(tone == BackgroundTone.rich ? 7 : 5.5), reason: '$tone $brand primary text');
+            expect(contrast(AppColors.textSecondary, c), greaterThan(tone == BackgroundTone.rich ? 4.5 : 3.3), reason: '$tone $brand secondary text');
+          }
+          expect(contrast(AppColors.textMuted, p.bg), greaterThan(tone == BackgroundTone.rich ? 4.0 : 2.8), reason: '$tone $brand muted text on the page');
+        }
+      }
+    });
+
+    test('another brand colour recolours the backgrounds and the purples (Deep keeps them near black)', () {
+      final p = AppPalette.fromBrand(const Color(0xFF0E9F6E), const Color(0xFFF5279B), tone: BackgroundTone.deep); // green
       expect(p, isNot(AppPalette.stock));
       final bg = HSLColor.fromColor(p.bg);
       expect(bg.lightness, lessThan(0.08));
@@ -37,6 +92,18 @@ void main() {
       expect(HSLColor.fromColor(p.stroke).lightness, greaterThan(HSLColor.fromColor(p.surfaceAlt).lightness));
       expect(HSLColor.fromColor(p.primaryBright).lightness, greaterThan(HSLColor.fromColor(p.primary).lightness));
       expect(HSLColor.fromColor(p.primaryDeep).lightness, lessThan(HSLColor.fromColor(p.primary).lightness));
+    });
+
+    test('in every tone the surfaces stack up from the page background and keep the brand hue', () {
+      for (final tone in BackgroundTone.values) {
+        final p = AppPalette.fromBrand(const Color(0xFF45D93A), const Color(0xFFF5279B), tone: tone); // the owner's green
+        double y(Color c) => c.computeLuminance();
+        expect(y(p.bgElevated), greaterThan(y(p.bg)), reason: '$tone');
+        expect(y(p.surface), greaterThan(y(p.bgElevated)), reason: '$tone');
+        expect(y(p.surfaceAlt), greaterThan(y(p.surface)), reason: '$tone');
+        expect(y(p.stroke), greaterThan(y(p.surfaceAlt)), reason: '$tone');
+        expect(HSLColor.fromColor(p.bg).hue, closeTo(HSLColor.fromColor(const Color(0xFF45D93A)).hue, 3), reason: '$tone');
+      }
     });
 
     test('a grey or white brand gives neutral backgrounds, not a colour cast', () {
@@ -70,6 +137,11 @@ void main() {
       expect(AppColors.bg, const Color(0xFF0B0716));
       expect(AppColors.brandGradient.colors.first, const Color(0xFF7C3AED));
     });
+
+    test('before the branding is read the app wears the default brand with the Rich tone, not black', () {
+      expect(AppColors.palette, AppPalette.initial);
+      expect(AppColors.bg, isNot(const Color(0xFF0B0716)));
+    });
   });
 
   testWidgets('a new palette reaches widgets that read AppColors while they build', (t) async {
@@ -79,12 +151,12 @@ void main() {
         child: Builder(builder: (_) => ColoredBox(key: const ValueKey('bg'), color: AppColors.bg)),
       ),
     );
-    expect(t.widget<ColoredBox>(find.byKey(const ValueKey('bg'))).color, AppPalette.stock.bg);
+    expect(t.widget<ColoredBox>(find.byKey(const ValueKey('bg'))).color, AppPalette.initial.bg);
 
     final p = AppPalette.fromBrand(const Color(0xFF0E9F6E), const Color(0xFFF5279B));
     AppColors.apply(p);
     await t.pump();
-    expect(t.widget<ColoredBox>(find.byKey(const ValueKey('bg'))).color, AppPalette.stock.bg,
+    expect(t.widget<ColoredBox>(find.byKey(const ValueKey('bg'))).color, AppPalette.initial.bg,
         reason: 'nothing rebuilds by itself');
     rebuildEverything();
     await t.pump();
@@ -108,6 +180,16 @@ void main() {
       expect(next.accent, const Color(0xFFFFAA00));
     });
 
+    test('the background tone comes from brand_tone; missing or unknown is Rich; a row without it keeps what the app had', () {
+      expect(Branding.fromRow({'brand_tone': 'deep'}).tone, BackgroundTone.deep);
+      expect(Branding.fromRow({'brand_tone': 'soft'}).tone, BackgroundTone.soft);
+      expect(Branding.fromRow({'brand_tone': 'weird'}).tone, BackgroundTone.rich);
+      expect(Branding.fromRow({'brand_tone': null}).tone, BackgroundTone.rich);
+      expect(Branding.fromRow({}).tone, BackgroundTone.rich);
+      final had = Branding.fromRow({'brand_tone': 'soft'});
+      expect(Branding.fromRow({'brand_color': '#0e9f6e'}, fallback: had).tone, BackgroundTone.soft, reason: 'a database without the column leaves the tone alone');
+    });
+
     test('toHex round-trips', () {
       expect(Branding.toHex(const Color(0xFF0E9F6E)), '#0e9f6e');
       expect(Branding.parseHex(Branding.toHex(const Color(0xFF123456))), const Color(0xFF123456));
@@ -124,10 +206,16 @@ void main() {
       expect(AppColors.primary, isNot(AppPalette.stock.primary));
     });
 
-    test('with nothing saved the stock look stays', () async {
+    test('restore applies the saved background tone too', () async {
+      SharedPreferences.setMockInitialValues({'theme.brand': '#45d93a', 'theme.accent': '#5db65f', 'theme.font': 'Poppins', 'theme.tone': 'soft'});
+      await ThemeConfigController.restore();
+      expect(AppColors.palette, AppPalette.fromBrand(const Color(0xFF45D93A), const Color(0xFF5DB65F), tone: BackgroundTone.soft));
+    });
+
+    test('with nothing saved the default look stays (default brand, Rich tone)', () async {
       SharedPreferences.setMockInitialValues({});
       await ThemeConfigController.restore();
-      expect(AppColors.palette, AppPalette.stock);
+      expect(AppColors.palette, AppPalette.initial);
     });
   });
 

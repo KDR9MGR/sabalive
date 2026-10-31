@@ -842,4 +842,5 @@ const Map<String, String> bnStrings = {
   'A to Z': 'A থেকে Z',
   'Coin games': 'কয়েন গেম',
   'Party games': 'পার্টি গেম',
+  'Old': 'পুরনো',
 };
