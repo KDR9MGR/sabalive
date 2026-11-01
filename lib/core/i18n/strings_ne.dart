@@ -845,7 +845,7 @@ const Map<String, String> neStrings = {
   'Old': 'पुरानो',
   'Today, {0}': 'आज, {0}',
   'Since {0}': '{0} देखि',
-  'Resets every day at midnight India time': 'हरेक दिन भारतीय समय अनुसार मध्यरातमा रिसेट हुन्छ',
-  'Resets every Monday at midnight India time': 'हरेक सोमबार भारतीय समय अनुसार मध्यरातमा रिसेट हुन्छ',
-  'Resets on the 1st of each month at midnight India time': 'हरेक महिनाको १ गते भारतीय समय अनुसार मध्यरातमा रिसेट हुन्छ',
+  'Resets every day at 00:10 India time': 'हरेक दिन भारतीय समय अनुसार 00:10 बजे रिसेट हुन्छ',
+  'Resets every Monday at 00:10 India time': 'हरेक सोमबार भारतीय समय अनुसार 00:10 बजे रिसेट हुन्छ',
+  'Resets on the 1st of each month at 00:10 India time': 'हरेक महिनाको १ गते भारतीय समय अनुसार 00:10 बजे रिसेट हुन्छ',
 };

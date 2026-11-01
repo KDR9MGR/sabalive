@@ -8,6 +8,7 @@ import '../core/media/gift_artwork_warmer.dart';
 import '../core/media/gift_movie_cache.dart';
 import '../core/widgets/remote_media.dart' show MediaKind, mediaKindFor;
 import '../data/gift_catalog_cache.dart';
+import '../services/crash_reporting.dart';
 import '../data/gift_sender.dart';
 import '../data/gift_sender.dart' as gift_sender show isMissingFunction;
 import '../data/models.dart';
@@ -223,8 +224,11 @@ class WalletController extends ChangeNotifier {
 
   /// Sends [gift] x [quantity] to [receiver] — server-authoritative, as ONE action (see [GiftSender]). [receiver] must be a real signed-up profile; demo
   /// hosts (mock data, not yet backed by a real account) are rejected with a clear error rather than silently no-op'ing or crashing on a bad UUID.
-  Future<void> sendGift(Gift gift, AppUser receiver, {String? liveStreamId, int quantity = 1}) =>
-      _giftSender.send(gift, receiver, liveStreamId: liveStreamId, quantity: quantity);
+  Future<void> sendGift(Gift gift, AppUser receiver, {String? liveStreamId, int quantity = 1}) async {
+    CrashReporting.log('gift: sending ${gift.id} x$quantity');
+    await _giftSender.send(gift, receiver, liveStreamId: liveStreamId, quantity: quantity);
+    CrashReporting.log('gift: sent ${gift.id} x$quantity');
+  }
 
   /// Sends [gift] x [quantity] to everyone in the room as ONE server action: the host and whoever is on a seat, never the sender. The server charges
   /// price x people x quantity up front, so it either all goes or none of it does, and the room gets a single line ("sent 10x Rose to 5 people").
@@ -237,8 +241,12 @@ class WalletController extends ChangeNotifier {
     required String liveStreamId,
     int quantity = 1,
     required List<AppUser> fallbackRecipients,
-  }) =>
-      _giftSender.sendToAll(gift, liveStreamId: liveStreamId, quantity: quantity, fallbackRecipients: fallbackRecipients);
+  }) async {
+    CrashReporting.log('gift: sending ${gift.id} x$quantity to all');
+    final people = await _giftSender.sendToAll(gift, liveStreamId: liveStreamId, quantity: quantity, fallbackRecipients: fallbackRecipients);
+    CrashReporting.log('gift: sent ${gift.id} x$quantity to $people');
+    return people;
+  }
 
   /// The database has no function with that name (yet): PostgREST code PGRST202 / Postgres 42883.
   @visibleForTesting

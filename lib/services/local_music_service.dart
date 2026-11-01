@@ -20,7 +20,7 @@ class MusicTrack {
 /// live (muting the mic mutes the music too, because both ride the same audio
 /// stream).
 ///
-/// Used by the host of an audio room only.
+/// Used by the host of an audio room and of a video live.
 class LocalMusicController extends ChangeNotifier {
   LocalMusicController(this.engine) {
     engine.registerEventHandler(_handler);
@@ -29,7 +29,13 @@ class LocalMusicController extends ChangeNotifier {
   final RtcEngine engine;
   late final RtcEngineEventHandler _handler = RtcEngineEventHandler(
     onAudioMixingStateChanged: _onMixingState,
+    onLeaveChannel: (_, _) => _onLeftChannel(),
+    onJoinChannelSuccess: (_, _) => _onJoinedChannel(),
   );
+
+  /// A song was playing when the host left the channel (a PK battle moves a live to its shared channel and back, and Agora can only
+  /// do that by leaving and joining). Whatever Agora does with the mixing on a leave, the song must go on after the join.
+  bool _interrupted = false;
 
   final List<MusicTrack> queue = [];
   int _index = -1;
@@ -124,6 +130,18 @@ class LocalMusicController extends ChangeNotifier {
     _notify();
   }
 
+  void _onLeftChannel() {
+    if (_disposed || !active || !(_playing || _starting)) return;
+    _interrupted = true;
+  }
+
+  /// Starts the same song again, from its beginning, in the channel just joined.
+  void _onJoinedChannel() {
+    if (_disposed || !_interrupted) return;
+    _interrupted = false;
+    if (active) unawaited(_playAt(_index));
+  }
+
   void _onMixingState(AudioMixingStateType state, AudioMixingReasonType reason) {
     debugPrint('audio mixing: $state / $reason');
     if (_disposed || !active) return;
@@ -193,6 +211,7 @@ class LocalMusicController extends ChangeNotifier {
       await engine.stopAudioMixing();
     } catch (_) {}
     _watchdog?.cancel();
+    _interrupted = false;
     _starting = false;
     _playing = false;
     _paused = false;

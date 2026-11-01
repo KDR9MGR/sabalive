@@ -46,7 +46,7 @@ class _RankingsScreenState extends State<RankingsScreen> with WidgetsBindingObse
   List<AgencyRankingEntry> _agencyEntries = const [];
   int _reqSeq = 0;
 
-  // The boards start their day / week / month at INDIA midnight (the database does it). A board left open across that moment would keep showing the
+  // The boards start their day / week / month at 00:10 INDIA time (the database does it). A board left open across that moment would keep showing the
   // old period, so the screen remembers which period it fetched and fetches again when the period has changed: when the app comes back, and by a
   // once-a-minute look at the clock (no network unless the period really changed).
   Timer? _tick;
@@ -178,7 +178,7 @@ class _RankingsScreenState extends State<RankingsScreen> with WidgetsBindingObse
     );
   }
 
-  /// What the board covers and when it starts again, in India time ("Since 1 Nov" / "Resets on the 1st of each month at midnight India time").
+  /// What the board covers and when it starts again, in India time ("Since 1 Nov" / "Resets on the 1st of each month at 00:10 India time").
   Widget _periodCaption() {
     final win = _window;
     return Padding(

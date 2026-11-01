@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/rankings_repository.dart' show RankPeriod;
 import 'package:sabalive/features/rankings/ranking_window.dart';
 
-// The Rankings follow INDIA midnight (the database's boards do since migration 20261101020000). These are the same moments its test uses: the instant
-// India midnight arrives is 18:30 UTC the evening before.
+// The Rankings reset at 00:10 INDIA time (the database's boards do since migration 20261101120000; 20261101020000 had them at midnight). The instant 00:10
+// India time arrives is 18:40 UTC the evening before; at 18:30 UTC it is India midnight, and the boards still show the period that is ending.
 RankingWindow w(RankPeriod p, DateTime nowUtc) =>
     RankingWindow.of(p, now: nowUtc);
 
@@ -24,22 +24,22 @@ void main() {
   );
 
   test(
-    'one minute before India midnight is still the old day and month; at India midnight everything rolls over',
+    'a minute before 00:10 India time is still the old day and month; at 00:10 everything rolls over',
     () {
       final before = DateTime.utc(
         2026,
         10,
         31,
         18,
-        29,
-      ); // 23:59 India time on 31 Oct
+        39,
+      ); // 00:09 India time on 1 Nov
       final after = DateTime.utc(
         2026,
         10,
         31,
         18,
-        30,
-      ); // 00:00 India time on 1 Nov
+        40,
+      ); // 00:10 India time on 1 Nov
       expect(w(RankPeriod.monthly, before).startLabel, '1 Oct');
       expect(w(RankPeriod.daily, before).startLabel, '31 Oct');
       expect(w(RankPeriod.monthly, after).startLabel, '1 Nov');
@@ -56,22 +56,45 @@ void main() {
   );
 
   test(
-    'the week rolls over at India midnight into Monday, and not on the other days',
+    'between India midnight and 00:10 the board still shows the period that is ending (the old day, week and month)',
+    () {
+      final midnight = DateTime.utc(
+        2026,
+        10,
+        31,
+        18,
+        30,
+      ); // 00:00 India time on 1 Nov, a Sunday
+      final fivePast = DateTime.utc(2026, 10, 31, 18, 35); // 00:05
+      for (final t in [midnight, fivePast]) {
+        expect(w(RankPeriod.daily, t).startLabel, '31 Oct');
+        expect(w(RankPeriod.weekly, t).startLabel, '26 Oct');
+        expect(w(RankPeriod.monthly, t).startLabel, '1 Oct');
+      }
+      expect(
+        w(RankPeriod.daily, midnight).key,
+        w(RankPeriod.daily, fivePast).key,
+      );
+    },
+  );
+
+  test(
+    'the week rolls over at 00:10 India time into Monday, and not on the other days',
     () {
       final sundayLate = DateTime.utc(
         2026,
         11,
         1,
         18,
-        29,
-      ); // 23:59 India time, Sunday 1 Nov
+        39,
+      ); // 23:59 India time, Sunday 1 Nov (also 00:09 on Monday: still the old week)
       final mondayStart = DateTime.utc(
         2026,
         11,
         1,
         18,
-        30,
-      ); // 00:00 India time, Monday 2 Nov
+        40,
+      ); // 00:10 India time, Monday 2 Nov
       expect(w(RankPeriod.weekly, sundayLate).startLabel, '26 Oct');
       expect(w(RankPeriod.weekly, mondayStart).startLabel, '2 Nov');
       expect(
@@ -91,14 +114,14 @@ void main() {
   );
 
   test(
-    'a year boundary: 1 Jan 2027 00:00 India time starts a new month and the week still began on Monday 28 Dec',
+    'a year boundary: 1 Jan 2027 00:10 India time starts a new month and the week still began on Monday 28 Dec',
     () {
-      final newYear = DateTime.utc(2026, 12, 31, 18, 30);
+      final newYear = DateTime.utc(2026, 12, 31, 18, 40);
       expect(w(RankPeriod.monthly, newYear).startLabel, '1 Jan');
       expect(w(RankPeriod.monthly, newYear).startDay.year, 2027);
       expect(w(RankPeriod.weekly, newYear).startLabel, '28 Dec');
       expect(
-        w(RankPeriod.monthly, DateTime.utc(2026, 12, 31, 18, 29)).startLabel,
+        w(RankPeriod.monthly, DateTime.utc(2026, 12, 31, 18, 39)).startLabel,
         '1 Dec',
       );
     },
@@ -140,15 +163,15 @@ void main() {
       expect(w(RankPeriod.monthly, earlyNov1).coverage, 'Since 1 Nov');
       expect(
         w(RankPeriod.daily, earlyNov1).resets,
-        'Resets every day at midnight India time',
+        'Resets every day at 00:10 India time',
       );
       expect(
         w(RankPeriod.weekly, earlyNov1).resets,
-        'Resets every Monday at midnight India time',
+        'Resets every Monday at 00:10 India time',
       );
       expect(
         w(RankPeriod.monthly, earlyNov1).resets,
-        'Resets on the 1st of each month at midnight India time',
+        'Resets on the 1st of each month at 00:10 India time',
       );
     },
   );

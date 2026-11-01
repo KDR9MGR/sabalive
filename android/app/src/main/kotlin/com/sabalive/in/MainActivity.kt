@@ -1,6 +1,8 @@
 package com.sabalive.`in`
 
+import android.app.ActivityManager
 import android.media.MediaDrm
+import android.os.Build
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -42,6 +44,36 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // How this app's earlier processes ended (crash, native crash, freeze, killed for memory...), as Android recorded it.
+        // Reported to the crash dashboard on the next start; see lib/services/crash_reporting.dart.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.sabalive.in/exit_info")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "recent" -> result.success(recentExits())
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    // ApplicationExitInfo exists from Android 11 (API 30); an older phone, or any failure, answers with an empty list.
+    private fun recentExits(): List<Map<String, Any?>> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return emptyList()
+        return try {
+            val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            manager.getHistoricalProcessExitReasons(packageName, 0, 10).map {
+                mapOf(
+                    "reason" to it.reason,
+                    "status" to it.status,
+                    "importance" to it.importance,
+                    "timestamp" to it.timestamp,
+                    "rssKb" to it.rss,
+                    "description" to it.description,
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun drmDeviceId(): String? {

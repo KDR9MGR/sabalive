@@ -845,7 +845,7 @@ const Map<String, String> urStrings = {
   'Old': 'پرانا',
   'Today, {0}': 'آج، {0}',
   'Since {0}': '{0} سے',
-  'Resets every day at midnight India time': 'ہر دن بھارتی وقت کے مطابق آدھی رات کو ری سیٹ ہوتا ہے',
-  'Resets every Monday at midnight India time': 'ہر پیر کو بھارتی وقت کے مطابق آدھی رات کو ری سیٹ ہوتا ہے',
-  'Resets on the 1st of each month at midnight India time': 'ہر مہینے کی 1 تاریخ کو بھارتی وقت کے مطابق آدھی رات کو ری سیٹ ہوتا ہے',
+  'Resets every day at 00:10 India time': 'ہر دن بھارتی وقت کے مطابق 00:10 بجے ری سیٹ ہوتا ہے',
+  'Resets every Monday at 00:10 India time': 'ہر پیر کو بھارتی وقت کے مطابق 00:10 بجے ری سیٹ ہوتا ہے',
+  'Resets on the 1st of each month at 00:10 India time': 'ہر مہینے کی 1 تاریخ کو بھارتی وقت کے مطابق 00:10 بجے ری سیٹ ہوتا ہے',
 };

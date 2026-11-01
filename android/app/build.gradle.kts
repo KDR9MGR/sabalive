@@ -7,6 +7,7 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 // All signing secrets live outside the repo in one dedicated folder, never
@@ -79,4 +80,9 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // The Flutter plugin only brings the Java crash reporter; this one adds crashes inside native code (the video / audio
+    // engine, the renderer, the animation decoders), which is where a phone that just "closes" usually dies. Same BOM
+    // version the FlutterFire plugins use (firebase_core 3.15.2), so every Firebase library stays on one release.
+    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation("com.google.firebase:firebase-crashlytics-ndk")
 }

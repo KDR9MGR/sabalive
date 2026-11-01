@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../config/feature_flags.dart';
 import '../../data/pk_battles_repository.dart';
 import '../../services/pk_channel_switcher.dart';
+import '../../services/crash_reporting.dart';
 import '../../state/pk_battle_controller.dart';
 import '../../config/supabase_client.dart';
 import '../../core/utils/errors.dart';
@@ -192,6 +193,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   @override
   void initState() {
     super.initState();
+    CrashReporting.key('screen', 'broadcast');
+    CrashReporting.log('opened own live (hosting) ${widget.stream.id}');
     // For didPopRoute() below — this screen is mounted by the app-root
     // overlay in app.dart, not pushed as a Navigator route, so there's no
     // ModalRoute for the usual PopScope/BackButtonListener mechanisms to
@@ -294,6 +297,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
             if (mounted) setState(() => _error = agoraErrorMessage(err, msg));
           },
           onConnectionStateChanged: (connection, state, reason) {
+            CrashReporting.log('connection: $state / $reason');
             if (!mounted) return;
             setState(() {
               _reconnecting =
@@ -877,6 +881,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   @override
   void dispose() {
+    CrashReporting.log('left own live (hosting)');
+    CrashReporting.key('screen', 'none');
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _end) _session.backHandler = null;
     _diamonds.dispose();
@@ -1291,14 +1297,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         AppColors.gold,
         () => AppNav.wallet(context),
       ),
-      // Songs from the phone: the host of an audio room only.
-      if (widget.audioOnly)
-        ToolSpec(
-          Icons.music_note_rounded,
-          'Play music',
-          AppColors.pink,
-          _openMusic,
-        ),
+      // Songs from the phone: the host of an audio room or a video live.
+      ToolSpec(
+        Icons.music_note_rounded,
+        'Play music',
+        AppColors.pink,
+        _openMusic,
+      ),
       if (FeatureFlags.comingSoonVisible)
         ToolSpec(
           Icons.campaign_rounded,

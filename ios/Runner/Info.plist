@@ -106,5 +106,8 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<!-- the crash reporter is linked in (one Flutter package for both phones) but only Android sends reports for now: it needs a privacy-label update and dSYM upload before iPhone does -->
+	<key>FirebaseCrashlyticsCollectionEnabled</key>
+	<false/>
 </dict>
 </plist>

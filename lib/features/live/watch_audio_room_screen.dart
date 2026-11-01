@@ -33,6 +33,7 @@ import '../../state/room_moderation.dart';
 import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
 import '../../services/agora_errors.dart';
+import '../../services/crash_reporting.dart';
 import '../../services/agora_service.dart';
 import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
@@ -172,6 +173,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   @override
   void initState() {
     super.initState();
+    CrashReporting.key('screen', 'audio_room');
+    CrashReporting.log('opened audio room ${widget.stream.id}');
     WidgetsBinding.instance.addObserver(this);
     _session = context.read<ActiveLiveSessionController>()..backHandler = _showCloseDialog;
     _diamonds.start();
@@ -635,6 +638,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             if (mounted) setState(() => _joinError = agoraErrorMessage(err, msg));
           },
           onConnectionStateChanged: (connection, state, reason) {
+            CrashReporting.log('connection: $state / $reason');
             if (!mounted) return;
             final failed = state == ConnectionStateType.connectionStateFailed;
             setState(() {
@@ -832,6 +836,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
 
   @override
   void dispose() {
+    CrashReporting.log('left audio room');
+    CrashReporting.key('screen', 'none');
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _showCloseDialog) _session.backHandler = null;
     _diamonds.dispose();

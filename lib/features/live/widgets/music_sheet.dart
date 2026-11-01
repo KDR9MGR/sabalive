@@ -55,8 +55,8 @@ class _MusicSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Songs from your phone, played into your audio room. Keep your '
-                  'mic on while music plays — the music goes out with your voice.',
+                  'Songs from your phone. Keep your mic on while music plays — '
+                  'the music goes out with your voice.',
                   style: TextStyle(
                       fontSize: 11.5, color: AppColors.textMuted, height: 1.4),
                 ),

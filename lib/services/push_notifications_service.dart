@@ -28,6 +28,9 @@ class PushNotificationsService {
 
   bool _initialized = false;
   String? _registeredToken;
+
+  /// Firebase's core configuration started (the crash reporter needs it too).
+  bool get firebaseReady => _initialized;
   final _localNotifications = FlutterLocalNotificationsPlugin();
 
   static const _androidChannel = AndroidNotificationChannel(

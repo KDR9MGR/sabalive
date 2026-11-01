@@ -33,6 +33,7 @@ import '../../state/room_moderation.dart';
 import '../../router/app_nav.dart';
 import '../messages/messages_screen.dart';
 import '../../services/agora_errors.dart';
+import '../../services/crash_reporting.dart';
 import '../../services/agora_service.dart';
 import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
@@ -278,6 +279,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   @override
   void initState() {
     super.initState();
+    CrashReporting.key('screen', 'video_live_viewer');
+    CrashReporting.log('opened video live (watching) ${widget.stream.id}');
     WidgetsBinding.instance.addObserver(this);
     _session = context.read<ActiveLiveSessionController>()..backHandler = _showCloseDialog;
     _likes = widget.stream.likes;
@@ -845,6 +848,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             if (mounted) setState(() => _joinError = agoraErrorMessage(err, msg));
           },
           onConnectionStateChanged: (connection, state, reason) {
+            CrashReporting.log('connection: $state / $reason');
             if (!mounted) return;
             final failed = state == ConnectionStateType.connectionStateFailed;
             setState(() {
@@ -1047,6 +1051,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
   @override
   void dispose() {
+    CrashReporting.log('left video live (watching)');
+    CrashReporting.key('screen', 'none');
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _showCloseDialog) _session.backHandler = null;
     _stopEndWatch?.call();

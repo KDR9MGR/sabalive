@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../data/models.dart';
+import '../../../services/crash_reporting.dart';
 import '../../../router/app_nav.dart';
 import '../../../state/wallet_controller.dart';
 import '../../../theme/app_colors.dart';
@@ -33,6 +34,7 @@ Future<GiftChoice?> showGiftSheet(
   required String hostName,
   List<AppUser> recipients = const [],
 }) {
+  CrashReporting.log('gift sheet opened');
   return showModalBottomSheet<GiftChoice>(
     context: context,
     isScrollControlled: true,

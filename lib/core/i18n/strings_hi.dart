@@ -845,7 +845,7 @@ const Map<String, String> hiStrings = {
   'Old': 'पुराना',
   'Today, {0}': 'आज, {0}',
   'Since {0}': '{0} से',
-  'Resets every day at midnight India time': 'हर दिन भारतीय समय के अनुसार आधी रात को रीसेट होता है',
-  'Resets every Monday at midnight India time': 'हर सोमवार भारतीय समय के अनुसार आधी रात को रीसेट होता है',
-  'Resets on the 1st of each month at midnight India time': 'हर महीने की 1 तारीख को भारतीय समय के अनुसार आधी रात को रीसेट होता है',
+  'Resets every day at 00:10 India time': 'हर दिन भारतीय समय के अनुसार 00:10 बजे रीसेट होता है',
+  'Resets every Monday at 00:10 India time': 'हर सोमवार भारतीय समय के अनुसार 00:10 बजे रीसेट होता है',
+  'Resets on the 1st of each month at 00:10 India time': 'हर महीने की 1 तारीख को भारतीय समय के अनुसार 00:10 बजे रीसेट होता है',
 };

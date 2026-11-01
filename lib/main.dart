@@ -10,6 +10,7 @@ import 'app.dart';
 import 'core/i18n/i18n.dart';
 import 'config/app_environment.dart';
 import 'config/supabase_config.dart';
+import 'services/crash_reporting.dart';
 import 'services/deep_link_service.dart';
 import 'services/device_identity_service.dart';
 import 'services/maintenance_http_client.dart';
@@ -66,7 +67,11 @@ void main() async {
     unawaited(ScreenProtection.set(RemoteConfigController.instance.flag('screen_protection', defaultValue: false)));
   });
   await PushNotificationsService.instance.initializeApp();
+  // crash and freeze reports (Android): from here on a crash arrives with its stack; see lib/services/crash_reporting.dart
+  await CrashReporting.start(firebaseReady: PushNotificationsService.instance.firebaseReady);
   runApp(const SabaLiveApp());
+  unawaited(CrashReporting.reportPreviousExits());
+  CrashReporting.startMemoryTrail();
   DeepLinkService(rootNavigatorKey).start();
   PushNotificationsService.instance.setupMessaging();
 }

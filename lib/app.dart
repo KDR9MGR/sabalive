@@ -20,6 +20,7 @@ import 'features/calls/incoming_call_banner.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/main_shell.dart';
 import 'features/splash/splash_screen.dart';
+import 'services/crash_reporting.dart';
 import 'state/active_live_session_controller.dart';
 import 'state/remote_config_controller.dart';
 import 'state/auth_controller.dart';
@@ -43,7 +44,15 @@ class SabaLiveApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: MaintenanceController.instance),
-        ChangeNotifierProvider(create: (_) => AuthController()),
+        ChangeNotifierProvider(create: (_) {
+          final auth = AuthController();
+          // a crash report carries the visible app ID of the person it happened to (never for a ghost account, which is meant to stay unseen)
+          auth.addListener(() {
+            final user = auth.user;
+            CrashReporting.setUser(user == null || user.isGhost ? null : user.displayId);
+          });
+          return auth;
+        }),
         ChangeNotifierProvider(create: (_) => WalletController()),
         ChangeNotifierProvider(create: (_) => SessionController()),
         ChangeNotifierProvider(create: (_) => CallsController()),

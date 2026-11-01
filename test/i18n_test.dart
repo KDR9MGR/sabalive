@@ -91,12 +91,12 @@ void main() {
     await I18n.set(languageByCode('hi'));
     expect(tr('Since 1 Nov'), '1 Nov से');
     expect(tr('Today, 1 Nov'), 'आज, 1 Nov');
-    expect(tr('Resets every day at midnight India time'), 'हर दिन भारतीय समय के अनुसार आधी रात को रीसेट होता है');
+    expect(tr('Resets every day at 00:10 India time'), 'हर दिन भारतीय समय के अनुसार 00:10 बजे रीसेट होता है');
     await I18n.set(languageByCode('pt_BR'));
     expect(tr('Since 26 Oct'), 'Desde 26 Oct');
-    expect(tr('Resets every Monday at midnight India time'), 'Reinicia toda segunda-feira à meia-noite no horário da Índia');
+    expect(tr('Resets every Monday at 00:10 India time'), 'Reinicia toda segunda-feira às 00:10 no horário da Índia');
     await I18n.set(languageByCode('ar'));
-    expect(tr('Resets on the 1st of each month at midnight India time'), 'يُعاد الضبط في الأول من كل شهر عند منتصف الليل بتوقيت الهند');
+    expect(tr('Resets on the 1st of each month at 00:10 India time'), 'يُعاد الضبط في الأول من كل شهر عند الساعة 00:10 بتوقيت الهند');
     // the chat's "Today" separator is its own exact string and is not caught by the "Today, {0}" template
     await I18n.set(languageByCode('hi'));
     expect(tr('Today'), isNot(contains('{0}')));

@@ -15,7 +15,7 @@ void main() {
 
       // Weekly is the board the screen opens on
       expect(
-        find.text('Resets every Monday at midnight India time'),
+        find.text('Resets every Monday at 00:10 India time'),
         findsOneWidget,
       );
       expect(find.textContaining('Since '), findsOneWidget);
@@ -23,18 +23,18 @@ void main() {
       await tester.tap(find.text('Monthly'));
       await tester.pump();
       expect(
-        find.text('Resets on the 1st of each month at midnight India time'),
+        find.text('Resets on the 1st of each month at 00:10 India time'),
         findsOneWidget,
       );
       expect(
-        find.text('Resets every Monday at midnight India time'),
+        find.text('Resets every Monday at 00:10 India time'),
         findsNothing,
       );
 
       await tester.tap(find.text('Daily'));
       await tester.pump();
       expect(
-        find.text('Resets every day at midnight India time'),
+        find.text('Resets every day at 00:10 India time'),
         findsOneWidget,
       );
       expect(find.textContaining('Today, '), findsOneWidget);

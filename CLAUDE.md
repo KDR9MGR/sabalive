@@ -242,6 +242,32 @@ modified copy (the check runs inside the app). The plan (server-side build check
   marks every element dirty so nothing loses its state.
 - Audio: Agora scenario is game-streaming (media volume) so MP4 gift sound and music are audible; local
   songs use the system file picker (no storage permission) + Agora audio mixing (`LocalMusicController`).
+  The host's Tools -> "Play music" is in audio rooms AND video lives (same sheet, same controller). The song rides the
+  host's published mic stream, so muting the mic mutes it. A PK battle moves the host with leave + join, so the
+  controller restarts the playing song after the join (`test/local_music_test.dart`).
+
+## Rankings / leaderboards (rules set by the owner 2026-11-01; migrations `20261101020000` + `20261101120000`)
+- **What each board counts**: Hosts = the DIAMONDS received through gifts (1 coin gifted = 1 diamond credited, `gift_transactions.coins` is both), Gifters = the COINS spent on gifts, Agencies = the diamonds of ALL the agency's hosts added together
+  (`host_profiles.agency_id` at the time of the call). Self-gifts count (a host sending a gift to themselves is a real credit). Lucky Box, rewards and the diamond reset are not in these boards.
+- **When they reset: 00:10 India time** (IST, UTC+5:30, no daylight saving): daily every day, weekly every Monday, monthly on the 1st. Until 00:10 the period that is ending is still shown; a gift at 00:09 belongs to it, one at 00:10:00 to the new one.
+  The one place the moment is defined is `ist_period_start('day' | 'week' | 'month')` in SQL (the nine `rankings_*` functions read it, nothing is stored, nothing to recompute); `lib/features/rankings/ranking_window.dart` mirrors it only to
+  write the captions ("Today, 1 Nov", "Resets every Monday at 00:10 India time") and to refetch when the period rolls over. Change the time in BOTH places and in the panel's `leaderboardRules.js` (`RESET_TIME`), with their tests.
+- **Panel**: Master / Super Admin -> Leaderboards (`/admin/rankings`, `/super/rankings`), one call `admin_leaderboard(board, period, which, limit)` (same sums and windows as the app, plus the previous day / week / month, which the app cannot show).
+  `scripts/db/tests/rankings_reset_0010_test.sql` proves the panel's numbers equal the app's nine boards, the 00:10 edges, ranks, ties (first to reach the score wins) and who may call it.
+
+## Crash and freeze reports (Firebase Crashlytics, Android only)
+- `lib/services/crash_reporting.dart`, started in `main.dart` right after `Firebase.initializeApp()`. Needs `firebase_crashlytics` (Flutter) +
+  the Gradle plugin `com.google.firebase.crashlytics` + `firebase-crashlytics-ndk` (native crashes: the Flutter plugin only brings the Java side).
+  The owner must open the Firebase console -> Crashlytics once (Enable) before reports show. A report carries: the stack (Java, native, Dart),
+  the last `CrashReporting.log` lines (live opened / left, Agora connection states, gift sheet and gift sends), a memory line every 30 s (app MB,
+  decoded gift animations MB, picture cache MB) and the signed-in person's VISIBLE app ID (`display_id`, never for a ghost; no name, email or phone).
+- `reportPreviousExits()` asks Android (`ApplicationExitInfo`, MainActivity.kt channel `com.sabalive.in/exit_info`, Android 11+) why the last
+  process ended and sends the ones that matter once each (`PreviousExits.toReport`): a kill for memory / a freeze / a native crash leaves no crash
+  otherwise. Android 10 and older send nothing.
+- iPhone sends NOTHING: `FirebaseCrashlyticsCollectionEnabled = false` in `ios/Runner/Info.plist` and the start-up refuses non-Android. Before it is
+  turned on for iOS: the App Store privacy label, dSYM upload, and the Play Data safety form needs "Crash logs" (+ "User IDs") before ANY Play release
+  of a build that has this. Native frames show library names and addresses (no symbol upload is set up).
+- Dart errors are sent as NON-fatal (a release build does not close on them); fatal = the process really died. Debug builds send nothing.
 
 ## Bans (device / account / identity / IP)
 - An account or device ban (`user_bans`) also writes to `banned_identities` (normalized email / phone / Google / Apple id; gmail
