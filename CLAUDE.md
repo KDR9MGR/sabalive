@@ -255,6 +255,14 @@ modified copy (the check runs inside the app). The plan (server-side build check
 - **Panel**: Master / Super Admin -> Leaderboards (`/admin/rankings`, `/super/rankings`), one call `admin_leaderboard(board, period, which, limit)` (same sums and windows as the app, plus the previous day / week / month, which the app cannot show).
   `scripts/db/tests/rankings_reset_0010_test.sql` proves the panel's numbers equal the app's nine boards, the 00:10 edges, ranks, ties (first to reach the score wins) and who may call it.
 
+## Undoing a test account's gifts (2026-11-02, `scripts/prod/revert_user_gifts.sh`)
+One-off data tool in the style of `follow_everyone.sh`: `scripts/prod/revert_user_gifts.sh <User ID> --from "<UTC>" --to "<UTC>"` is the PLAN (read-only); `--apply` undoes every gift the person SENT or RECEIVED in that window so the database looks as if it was never sent
+(sender gets the coins back, receiver loses the diamonds, the `gift_transactions` row and its two `wallet_ledger` rows are deleted, so rankings, Salary and the diamond reset forget it; `xp` / `wealth_xp` / `charm_xp` and their levels go down by the same amount; `live_streams.gift_coin_total` too);
+`--undo <pack file>` puts exactly that back (the apply saves a private pack, `~/sabalive-backups/gift-revert-<id>-<stamp>.json`). The ledger rows are not linked to the gift row by id, so they are matched by person + amount + time (a gift and its two ledger rows share `created_at`);
+anything that does not match, a receiver who no longer holds the diamonds, or XP that would go below 0 is a BLOCKER and the apply changes nothing. Production needs a backup under 6 h old, a clean healthcheck, a plan without blockers and the User ID typed (or `REVERT_CONFIRM=<id>`), and the owner's go.
+`scripts/db/tests/revert_user_gifts_test.sql` proves it with the real `send_gift_v2`: after the apply EVERY wallet, xp, level, gift, ledger row, live total, ranking and stream diamond equals the state before the gifts; the undo restores the state after them (20 checks).
+An admin pull-back (`grant_reversal`) is NOT a gift: a receiver whose diamonds were pulled back earlier is a blocker, which is why old gifts (29-31 Oct to 17 accounts) could not be undone and only the 1 Nov burst could.
+
 ## Crash and freeze reports (Firebase Crashlytics, Android only)
 - `lib/services/crash_reporting.dart`, started in `main.dart` right after `Firebase.initializeApp()`. Needs `firebase_crashlytics` (Flutter) +
   the Gradle plugin `com.google.firebase.crashlytics` + `firebase-crashlytics-ndk` (native crashes: the Flutter plugin only brings the Java side).
