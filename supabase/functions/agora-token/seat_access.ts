@@ -28,6 +28,22 @@ export function seatGivesMic(seatNumber: number | null | undefined, stream: Stre
   return true;
 }
 
+/** The two couple (CP) seats of an audio room: 24 is the host's, 25 the other one (migration 20261105100000_cp_seats). They are above any room's seat_count on purpose, so seatGivesMic
+ *  alone says no to them; a room that has them switched on (live_streams.cp_seats) says yes through cpSeatGivesMic. */
+export const CP_SEAT_NUMBERS: readonly number[] = [24, 25];
+
+export function isCpSeatNumber(seatNumber: number | null | undefined): boolean {
+  return seatNumber != null && CP_SEAT_NUMBERS.includes(seatNumber);
+}
+
+export type CpStreamRow = { mode: string; status: string; cp_seats?: boolean | null };
+
+/** A couple seat gives the microphone only in a LIVE AUDIO room whose host switched CP seats on. Anything else (a video room, a room without CP seats, an ended live) gets nothing. */
+export function cpSeatGivesMic(seatNumber: number | null | undefined, stream: CpStreamRow): boolean {
+  if (!isCpSeatNumber(seatNumber)) return false;
+  return stream.mode === "audio" && stream.status === "live" && stream.cp_seats === true;
+}
+
 export function publisherTtlSeconds(isHost: boolean): number {
   return isHost ? FULL_TTL_SECONDS : GUEST_PUBLISHER_TTL_SECONDS;
 }

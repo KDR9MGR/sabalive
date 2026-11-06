@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FULL_TTL_SECONDS, GUEST_PUBLISHER_TTL_SECONDS, publisherTtlSeconds, seatGivesMic, type StreamRow } from "./seat_access.ts";
+import { CP_SEAT_NUMBERS, FULL_TTL_SECONDS, GUEST_PUBLISHER_TTL_SECONDS, cpSeatGivesMic, isCpSeatNumber, publisherTtlSeconds, seatGivesMic, type StreamRow } from "./seat_access.ts";
 
 const audio: StreamRow = { host_id: "h", mode: "audio", status: "live", seat_count: 4 };
 
@@ -37,4 +37,30 @@ test("a guest's speaking token is short, a host's keeps the hour", () => {
   assert.equal(publisherTtlSeconds(false), GUEST_PUBLISHER_TTL_SECONDS);
   assert.equal(publisherTtlSeconds(true), FULL_TTL_SECONDS);
   assert.ok(GUEST_PUBLISHER_TTL_SECONDS < FULL_TTL_SECONDS && GUEST_PUBLISHER_TTL_SECONDS >= 300);
+});
+
+test("couple seats are 24 and 25 and nothing else", () => {
+  assert.deepEqual([...CP_SEAT_NUMBERS], [24, 25]);
+  assert.equal(isCpSeatNumber(24), true);
+  assert.equal(isCpSeatNumber(25), true);
+  for (const n of [1, 16, 23, 26, 0, null, undefined]) assert.equal(isCpSeatNumber(n as number | null | undefined), false);
+});
+
+test("a couple seat gives the mic only in a live audio room that has CP seats switched on", () => {
+  const on = { mode: "audio", status: "live", cp_seats: true };
+  assert.equal(cpSeatGivesMic(24, on), true);
+  assert.equal(cpSeatGivesMic(25, on), true);
+  assert.equal(cpSeatGivesMic(24, { ...on, cp_seats: false }), false, "switched off");
+  assert.equal(cpSeatGivesMic(24, { ...on, cp_seats: null }), false, "unknown is off");
+  assert.equal(cpSeatGivesMic(24, { mode: "audio", status: "live" }), false, "a server without the column");
+  assert.equal(cpSeatGivesMic(24, { ...on, status: "ended" }), false);
+  assert.equal(cpSeatGivesMic(24, { ...on, mode: "video" }), false);
+  assert.equal(cpSeatGivesMic(24, { ...on, mode: "pk" }), false);
+  assert.equal(cpSeatGivesMic(3, on), false, "an ordinary seat is decided by seatGivesMic, not here");
+  assert.equal(cpSeatGivesMic(null, on), false);
+});
+
+test("the ordinary rule still says no to a couple seat: only the CP rule can open it", () => {
+  assert.equal(seatGivesMic(24, { ...audio, seat_count: 16 }), false);
+  assert.equal(seatGivesMic(25, { ...audio, seat_count: 16 }), false);
 });

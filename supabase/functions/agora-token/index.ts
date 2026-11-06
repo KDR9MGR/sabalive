@@ -21,7 +21,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { RtcRole, RtcTokenBuilder } from "npm:agora-token@2.0.5";
 import { mayPublishToBattle } from "./battle_access.ts";
-import { publisherTtlSeconds, seatGivesMic } from "./seat_access.ts";
+import { cpSeatGivesMic, isCpSeatNumber, publisherTtlSeconds, seatGivesMic } from "./seat_access.ts";
 
 const APP_ID = Deno.env.get("AGORA_APP_ID") ?? "";
 const APP_CERTIFICATE = Deno.env.get("AGORA_APP_CERTIFICATE") ?? "";
@@ -188,6 +188,12 @@ Deno.serve(async (req) => {
           .maybeSingle();
         // a row alone is not enough: the seat must be one the room really has (see seat_access.ts)
         isSeated = seatGivesMic(seat?.seat_number, stream);
+        // a couple (CP) seat sits above the room's seat count, so the rule above never opens it: a room that has CP seats switched on does. A separate read, so
+        // everything above is exactly what it was and a server without the column just answers "no" here
+        if (!isSeated && isCpSeatNumber(seat?.seat_number)) {
+          const { data: cp } = await userClient.from("live_streams").select("cp_seats").eq("id", channelName).maybeSingle();
+          isSeated = cpSeatGivesMic(seat?.seat_number, { ...stream, cp_seats: cp?.cp_seats === true });
+        }
       }
       if (!isHost && !isSeated) {
         await logPublisher(user.id, channelName, "refused", "not host, no usable seat", req);
