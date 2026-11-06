@@ -35,6 +35,7 @@ import '../messages/messages_screen.dart';
 import '../../services/agora_errors.dart';
 import '../../services/crash_reporting.dart';
 import '../../services/agora_service.dart';
+import '../../services/livekit_session.dart';
 import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
@@ -60,6 +61,7 @@ import 'widgets/pk_battle_arena.dart';
 import 'widgets/pk_battle_widgets.dart';
 import 'widgets/pk_visit_opponent.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/cp_seats.dart';
 import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
 import 'widgets/stream_diamonds.dart';
@@ -106,7 +108,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   final _room = RoomChatState();
   final _rand = math.Random();
   final List<_Heart> _hearts = [];
-  final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage);
+  late final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage, prewarmNotices: true)..roomHost = widget.stream.host;
   final _emotes = EmoteController();
   String? _skinUrl;
   int _likes = 0;
@@ -120,6 +122,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   bool _waitingTooLong = false;
 
   RtcEngine? _engine;
+
+  /// The connection when this room is on MS cloud (`widget.stream.rtcProvider`); null for an Agora room. Exactly one of [_engine] and [_lk] is ever set.
+  LiveKitSession? _lk;
+  bool get _onLiveKit => widget.stream.onLiveKit;
   final Map<int, AppUser> _seatOccupants = {};
   Set<int> _lockedSeats = {};
   final Set<int> _mutedSeats = {};
@@ -131,6 +137,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         if (mounted) setState(() {});
       });
   late int _seatCount = widget.stream.seatCount;
+
+  /// The host switched the two couple (CP) seats on: drawn above the seat grid (seats 24 and 25). Off until the room says otherwise.
+  bool _cpSeats = false;
   RealtimeChannel? _seatsChannel;
   RealtimeChannel? _seatStreamChannel;
   bool _seatBusy = false;
@@ -189,7 +198,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
-      _startPk();
+      // PK battles move people between Agora channels: an MS cloud room has none yet
+      if (!_onLiveKit) _startPk();
       _subscribeSeats();
       _stopEndWatch = watchStreamEnd(widget.stream.id, _onHostEnded);
       _mod.addListener(() {
@@ -352,6 +362,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       }
       if (snap.locked != null) _lockedSeats = snap.locked!;
       if (snap.seatCount != null) _seatCount = snap.seatCount!;
+      if (snap.cpSeats != null) _cpSeats = snap.cpSeats!;
       if (snap.hostAgoraUid != null) _speaking.hostUid = snap.hostAgoraUid;
       // a seat I hold stays mine; a seat in my name that I did not claim was dropped above
       if (mine != null && _mySeat != null) _mySeat = mine;
@@ -362,14 +373,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       }
     });
     if (lostMine) {
-      final engine = _engine;
-      if (engine != null) {
-        unawaited(AgoraService.instance.switchRole(
-          engine,
-          channelName: widget.stream.id,
-          asBroadcaster: false,
-        ));
-      }
+      unawaited(_switchRtcRole(asBroadcaster: false));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('You are no longer on a seat')),
       );
@@ -383,11 +387,10 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           'seat_number, is_muted, agora_uid, profiles!live_stream_seats_occupant_id_fkey(*)',
         )
         .eq('live_stream_id', widget.stream.id);
-    final streamRow = await supabase
-        .from('live_streams')
-        .select('locked_seats, seat_count, room_skin_item_id, host_agora_uid, pinned_notice, chat_cleared_at')
-        .eq('id', widget.stream.id)
-        .maybeSingle();
+    final streamRow = await readStreamRow(
+      widget.stream.id,
+      'locked_seats, seat_count, room_skin_item_id, host_agora_uid, pinned_notice, chat_cleared_at',
+    );
     unawaited(_applySkin(streamRow?['room_skin_item_id'] as String?));
     if (streamRow != null) _room.apply(streamRow, initial: true);
     _speaking.hostUid = streamRow?['host_agora_uid'] as int?;
@@ -416,6 +419,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         if (locked != null) _lockedSeats = locked.cast<int>().toSet();
         final count = streamRow?['seat_count'] as int?;
         if (count != null) _seatCount = count;
+        final cp = streamRow?['cp_seats'];
+        if (cp is bool) _cpSeats = cp;
       });
       if (leftover) _dropLeftoverSeat();
     }
@@ -487,7 +492,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
               // while the mic stayed live).
               if (seat == _mySeat && muted != _myMuted) {
                 setState(() => _myMuted = muted);
-                _engine?.muteLocalAudioStream(muted);
+                unawaited(_muteMyMic(muted));
               }
             }
           },
@@ -517,14 +522,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                 }
               });
               if (wasMe) {
-                final engine = _engine;
-                if (engine != null) {
-                  AgoraService.instance.switchRole(
-                    engine,
-                    channelName: widget.stream.id,
-                    asBroadcaster: false,
-                  );
-                }
+                unawaited(_switchRtcRole(asBroadcaster: false));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('The host removed you from your seat'),
@@ -556,6 +554,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             final locked = payload.newRecord['locked_seats'] as List?;
             final count = payload.newRecord['seat_count'] as int?;
             final viewers = payload.newRecord['viewer_count'] as int?;
+            final cp = payload.newRecord['cp_seats'];
             if (!mounted) return;
             // the host equipped / removed a room skin
             if (payload.newRecord.containsKey('room_skin_item_id')) {
@@ -570,6 +569,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
               if (cleared) _chat.clear();
               if (locked != null) _lockedSeats = locked.cast<int>().toSet();
               if (count != null) _seatCount = count;
+              if (cp is bool) _cpSeats = cp;
               if (viewers != null) _viewerCount = viewers;
             });
           },
@@ -588,6 +588,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
   }
 
   Future<void> _joinReal() async {
+    if (_onLiveKit) return _joinLiveKit();
     try {
       final engine = await AgoraService.instance.ensureEngine();
       _engine = engine;
@@ -602,38 +603,9 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             _myAgoraUid = connection.localUid;
             _syncMySeatUid();
           },
-          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) {
-            final next = _speaking.seatsFor(
-              speakers,
-              occupants: _seatOccupants,
-              hostId: widget.stream.host.id,
-              mySeat: _mySeat,
-              meMuted: _myMuted,
-            );
-            // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
-            if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
-            if (mounted && !SeatSpeaking.same(next, _speakingSeats)) {
-              setState(() => _speakingSeats = next);
-            }
-          },
-          onUserJoined: (connection, remoteUid, elapsed) {
-            _waitTimer?.cancel();
-            if (mounted) {
-              setState(() {
-                _remoteUid = remoteUid;
-                _waitingTooLong = false;
-              });
-            }
-            _showBackSeat(remoteUid);
-          },
-          onUserOffline: (connection, remoteUid, reason) {
-            if (mounted && _remoteUid == remoteUid) {
-              setState(() => _remoteUid = null);
-            }
-            // Agora only reports people who were publishing, i.e. seat holders and the host. One
-            // leaving (or dropping) frees their seat on this screen now, not when the server sweeps.
-            _hideGoneSeat(remoteUid);
-          },
+          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) => _onVolume(speakers),
+          onUserJoined: (connection, remoteUid, elapsed) => _onRemoteJoined(remoteUid),
+          onUserOffline: (connection, remoteUid, reason) => _onRemoteOffline(remoteUid),
           onError: (err, msg) {
             if (mounted) setState(() => _joinError = agoraErrorMessage(err, msg));
           },
@@ -685,6 +657,119 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         setState(() => _joinError = friendlyError(e));
       }
     }
+  }
+
+
+  // ---- what the connection reports, whichever server it comes from (Agora's handler and the MS cloud adapter both call these)
+
+  void _onVolume(List<AudioVolumeInfo> speakers) {
+    if (_onLiveKit) _bindLiveKitSeats();
+    final next = _speaking.seatsFor(
+      speakers,
+      occupants: _seatOccupants,
+      hostId: widget.stream.host.id,
+      mySeat: _mySeat,
+      meMuted: _myMuted,
+    );
+    // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
+    if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
+    if (mounted && !SeatSpeaking.same(next, _speakingSeats)) {
+      setState(() => _speakingSeats = next);
+    }
+  }
+
+  void _onRemoteJoined(int remoteUid) {
+    _waitTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _remoteUid = remoteUid;
+        _waitingTooLong = false;
+      });
+    }
+    if (_onLiveKit) _bindLiveKitSeats();
+    _showBackSeat(remoteUid);
+  }
+
+  void _onRemoteOffline(int remoteUid) {
+    if (mounted && _remoteUid == remoteUid) {
+      setState(() => _remoteUid = null);
+    }
+    // Agora only reports people who were publishing, i.e. seat holders and the host. One
+    // leaving (or dropping) frees their seat on this screen now, not when the server sweeps.
+    if (_onLiveKit) _bindLiveKitSeats();
+    _hideGoneSeat(remoteUid);
+  }
+
+  /// On MS cloud everybody's uid is worked out from their account id, so a seat's voice is known without waiting for the seat row to carry it.
+  void _bindLiveKitSeats() {
+    for (final e in _seatOccupants.entries) {
+      _speaking.bindSeat(e.key, liveKitUidOf(e.value.id));
+    }
+    _speaking.hostUid = liveKitUidOf(widget.stream.host.id);
+  }
+
+  /// The room on MS cloud: join as a listener (a seat later makes this phone a speaker through [_switchRtcRole]).
+  Future<void> _joinLiveKit() async {
+    try {
+      _speaking.hostUid = liveKitUidOf(widget.stream.host.id);
+      final session = await LiveKitSession.start(
+        roomName: widget.stream.id,
+        asBroadcaster: false,
+        audioOnly: true,
+        hostIdentity: widget.stream.host.id,
+        events: LiveKitEvents(
+          onJoined: (uid) {
+            _myAgoraUid = uid;
+            _syncMySeatUid();
+          },
+          onVolume: _onVolume,
+          onUserJoined: _onRemoteJoined,
+          onUserOffline: _onRemoteOffline,
+          onReconnecting: (r) {
+            if (mounted) setState(() => _reconnecting = r);
+          },
+          onFailed: (message) {
+            if (!mounted) return;
+            setState(() {
+              _connectionFailure = message;
+              _joinError = message;
+            });
+          },
+        ),
+      );
+      if (!mounted) {
+        unawaited(session.release());
+        return;
+      }
+      _lk = session;
+      _waitTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted && _remoteUid == null) {
+          setState(() => _waitingTooLong = true);
+        }
+      });
+    } catch (e) {
+      if (isLiveAccessError(e)) {
+        _leaveDenied(friendlyError(e));
+      } else if (mounted) {
+        setState(() => _joinError = friendlyError(e));
+      }
+    }
+  }
+
+  /// Seat claimed (true) or given up (false): the phone starts or stops publishing its microphone, on whichever server the room is.
+  Future<void> _switchRtcRole({required bool asBroadcaster}) async {
+    final lk = _lk;
+    if (lk != null) return lk.switchRole(asBroadcaster: asBroadcaster);
+    final engine = _engine;
+    if (engine == null) return;
+    return AgoraService.instance.switchRole(engine, channelName: widget.stream.id, asBroadcaster: asBroadcaster);
+  }
+
+  /// Mute / unmute this phone's own microphone stream.
+  Future<void> _muteMyMic(bool muted) async {
+    final lk = _lk;
+    if (lk != null) return lk.setMicEnabled(!muted);
+    await _engine?.muteLocalAudioStream(muted);
   }
 
   Future<void> _loadRealChat() async {
@@ -797,14 +882,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
       // Stop publishing too. Before, only the database row was let go, so the phone stayed a
       // broadcaster and (coming back) the room showed me seated with a seat the server had freed.
-      final engine = _engine;
-      if (engine != null) {
-        unawaited(AgoraService.instance.switchRole(
-          engine,
-          channelName: widget.stream.id,
-          asBroadcaster: false,
-        ));
-      }
+      unawaited(_switchRtcRole(asBroadcaster: false));
       _speaking.unbindSeat(seat);
       _bumpSeat(seat);
       if (mounted) {
@@ -857,6 +935,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     if (_isReal) {
       WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
+      _lk?.release();
       fireAndForget(supabase.rpc(
           'leave_live_stream',
           params: {'p_stream_id': widget.stream.id},
@@ -921,7 +1000,6 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
           'release_seat',
           params: {'p_stream_id': widget.stream.id},
         );
-        final engine = _engine;
         final shared = _pkSwitcher?.inSharedChannel ?? false;
         if (shared && mounted) {
           // in a battle's channel: my role is decided from _mySeat, so clear it first
@@ -931,12 +1009,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
             _myMuted = false;
           });
           await _pkSwitcher!.reapply();
-        } else if (engine != null) {
-          await AgoraService.instance.switchRole(
-            engine,
-            channelName: widget.stream.id,
-            asBroadcaster: false,
-          );
+        } else {
+          await _switchRtcRole(asBroadcaster: false);
         }
         if (mounted && !shared) {
           setState(() {
@@ -1008,20 +1082,15 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     setState(() => _seatBusy = true);
     try {
       await supabase.rpc(
-        'claim_seat',
+        claimSeatRpc(seat), // a couple (CP) seat has its own function
         params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
       );
-      final engine = _engine;
       if (_pkSwitcher?.inSharedChannel ?? false) {
         // in a battle's channel: my role is decided from _mySeat, so set it first
         if (mounted) setState(() => _mySeat = seat);
         await _pkSwitcher!.reapply();
-      } else if (engine != null) {
-        await AgoraService.instance.switchRole(
-          engine,
-          channelName: widget.stream.id,
-          asBroadcaster: true,
-        );
+      } else {
+        await _switchRtcRole(asBroadcaster: true);
       }
       if (mounted) setState(() => _mySeat = seat);
       _syncMySeatUid();
@@ -1043,7 +1112,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
     final next = !_myMuted;
     setState(() => _myMuted = next);
     try {
-      await _engine?.muteLocalAudioStream(next);
+      await _muteMyMic(next);
       await supabase.rpc(
         'set_seat_mute',
         params: {'p_stream_id': widget.stream.id, 'p_muted': next},
@@ -1117,7 +1186,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
       // a gift to either host of a battle counts for that host's side (the other host is a recipient in the sheet)
       final side = await sendPkGift(context, pk, gift, giftChoice.quantity, to: pkSide);
       if (side != null && mounted) {
-        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, count: giftChoice.quantity, playSound: senderHearsOwnGift(micOpen: _mySeat != null)));
+        _effects.enqueue(RoomEffect.gift(gift: gift, senderName: 'You', senderId: me.id, sender: me, receiver: giftChoice.recipient, count: giftChoice.quantity, playSound: senderHearsOwnGift(micOpen: _mySeat != null)));
       }
       return;
     }
@@ -1167,6 +1236,8 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
         gift: gift,
         senderName: 'You',
         senderId: me.id,
+        sender: me,
+        receiver: giftChoice.sendToAll ? null : giftChoice.recipient,
         count: giftChoice.quantity,
         toAll: giftChoice.sendToAll,
         recipientCount: giftChoice.sendToAll ? (toAllCount ?? recipients.length) : null,
@@ -1450,6 +1521,7 @@ class _WatchAudioRoomScreenState extends State<WatchAudioRoomScreen>
                     speakingSeats: _speakingSeats,
                     diamonds: _diamonds.all,
                     emotes: _emotes,
+                    cpSeats: _cpSeats,
                     onSeatTap: _seatTap,
                   ),
           ),

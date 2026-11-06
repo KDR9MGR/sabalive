@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../config/supabase_client.dart';
 import '../../../data/models.dart';
+import 'cp_seats.dart';
 
 /// Who is on which seat right now, as the database has it.
 ///
@@ -20,6 +21,7 @@ class SeatSnapshot {
     this.locked,
     this.seatCount,
     this.hostAgoraUid,
+    this.cpSeats,
   });
 
   final Map<int, AppUser> occupants;
@@ -30,6 +32,9 @@ class SeatSnapshot {
   final Set<int>? locked;
   final int? seatCount;
   final int? hostAgoraUid;
+
+  /// Whether the room has its couple (CP) seats on; null when the server does not say (a database without the column).
+  final bool? cpSeats;
 
   /// The seat [userId] is on, if any.
   int? seatOf(String? userId) {
@@ -58,11 +63,8 @@ Future<SeatSnapshot?> fetchSeatSnapshot(String streamId) async {
           'seat_number, is_muted, agora_uid, profiles!live_stream_seats_occupant_id_fkey(*)',
         )
         .eq('live_stream_id', streamId);
-    final stream = await supabase
-        .from('live_streams')
-        .select('locked_seats, seat_count, host_agora_uid')
-        .eq('id', streamId)
-        .maybeSingle();
+    // cp_seats comes with it when the server has the column (readStreamRow falls back by itself when it does not)
+    final stream = await readStreamRow(streamId, 'locked_seats, seat_count, host_agora_uid');
     final occupants = <int, AppUser>{};
     final muted = <int>{};
     final uids = <int, int?>{};
@@ -82,6 +84,7 @@ Future<SeatSnapshot?> fetchSeatSnapshot(String streamId) async {
       locked: locked?.cast<int>().toSet(),
       seatCount: stream?['seat_count'] as int?,
       hostAgoraUid: stream?['host_agora_uid'] as int?,
+      cpSeats: stream?['cp_seats'] as bool?,
     );
   } catch (e) {
     debugPrint('seat snapshot failed: $e');

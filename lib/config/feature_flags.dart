@@ -75,7 +75,7 @@ class FeatureFlags {
   static bool get isIOS => isIOSOverride ?? Platform.isIOS;
 
   /// App Store review (2026-10-27): Apple refuses a screen that only says "coming soon", so every entry that leads to one is HIDDEN on iOS (Room Effects, Family, Request Withdrawal,
-  /// Funny voice, Invite someone, password reset by mobile number, the Games tab, Video PK). Android is unchanged. When one of them is really built, show it on iOS too by removing its check.
+  /// Funny voice, Invite someone, the Games tab, Video PK; password reset by mobile number was one of them until it was removed everywhere on 2026-11-06). Android is unchanged. When one of them is really built, show it on iOS too by removing its check.
   static bool get comingSoonVisible => !isIOS;
 
   /// The Games tab and its entries. iOS has no games yet (the game panel is the Android WebView), so there it would only say "coming soon": hidden.

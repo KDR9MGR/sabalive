@@ -44,13 +44,16 @@ class RankingWindow {
         Duration(days: today.weekday - DateTime.monday),
       ),
       RankPeriod.monthly => DateTime.utc(today.year, today.month, 1),
+      // Lifetime has no start: today is only a placeholder, the label and the key never use it
+      RankPeriod.lifetime => today,
     };
     return RankingWindow._(period, start);
   }
 
   /// Changes at exactly the moment (00:10 India time) the board rolls over to a new day / week / month, and not before. The screen compares it with the one it fetched with.
-  String get key =>
-      '${period.name}:${startDay.year}-${startDay.month}-${startDay.day}';
+  String get key => period == RankPeriod.lifetime
+      ? period.name // never rolls over
+      : '${period.name}:${startDay.year}-${startDay.month}-${startDay.day}';
 
   /// "1 Nov": the start date as people read it.
   String get startLabel => '${startDay.day} ${_months[startDay.month - 1]}';
@@ -59,6 +62,7 @@ class RankingWindow {
   String get coverage => switch (period) {
     RankPeriod.daily => 'Today, $startLabel',
     RankPeriod.weekly || RankPeriod.monthly => 'Since $startLabel',
+    RankPeriod.lifetime => 'All time, since day one',
   };
 
   /// When it starts again. English; the screen translates it.
@@ -67,5 +71,6 @@ class RankingWindow {
     RankPeriod.weekly => 'Resets every Monday at 00:10 India time',
     RankPeriod.monthly =>
       'Resets on the 1st of each month at 00:10 India time',
+    RankPeriod.lifetime => 'Never resets',
   };
 }

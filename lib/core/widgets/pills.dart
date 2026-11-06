@@ -150,12 +150,16 @@ class ChipRow extends StatelessWidget {
     required this.index,
     required this.onChanged,
     this.padding = const EdgeInsets.symmetric(horizontal: 20),
+    this.chipPadding = 16,
   });
 
   final List<String> items;
   final int index;
   final ValueChanged<int> onChanged;
   final EdgeInsetsGeometry padding;
+
+  /// Space left and right of a chip's text. Tighter (12) lets four chips fit a small phone's width without scrolling.
+  final double chipPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +176,7 @@ class ChipRow extends StatelessWidget {
             onTap: () => onChanged(i),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: EdgeInsets.symmetric(horizontal: chipPadding),
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 gradient: selected ? AppColors.primaryGradient : null,

@@ -49,6 +49,7 @@ dependencies:
   path_provider: ^2.1.5
   webview_flutter: ^4.14.1
   firebase_crashlytics: ^4.3.10
+  livekit_client: ^2.13.2
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +87,9 @@ flutter:
     - assets/images/
     - assets/video/
     - assets/pk/
+    - assets/cp/
+    - assets/notice/
+    - assets/seat/
 
   fonts:
     - family: Poppins

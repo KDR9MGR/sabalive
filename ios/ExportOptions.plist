@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Used by: flutter build ipa --export-options-plist=ios/ExportOptions.plist
+	     uploadSymbols is OFF on purpose: Agora, SUD (SudGIP) and their helper frameworks (aosl, video_dec, objective_c ...) are
+	     prebuilt binaries shipped WITHOUT dSYM files, so App Store Connect printed 27 "Upload Symbols Failed" warnings. They never
+	     blocked the build; they only meant crashes inside those vendor libraries could not be symbolicated by Apple, which nobody
+	     here could do anyway. Our own code is not affected. -->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>uploadSymbols</key>
+	<false/>
+	<key>stripSwiftSymbols</key>
+	<true/>
+</dict>
+</plist>

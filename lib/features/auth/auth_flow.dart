@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'forgot_password_screen.dart';
 import 'login_screen.dart';
-import 'otp_screen.dart';
 import 'signup_screen.dart';
 
 /// Self-contained navigator for the signed-out experience. When auth succeeds
@@ -17,7 +16,6 @@ class AuthFlow extends StatelessWidget {
       onGenerateRoute: (settings) {
         Widget page = switch (settings.name) {
           AuthRoutes.signup => const SignupScreen(),
-          AuthRoutes.otp => OtpScreen(args: settings.arguments as OtpArgs?),
           AuthRoutes.forgot => const ForgotPasswordScreen(),
           _ => const LoginScreen(),
         };
@@ -42,12 +40,5 @@ class AuthFlow extends StatelessWidget {
 class AuthRoutes {
   static const login = '/login';
   static const signup = '/signup';
-  static const otp = '/otp';
   static const forgot = '/forgot';
-}
-
-class OtpArgs {
-  const OtpArgs({required this.phone, this.purpose = 'login'});
-  final String phone;
-  final String purpose;
 }

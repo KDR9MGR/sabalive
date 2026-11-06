@@ -35,6 +35,7 @@ import '../messages/messages_screen.dart';
 import '../../services/agora_errors.dart';
 import '../../services/crash_reporting.dart';
 import '../../services/agora_service.dart';
+import '../../services/livekit_session.dart';
 import '../../services/pk_channel_switcher.dart';
 import '../../state/active_live_session_controller.dart';
 import '../../state/auth_controller.dart';
@@ -101,11 +102,15 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   final _room = RoomChatState();
   final _rand = math.Random();
   final List<_Heart> _hearts = [];
-  final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage);
+  late final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage, prewarmNotices: true)..roomHost = widget.stream.host;
   final _emotes = EmoteController();
   int _likes = 0;
 
   RtcEngine? _engine;
+
+  /// The connection when this live is on MS cloud (`widget.stream.rtcProvider`); null for an Agora live. Exactly one of [_engine] and [_lk] is ever set.
+  LiveKitSession? _lk;
+  bool get _onLiveKit => widget.stream.onLiveKit;
   int? _remoteUid;
 
   // Video PK (while the server switch is on): follows this live's battle, moves this phone to the battle's shared channel and
@@ -296,7 +301,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       _joinReal();
       _loadRealChat();
       _logViewerJoin();
-      _startPk();
+      // PK battles move people between Agora channels: an MS cloud live has none yet
+      if (!_onLiveKit) _startPk();
       _subscribeSeats();
       _stopEndWatch = watchStreamEnd(widget.stream.id, _onHostEnded);
       _mod.addListener(() {
@@ -357,17 +363,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     _leftoverSeat = null;
     setState(() => _mySeat = seat);
     _syncMySeatUid();
-    final engine = _engine;
-    if (engine != null) {
-      try {
-        await AgoraService.instance.switchRole(
-          engine,
-          channelName: widget.stream.id,
-          asBroadcaster: true,
-        );
-      } catch (e) {
-        debugPrint('switchRole(broadcaster) failed: $e');
-      }
+    try {
+      await _switchRtcRole(asBroadcaster: true);
+    } catch (e) {
+      debugPrint('switchRole(broadcaster) failed: $e');
     }
     // The seat row already carries a fresh heartbeat, but the periodic timer may not tick for up to
     // 30 s: one now keeps it well inside the server's sweep window.
@@ -572,7 +571,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
               // while the mic stayed live).
               if (seat == _mySeat && muted != _myMuted) {
                 setState(() => _myMuted = muted);
-                _engine?.muteLocalAudioStream(muted);
+                unawaited(_muteMyMic(muted));
               }
             }
           },
@@ -601,14 +600,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 }
               });
               if (wasMe) {
-                final engine = _engine;
-                if (engine != null) {
-                  AgoraService.instance.switchRole(
-                    engine,
-                    channelName: widget.stream.id,
-                    asBroadcaster: false,
-                  );
-                }
+                unawaited(_switchRtcRole(asBroadcaster: false));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('The host removed you from your seat'),
@@ -661,7 +653,8 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   /// whoever joined first so a fresh viewer isn't stuck on a blank screen
   /// waiting on a Realtime round-trip that may not have landed yet.
   void _recomputeRemoteUid() {
-    final hostUid = _hostAgoraUid;
+    // on MS cloud the host's uid is worked out from their account id, so it is known at once
+    final hostUid = _onLiveKit ? liveKitUidOf(widget.stream.host.id) : _hostAgoraUid;
     _speaking.hostUid = hostUid;
     if (hostUid != null) {
       _remoteUid = _joinedUids.contains(hostUid) ? hostUid : null;
@@ -686,14 +679,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
           'release_seat',
           params: {'p_stream_id': widget.stream.id},
         );
-        final engine = _engine;
-        if (engine != null) {
-          await AgoraService.instance.switchRole(
-            engine,
-            channelName: widget.stream.id,
-            asBroadcaster: false,
-          );
-        }
+        await _switchRtcRole(asBroadcaster: false);
         if (mounted) {
           setState(() {
             _seatOccupants.remove(seat);
@@ -747,7 +733,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     final next = !_myMuted;
     setState(() => _myMuted = next);
     try {
-      await _engine?.muteLocalAudioStream(next);
+      await _muteMyMic(next);
       await supabase.rpc(
         'set_seat_mute',
         params: {'p_stream_id': widget.stream.id, 'p_muted': next},
@@ -792,7 +778,129 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     leaveLiveBecauseDenied(context, message);
   }
 
+
+  // ---- what the connection reports, whichever server it comes from (Agora's handler and the MS cloud adapter both call these)
+
+  void _onVolume(List<AudioVolumeInfo> speakers) {
+    if (_onLiveKit) _bindLiveKitSeats();
+    final next = _speaking.seatsFor(
+      speakers,
+      occupants: _seatOccupants,
+      hostId: widget.stream.host.id,
+      mySeat: _mySeat,
+      meMuted: _myMuted,
+    );
+    final hostNow = _speaking.hostTalking(
+      speakers,
+      iAmHost: false,
+      meMuted: _myMuted,
+    );
+    // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
+    if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
+    if (mounted && (!SeatSpeaking.same(next, _speakingSeats) || hostNow != _hostSpeaking)) {
+      setState(() {
+        _speakingSeats = next;
+        _hostSpeaking = hostNow;
+      });
+    }
+  }
+
+  void _onRemoteJoined(int remoteUid) {
+    _waitTimer?.cancel();
+    _joinedUids.add(remoteUid);
+    if (mounted) {
+      setState(() {
+        _waitingTooLong = false;
+        _recomputeRemoteUid();
+      });
+    }
+  }
+
+  void _onRemoteOffline(int remoteUid) {
+    _joinedUids.remove(remoteUid);
+    if (mounted) setState(_recomputeRemoteUid);
+  }
+
+  /// On MS cloud everybody's uid is worked out from their account id, so a seat's voice is known without waiting for the seat row to carry it.
+  void _bindLiveKitSeats() {
+    for (final e in _seatOccupants.entries) {
+      _speaking.bindSeat(e.key, liveKitUidOf(e.value.id));
+    }
+    _speaking.hostUid = liveKitUidOf(widget.stream.host.id);
+  }
+
+  /// The live on MS cloud: join as a viewer (a seat later makes this phone a speaker through [_switchRtcRole]).
+  Future<void> _joinLiveKit() async {
+    try {
+      _hostAgoraUid = liveKitUidOf(widget.stream.host.id);
+      _speaking.hostUid = _hostAgoraUid;
+      final session = await LiveKitSession.start(
+        roomName: widget.stream.id,
+        asBroadcaster: false,
+        audioOnly: false,
+        hostIdentity: widget.stream.host.id,
+        events: LiveKitEvents(
+          onJoined: (uid) {
+            _myAgoraUid = uid;
+            _syncMySeatUid();
+          },
+          onVolume: _onVolume,
+          onUserJoined: _onRemoteJoined,
+          onUserOffline: _onRemoteOffline,
+          // the host's picture appeared, went away or changed
+          onVideoChanged: () {
+            if (mounted) setState(() {});
+          },
+          onReconnecting: (r) {
+            if (mounted) setState(() => _reconnecting = r);
+          },
+          onFailed: (message) {
+            if (!mounted) return;
+            setState(() {
+              _connectionFailure = message;
+              _joinError = message;
+            });
+          },
+        ),
+      );
+      if (!mounted) {
+        unawaited(session.release());
+        return;
+      }
+      setState(() => _lk = session);
+      // joined fine, but nothing from the host after a while: say so instead of an endless spinner
+      _waitTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted && _remoteUid == null) {
+          setState(() => _waitingTooLong = true);
+        }
+      });
+    } catch (e) {
+      if (isLiveAccessError(e)) {
+        _leaveDenied(friendlyError(e));
+      } else if (mounted) {
+        setState(() => _joinError = friendlyError(e));
+      }
+    }
+  }
+
+  /// Seat claimed (true) or given up (false): the phone starts or stops publishing its microphone, on whichever server the live is.
+  Future<void> _switchRtcRole({required bool asBroadcaster}) async {
+    final lk = _lk;
+    if (lk != null) return lk.switchRole(asBroadcaster: asBroadcaster);
+    final engine = _engine;
+    if (engine == null) return;
+    return AgoraService.instance.switchRole(engine, channelName: widget.stream.id, asBroadcaster: asBroadcaster);
+  }
+
+  /// Mute / unmute this phone's own microphone stream.
+  Future<void> _muteMyMic(bool muted) async {
+    final lk = _lk;
+    if (lk != null) return lk.setMicEnabled(!muted);
+    await _engine?.muteLocalAudioStream(muted);
+  }
+
   Future<void> _joinReal() async {
+    if (_onLiveKit) return _joinLiveKit();
     try {
       final engine = await AgoraService.instance.ensureEngine();
       final token = await AgoraService.instance.fetchToken(
@@ -806,44 +914,12 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             _myAgoraUid = connection.localUid;
             _syncMySeatUid();
           },
-          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) {
-            final next = _speaking.seatsFor(
-              speakers,
-              occupants: _seatOccupants,
-              hostId: widget.stream.host.id,
-              mySeat: _mySeat,
-              meMuted: _myMuted,
-            );
-            final hostNow = _speaking.hostTalking(
-              speakers,
-              iAmHost: false,
-              meMuted: _myMuted,
-            );
-            // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
-            if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
-            if (mounted &&
-                (!SeatSpeaking.same(next, _speakingSeats) || hostNow != _hostSpeaking)) {
-              setState(() {
-                _speakingSeats = next;
-                _hostSpeaking = hostNow;
-              });
-            }
-          },
+          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) => _onVolume(speakers),
           onUserJoined: (connection, remoteUid, elapsed) {
-            _waitTimer?.cancel();
-            _joinedUids.add(remoteUid);
+            _onRemoteJoined(remoteUid);
             if (_pkStage) unawaited(AgoraService.instance.setRemoteBattleQuality(engine, remoteUid, low: true));
-            if (mounted) {
-              setState(() {
-                _waitingTooLong = false;
-                _recomputeRemoteUid();
-              });
-            }
           },
-          onUserOffline: (connection, remoteUid, reason) {
-            _joinedUids.remove(remoteUid);
-            if (mounted) setState(_recomputeRemoteUid);
-          },
+          onUserOffline: (connection, remoteUid, reason) => _onRemoteOffline(remoteUid),
           onError: (err, msg) {
             if (mounted) setState(() => _joinError = agoraErrorMessage(err, msg));
           },
@@ -1012,14 +1088,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       final seat = _mySeat!;
       fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
       // Stop publishing too (see the same note in watch_audio_room_screen.dart).
-      final engine = _engine;
-      if (engine != null) {
-        unawaited(AgoraService.instance.switchRole(
-          engine,
-          channelName: widget.stream.id,
-          asBroadcaster: false,
-        ));
-      }
+      unawaited(_switchRtcRole(asBroadcaster: false));
       _speaking.unbindSeat(seat);
       _bumpSeat(seat);
       if (mounted) {
@@ -1073,6 +1142,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     if (_isReal) {
       WakelockPlus.disable().catchError((_) {});
       AgoraService.instance.release();
+      _lk?.release();
       fireAndForget(supabase.rpc(
           'leave_live_stream',
           params: {'p_stream_id': widget.stream.id},
@@ -1437,39 +1507,48 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
   Widget _realVideo() {
     final engine = _engine;
-    if (_pkStage && engine != null) return _pkVideoStage(engine);
-    if (engine == null || _remoteUid == null) {
-      return ColoredBox(
-        color: Colors.black,
-        child: Center(
-          child: _joinError != null
-              ? Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _joinError!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                )
-              : _waitingTooLong
-              ? const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                    "Still nothing from the host — they may have ended, "
-                    "or there's a connection issue.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                )
-              : CircularProgressIndicator(color: AppColors.primaryBright),
-        ),
-      );
+    final lk = _lk;
+    if (lk != null) {
+      // MS cloud: the host's own picture, or the waiting / error text while there is none
+      final track = lk.hostVideo;
+      return track == null ? _waitingForVideo() : lk.video(track);
     }
+    if (_pkStage && engine != null) return _pkVideoStage(engine);
+    if (engine == null || _remoteUid == null) return _waitingForVideo();
     return AgoraVideoView(
       controller: VideoViewController.remote(
         rtcEngine: engine,
         canvas: VideoCanvas(uid: _remoteUid),
         connection: RtcConnection(channelId: widget.stream.id),
+      ),
+    );
+  }
+
+  /// What the live's picture area shows until the host's picture arrives: the reason it cannot, the "still nothing" text, or a spinner.
+  Widget _waitingForVideo() {
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: _joinError != null
+            ? Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _joinError!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              )
+            : _waitingTooLong
+            ? const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  "Still nothing from the host — they may have ended, "
+                  "or there's a connection issue.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70),
+                ),
+              )
+            : CircularProgressIndicator(color: AppColors.primaryBright),
       ),
     );
   }

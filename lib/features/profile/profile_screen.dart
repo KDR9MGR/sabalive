@@ -16,7 +16,10 @@ import '../../state/session_controller.dart';
 import '../../state/wallet_controller.dart';
 import '../../theme/app_colors.dart';
 import 'blocked_users_screen.dart';
+import 'widgets/country_picker.dart';
+import 'widgets/profile_header.dart';
 import 'widgets/profile_labels.dart';
+import 'widgets/profile_vip_banner.dart';
 import '../../core/i18n/language_picker.dart';
 import '../../core/i18n/text.dart';
 import '../../config/feature_flags.dart';
@@ -69,68 +72,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _photo(context, user),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(user.name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.titleMedium),
-                              ),
-                              if (user.verified) ...[
-                                const SizedBox(width: 6),
-                                Icon(Icons.verified_rounded,
-                                    color: AppColors.primaryBright, size: 16),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          _copyableLine(context, 'ID: ${user.displayId}'),
-                          const SizedBox(height: 6),
-                          ProfileLabelsRow(profileId: user.id, onBadgesTap: () => AppNav.badges(context, user.id)),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              if (user.gender != null)
-                                _pill(
-                                  icon: _genderIcon(user.gender!),
-                                  text: _genderLabel(user.gender!),
-                                  bg: AppColors.success.withValues(alpha: 0.18),
-                                  fg: AppColors.success,
-                                ),
-                              // Wealth (gold star) and Charm (shiny purple star);
-                              // tapping opens the My Level screen.
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => AppNav.myLevel(context),
-                                child: LevelStars(
-                                  wealth: user.wealthLevel,
-                                  charm: user.charmLevel,
-                                  size: 26,
-                                ),
-                              ),
-                              _pill(
-                                icon: Icons.diamond_rounded,
-                                text: compactCount(wallet.diamonds),
-                                bg: AppColors.primary.withValues(alpha: 0.18),
-                                fg: AppColors.primaryBright,
-                              ),
-                            ],
-                          ),
-                        ],
+                child: ProfileHeader(
+                  photo: _photo(context, user),
+                  name: Row(
+                    children: [
+                      Flexible(
+                        child: Text(user.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium),
                       ),
+                      if (user.verified) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.verified_rounded,
+                            color: AppColors.primaryBright, size: 16),
+                      ],
+                      // the flag of the country they chose
+                      if (flagOfUser(user) != null) ...[
+                        const SizedBox(width: 6),
+                        CountryFlag(flagOfUser(user), size: 17),
+                      ],
+                    ],
+                  ),
+                  id: _copyableLine(context, 'ID: ${user.displayId}'),
+                  pills: [
+                    if (user.gender != null)
+                      _pill(
+                        icon: _genderIcon(user.gender!),
+                        text: _genderLabel(user.gender!),
+                        bg: AppColors.success.withValues(alpha: 0.18),
+                        fg: AppColors.success,
+                      ),
+                    _pill(
+                      icon: Icons.diamond_rounded,
+                      text: compactCount(wallet.diamonds),
+                      bg: AppColors.primary.withValues(alpha: 0.18),
+                      fg: AppColors.primaryBright,
                     ),
                   ],
+                  labels: ProfileLabelsRow(profileId: user.id, onBadgesTap: () => AppNav.badges(context, user.id)),
+                  // Wealth (gold star) and Charm (shiny purple star); tapping opens the My Level screen.
+                  levels: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => AppNav.myLevel(context),
+                    child: LevelStars(
+                      wealth: user.wealthLevel,
+                      charm: user.charmLevel,
+                      size: 26,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 18),
@@ -167,6 +156,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 18),
+              // the gold VIP strip (back since 2026-11-05): it opens the VIP list (since 2026-11-06; before that the Store's Lucky ID tab)
+              ProfileVipBanner(onTap: () => AppNav.vip(context)),
+              const SizedBox(height: 16),
               _walletStrip(context, wallet),
               const SizedBox(height: 20),
               _menuGrid(context, user),

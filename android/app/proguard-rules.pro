@@ -8,3 +8,7 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+
+# MS cloud (hosted LiveKit server, staging builds): the plugin's own classes are looked up by name from Dart's method channels. flutter_webrtc and its org.webrtc classes ship their own keep rules.
+-keep class io.livekit.plugin.** { *; }
+-dontwarn io.livekit.**

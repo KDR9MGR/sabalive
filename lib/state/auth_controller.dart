@@ -10,6 +10,7 @@ import '../config/supabase_client.dart';
 import '../config/supabase_config.dart';
 import '../core/i18n/i18n.dart';
 import '../core/utils/errors.dart';
+import '../core/utils/email.dart';
 import '../data/models.dart';
 import '../data/restrictions_repository.dart';
 import '../data/session_repository.dart';
@@ -35,12 +36,6 @@ class AuthController extends ChangeNotifier {
   AuthStatus _status = AuthStatus.unknown;
   AppUser? _user;
   bool _busy = false;
-  String? _pendingPhone;
-  // Set only while the OTP flow is between verifyOtp() and finishAuth(), so
-  // the success screen gets its moment before the app flips to the home
-  // shell. Every other sign-in path (password, signup, and — critically —
-  // OAuth's deep-link return) has no such screen and must flip immediately.
-  bool _awaitingOtpFinish = false;
   StreamSubscription<AuthState>? _authSub;
 
   /// Keeps admin-panel accounts out of the app — see [StaffAccountGate].
@@ -86,7 +81,6 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
   bool get busy => _busy;
-  String get pendingPhone => _pendingPhone ?? '';
 
   Future<void> _onAuthEvent(AuthState state) async {
     final session = state.session;
@@ -148,7 +142,7 @@ class AuthController extends ChangeNotifier {
     // returning, already-logged-in user as soon as the profile fetch above
     // resolves.
     if (_status == AuthStatus.unknown) return;
-    if (!_awaitingOtpFinish && _status != AuthStatus.authenticated) {
+    if (_status != AuthStatus.authenticated) {
       _status = AuthStatus.authenticated;
       notifyListeners();
     }
@@ -218,7 +212,6 @@ class AuthController extends ChangeNotifier {
       _user = null;
       // at the splash screen completeSplash() decides where to go next
       if (_status != AuthStatus.unknown) _status = AuthStatus.unauthenticated;
-      _awaitingOtpFinish = false;
       notifyListeners();
     } finally {
       _endingForBan = false;
@@ -465,32 +458,21 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Signs in with an EMAIL address and a password (owner, 2026-11-06: phone-number and one-time-code sign-in were removed from the app). Anything without an @ is
+  /// refused here, before any network call, with a sentence the login screen shows as it is.
   Future<void> loginWithPassword(String id, String password) =>
       _guard(() async {
         clearNotice();
+        final email = id.trim();
+        if (!isEmailAddress(email)) throw Exception('Enter your email address');
         await _requireLoginsOpen();
-        final trimmed = id.trim();
-        await _requireDeviceAllowed(
-          email: trimmed.contains('@') ? trimmed : null,
-          phone: trimmed.contains('@') ? null : trimmed,
-          showNotice: true,
-        );
-        if (trimmed.contains('@')) {
-          await supabase.auth.signInWithPassword(
-            email: trimmed,
-            password: password,
-          );
-        } else {
-          await supabase.auth.signInWithPassword(
-            phone: trimmed,
-            password: password,
-          );
-        }
+        await _requireDeviceAllowed(email: email, showNotice: true);
+        await supabase.auth.signInWithPassword(email: email, password: password);
         final user = supabase.auth.currentUser!;
         await _requireNormalUser(user);
         final banned = await _enforceBan(user.id, notice: false);
         if (banned != null) throw Exception(banned);
-        await _afterSignIn(user, trimmed.contains('@') ? 'email' : 'phone');
+        await _afterSignIn(user, 'email');
         await _refreshProfile(user.id);
         _status = AuthStatus.authenticated;
         notifyListeners();
@@ -559,53 +541,6 @@ class AuthController extends ChangeNotifier {
       redirectTo: SupabaseConfig.authRedirectUrl,
     );
   });
-
-  /// Step 1 of the phone flow — sends a real OTP. Requires an SMS provider
-  /// to be configured in the Supabase dashboard (Auth → Providers → Phone);
-  /// throws otherwise.
-  Future<void> requestOtp(String phone) => _guard(() async {
-    clearNotice();
-    await _requireLoginsOpen();
-    await _requireDeviceAllowed(phone: phone);
-    _pendingPhone = phone;
-    await supabase.auth.signInWithOtp(phone: phone);
-  });
-
-  /// Step 2 — verifies against Supabase. Does not flip to authenticated yet
-  /// so the OTP screen's success state can show first; call [finishAuth].
-  Future<bool> verifyOtp(String code) => _guard(() async {
-    final phone = _pendingPhone;
-    if (phone == null) return false;
-    _awaitingOtpFinish = true;
-    final res = await supabase.auth.verifyOTP(
-      phone: phone,
-      token: code,
-      type: OtpType.sms,
-    );
-    if (res.session != null) {
-      try {
-        await _requireNormalUser(res.session!.user);
-        final banned = await _enforceBan(res.session!.user.id, notice: false);
-        if (banned != null) throw Exception(banned);
-        await _afterSignIn(res.session!.user, 'phone_otp');
-      } catch (_) {
-        _awaitingOtpFinish = false; // signed back out; nothing to finish
-        rethrow;
-      }
-      await _refreshProfile(res.session!.user.id);
-      return true;
-    }
-    _awaitingOtpFinish = false;
-    return false;
-  });
-
-  void finishAuth() {
-    _awaitingOtpFinish = false;
-    // never enter the app without a live session (e.g. one the gate just ended)
-    if (_user == null || supabase.auth.currentSession == null) return;
-    _status = AuthStatus.authenticated;
-    notifyListeners();
-  }
 
   /// Returns `true` when the account was created but needs email confirmation
   /// before the user can sign in (no session yet).
@@ -707,7 +642,6 @@ class AuthController extends ChangeNotifier {
     _restrictions = Restrictions.none;
     _user = null;
     _status = AuthStatus.unauthenticated;
-    _awaitingOtpFinish = false;
     notifyListeners();
   });
 

@@ -16,7 +16,7 @@ import '../../core/i18n/text.dart';
 import 'ranking_window.dart';
 
 /// The level a Rankings row shows: Charm on the Hosts board (0), Wealth on the Gifters board (1). A level belongs to the person, so it is the same
-/// in Daily, Weekly and Monthly. (The old combined `profiles.level` is not used: the panel's Levels page edits Wealth and Charm.)
+/// in Daily, Weekly, Monthly and Lifetime. (The old combined `profiles.level` is not used: the panel's Levels page edits Wealth and Charm.)
 Widget rankingLevelStar({required int board, required AppUser user, double size = 20}) => board == 0
     ? LevelStar.charm(level: user.charmLevel, size: size)
     : LevelStar.wealth(level: user.wealthLevel, size: size);
@@ -38,7 +38,7 @@ class _RankingsScreenState extends State<RankingsScreen> with WidgetsBindingObse
   final _repo = RankingsRepository();
 
   int _board = 0; // 0 = Hosts, 1 = Gifters, 2 = Agency
-  int _period = 1; // 0 = Daily, 1 = Weekly, 2 = Monthly
+  int _period = 1; // 0 = Daily, 1 = Weekly, 2 = Monthly, 3 = Lifetime
 
   bool _loading = true;
   String? _error;
@@ -163,7 +163,9 @@ class _RankingsScreenState extends State<RankingsScreen> with WidgetsBindingObse
               const SliverToBoxAdapter(child: SizedBox(height: 14)),
               SliverToBoxAdapter(
                 child: ChipRow(
-                  items: const ['Daily', 'Weekly', 'Monthly'],
+                  items: const ['Daily', 'Weekly', 'Monthly', 'Lifetime'],
+                  // four chips: a little tighter so all of them show on a small phone
+                  chipPadding: 12,
                   index: _period,
                   onChanged: _setPeriod,
                 ),

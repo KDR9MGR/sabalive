@@ -4,6 +4,7 @@ import '../../../core/i18n/text.dart';
 import '../../../core/widgets/label_picture.dart';
 import '../../../core/widgets/remote_media.dart' show ImageBytesLoader, SvgaLoader;
 import '../../../data/profile_labels_repository.dart';
+import '../../../data/vip_repository.dart' show VipBadge;
 import '../../../theme/app_colors.dart';
 
 /// How many tags / badges one profile shows before "+N".
@@ -110,6 +111,8 @@ class _ProfileLabelsRowState extends State<ProfileLabelsRow> {
     final hiddenBadges = _labels.badges.length - badges.length;
     final hiddenTags = _labels.tags.length - tags.length;
     final children = <Widget>[
+      // the VIP badge leads, on a profile page only (a list row never reads it)
+      if (!widget.compact && _labels.vip != null) VipChip(badge: _labels.vip!, sizes: sizes),
       for (final b in badges) _BadgeChip(badge: b, sizes: sizes, onTap: widget.onBadgesTap),
       if (hiddenBadges > 0) _more('+$hiddenBadges', widget.onBadgesTap, sizes),
       for (final t in tags) TagPill(tag: t, sizes: sizes),
@@ -159,6 +162,49 @@ class _ProfileLabelsRowState extends State<ProfileLabelsRow> {
           child: Text(text, style: TextStyle(fontSize: sizes.chipText, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
         ),
       );
+}
+
+/// The VIP badge on a profile (owner, 2026-11-06): the picture of the VIP product the person owns, at badge height; a gold crown pill with the product's name stands in while it
+/// loads, if it can't be drawn, or when the product has no picture.
+class VipChip extends StatelessWidget {
+  const VipChip({super.key, required this.badge, this.sizes = LabelSizes.profile, @visibleForTesting this.svgaLoader, @visibleForTesting this.imageLoader});
+
+  final VipBadge badge;
+  final LabelSizes sizes;
+  final SvgaLoader? svgaLoader;
+  final ImageBytesLoader? imageLoader;
+
+  Widget _pill() => Container(
+        key: const ValueKey('profile-vip'),
+        padding: EdgeInsets.symmetric(horizontal: sizes.padX, vertical: sizes.padY),
+        decoration: BoxDecoration(gradient: AppColors.goldGradient, borderRadius: BorderRadius.circular(20)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.workspace_premium_rounded, size: sizes.chipEmoji + 2, color: const Color(0xFF3A1A5E)),
+            const SizedBox(width: 4),
+            Text(badge.name, style: TextStyle(fontSize: sizes.pillText, fontWeight: FontWeight.w800, color: const Color(0xFF3A1A5E))),
+          ],
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final url = badge.imageUrl;
+    if (url == null || !LabelPicture.supports(url)) return _pill();
+    return Semantics(
+      label: badge.name,
+      child: LabelPicture(
+        key: const ValueKey('profile-vip'),
+        url: url,
+        height: sizes.badge,
+        maxWidth: sizes.badge * 4,
+        fallback: _pill(),
+        svgaLoader: svgaLoader,
+        imageLoader: imageLoader,
+      ),
+    );
+  }
 }
 
 /// The height of a tag that is a picture or a plate on a profile.

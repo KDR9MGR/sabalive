@@ -1,3 +1,4 @@
+import '../config/rtc_config.dart';
 import 'package:flutter/material.dart';
 
 import '../core/utils/formatters.dart';
@@ -138,6 +139,7 @@ class LiveStream {
     this.seatCount = 5,
     this.hostAgoraUid,
     this.startedAt,
+    this.rtcProvider = RtcProvider.agora,
   });
 
   factory LiveStream.fromRow(Map<String, dynamic> row, AppUser host) =>
@@ -153,6 +155,7 @@ class LiveStream {
         seatCount: row['seat_count'] as int? ?? 5,
         hostAgoraUid: row['host_agora_uid'] as int?,
         startedAt: DateTime.tryParse(row['started_at'] as String? ?? '')?.toLocal(),
+        rtcProvider: RtcProvider.fromDb(row['rtc_provider']),
       );
 
   final String id;
@@ -169,6 +172,11 @@ class LiveStream {
 
   /// When the host went live (the server's started_at).
   final DateTime? startedAt;
+
+  /// Which real-time server carries this room (`live_streams.rtc_provider`): every older room, and a database without the column, is Agora.
+  final RtcProvider rtcProvider;
+
+  bool get onLiveKit => rtcProvider == RtcProvider.livekit;
 
   bool get pk => mode == LiveMode.pk;
 

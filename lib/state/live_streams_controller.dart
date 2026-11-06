@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/rtc_config.dart';
 import '../config/feature_flags.dart';
 import '../config/supabase_client.dart';
 import '../core/utils/throttled_runner.dart';
@@ -171,7 +172,10 @@ class LiveStreamsController extends ChangeNotifier with WidgetsBindingObserver {
     required String title,
     required String category,
     required LiveMode mode,
+    RtcProvider? provider,
   }) async {
+    // the provider this build starts lives on (Agora unless a staging build says MS cloud)
+    final rtc = provider ?? RtcConfig.forNewLives;
     final uid = supabase.auth.currentUser?.id;
     if (uid == null) throw Exception('You must be signed in to go live');
 
@@ -185,6 +189,8 @@ class LiveStreamsController extends ChangeNotifier with WidgetsBindingObserver {
           // an audio room opens with two full rows of 4 seats (the host can go from 4 to 16); 8 is valid on every
           // database, old or updated. Video lives keep the default.
           if (mode == LiveMode.audio) 'seat_count': 8,
+          // only named when it is NOT the default, so an Agora room is created exactly as before, on any database
+          if (rtc != RtcProvider.agora) 'rtc_provider': rtc.dbValue,
         })
         .select()
         .single();

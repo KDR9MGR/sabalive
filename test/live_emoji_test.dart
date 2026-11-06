@@ -28,8 +28,10 @@ Future<void> _open(WidgetTester t, void Function(LiveEmoji?) onPicked) async {
     ),
   );
   await t.tap(find.text('open'));
-  // The catalog read fails under test (no Supabase) and falls back to the cache.
-  await t.pumpAndSettle();
+  // The catalog read fails under test (no Supabase) and falls back to the cache. The plain emoji move on a loop that never settles, so step the clock instead of pumpAndSettle.
+  for (var i = 0; i < 8; i++) {
+    await t.pump(const Duration(milliseconds: 100));
+  }
 }
 
 void main() {
@@ -59,21 +61,53 @@ void main() {
       expect(find.text('❤️'), findsOneWidget);
       expect(find.text('🔥'), findsOneWidget);
       await t.tap(find.text('🔥'));
-      await t.pumpAndSettle();
+      await t.pump(const Duration(milliseconds: 400));
       expect(picked?.id, 'e2');
     });
 
-    testWidgets('with GIFs there is a GIFs tab, and tapping a GIF returns it', (t) async {
-      LiveEmojisRepository.cached = [_heart, _cat];
+    testWidgets('GIFs and emoji are in ONE grid (no tabs), in the panel\'s order, and tapping a GIF returns it', (t) async {
+      LiveEmojisRepository.cached = [_heart, _cat, _fire];
       LiveEmoji? picked;
       await _open(t, (e) => picked = e);
-      expect(find.byType(TabBar), findsOneWidget);
-      await t.tap(find.text('GIFs'));
-      await t.pumpAndSettle();
+      expect(find.byType(TabBar), findsNothing);
+      expect(find.text('GIFs'), findsNothing);
+      expect(find.text('❤️'), findsOneWidget);
+      expect(find.text('🔥'), findsOneWidget);
+      final heart = t.getTopLeft(find.byKey(const ValueKey('emoji-e1')));
+      final cat = t.getTopLeft(find.byKey(const ValueKey('gif-g1')));
+      final fire = t.getTopLeft(find.byKey(const ValueKey('emoji-e2')));
+      expect(heart.dx, lessThan(cat.dx));
+      expect(cat.dx, lessThan(fire.dx), reason: 'the grid keeps the order the panel gave');
       await t.tap(find.byKey(const ValueKey('gif-g1')));
-      await t.pumpAndSettle();
+      await t.pump(const Duration(milliseconds: 400));
       expect(picked?.isGif, isTrue);
       expect(picked?.id, 'g1');
+    });
+
+    testWidgets('a plain emoji moves: its tile is not in the same place a moment later', (t) async {
+      LiveEmojisRepository.cached = [_heart, _fire];
+      await _open(t, (_) {});
+      final before = t.getTopLeft(find.text('❤️'));
+      await t.pump(const Duration(milliseconds: 650));
+      final after = t.getTopLeft(find.text('❤️'));
+      expect(after, isNot(before), reason: 'it bobs and sways on a loop');
+    });
+
+    testWidgets('with "remove animations" on, the picker keeps still', (t) async {
+      LiveEmojisRepository.cached = [_heart, _fire];
+      await t.pumpWidget(MediaQuery(
+        data: const MediaQueryData(disableAnimations: true, size: Size(400, 800)),
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(body: TextButton(onPressed: () => showLiveEmojiSheet(context), child: const Text('open'))),
+          ),
+        ),
+      ));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle(); // settles: nothing loops
+      final before = t.getTopLeft(find.text('❤️'));
+      await t.pump(const Duration(milliseconds: 650));
+      expect(t.getTopLeft(find.text('❤️')), before);
     });
 
     testWidgets('an empty catalog says so rather than showing stale emotes', (t) async {
@@ -87,6 +121,32 @@ void main() {
       await _open(t, (_) {});
       expect(find.text('❤️'), findsOneWidget);
       expect(find.text('🔥'), findsOneWidget);
+    });
+  });
+
+  group('how a plain emoji moves', () {
+    test('it loops without a jump: the value at 0 and at 1 is the same', () {
+      for (final i in [0, 1, 7, 40]) {
+        final a = emojiMotion(0, i), b = emojiMotion(1, i);
+        expect(a.dy, closeTo(b.dy, 1e-9));
+        expect(a.angle, closeTo(b.angle, 1e-9));
+        expect(a.scale, closeTo(b.scale, 1e-9));
+      }
+    });
+
+    test('it stays small: a few pixels up, a few degrees, a little breathing; never upside down or huge', () {
+      for (var i = 0; i < 30; i++) {
+        for (var k = 0; k <= 20; k++) {
+          final m = emojiMotion(k / 20, i);
+          expect(m.dy, inInclusiveRange(-3.0001, 0.0001));
+          expect(m.angle.abs(), lessThanOrEqualTo(0.1201));
+          expect(m.scale, inInclusiveRange(0.9299, 1.07001));
+        }
+      }
+    });
+
+    test('neighbouring tiles are out of step, so the grid ripples', () {
+      expect(emojiMotion(0.3, 0).dy, isNot(closeTo(emojiMotion(0.3, 1).dy, 1e-3)));
     });
   });
 

@@ -16,6 +16,7 @@ import '../../state/auth_controller.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_colors.dart';
 import 'user_safety_menu.dart';
+import 'widgets/country_picker.dart';
 import 'widgets/profile_labels.dart';
 import '../../core/i18n/text.dart';
 
@@ -110,6 +111,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       const SizedBox(width: 6),
                       Icon(Icons.verified_rounded,
                           color: AppColors.primaryBright, size: 18),
+                    ],
+                    // the flag of the country they chose
+                    if (flagOfUser(_user) != null) ...[
+                      const SizedBox(width: 6),
+                      CountryFlag(flagOfUser(_user), size: 19),
                     ],
                   ],
                 ),

@@ -137,7 +137,11 @@ void main() {
           6: _u('d'),
         };
         await pumpRoom(t, width: width, occupants: occupants);
-        final frames = [for (final e in find.byType(RemoteMedia).evaluate()) t.getRect(find.byWidget(e.widget))];
+        // the empty seats now play the golden seat (2026-11-06, also a RemoteMedia): only avatar frames count here
+        final frames = [
+          for (final e in find.byType(RemoteMedia).evaluate())
+            if (e.widget.key != const ValueKey('golden-seat')) t.getRect(find.byWidget(e.widget)),
+        ];
         expect(frames.length, 4, reason: 'one frame per framed occupant');
         final labels = [for (var i = 0; i < 8; i++) t.getRect(find.byType(SeatLabel).at(i))];
         final circles = [for (var i = 0; i < 8; i++) t.getRect(find.byType(SeatCircle).at(i))];

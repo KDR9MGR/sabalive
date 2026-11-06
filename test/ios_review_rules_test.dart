@@ -72,11 +72,14 @@ void main() {
       await t.pump();
     }
 
-    testWidgets('Android offers Email and Mobile, as before', (t) async {
+    testWidgets('Android is email only too: the Mobile way was removed on 2026-11-06 (it only ever said "coming soon")', (t) async {
       FeatureFlags.isIOSOverride = false;
       await open(t);
-      expect(find.text('Email'), findsOneWidget);
-      expect(find.text('Mobile'), findsOneWidget);
+      expect(find.text('Mobile'), findsNothing);
+      expect(find.text('Email'), findsNothing, reason: 'no tab row any more');
+      expect(find.text('Send Reset Link'), findsOneWidget);
+      expect(find.byIcon(Icons.mail_outline_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.phone_outlined), findsNothing);
     });
 
     testWidgets('iOS has the email way only: the Mobile tab only said "coming soon"', (t) async {

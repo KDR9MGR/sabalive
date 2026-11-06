@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:provider/provider.dart';
 
+import '../../config/rtc_config.dart';
 import '../../config/feature_flags.dart';
 import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
@@ -69,11 +70,16 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
         title: title,
         category: _category,
         mode: _pkLayer ? (_pkVideo ? LiveMode.video : LiveMode.audio) : _mode,
+        // a host who chose PK needs Agora (PK battles move people between Agora channels; MS cloud has none yet): everything else uses the provider of this build
+        provider: _mode == LiveMode.pk ? RtcProvider.agora : null,
       );
-      final token = await AgoraService.instance.fetchToken(
-        channelName: stream.id,
-        asBroadcaster: true,
-      );
+      // an MS cloud live mints its own token inside the connection; only an Agora live needs one here
+      final token = stream.onLiveKit
+          ? null
+          : await AgoraService.instance.fetchToken(
+              channelName: stream.id,
+              asBroadcaster: true,
+            );
 
       if (!mounted) return;
       if (_mode == LiveMode.pk && !_pkLayer) {
@@ -82,7 +88,7 @@ class _GoLiveSetupScreenState extends State<GoLiveSetupScreen> {
         // first), so it stays a normal pushed route.
         navigator.pushReplacement(
           MaterialPageRoute(
-            builder: (_) => PkBattleScreen(stream: stream, token: token),
+            builder: (_) => PkBattleScreen(stream: stream, token: token!),
           ),
         );
         return;

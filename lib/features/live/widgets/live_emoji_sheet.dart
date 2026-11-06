@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/remote_media.dart';
@@ -50,27 +52,8 @@ class _LiveEmojiSheet extends StatelessWidget {
                 ),
               );
             }
-            final emojis = [for (final e in items) if (!e.isGif) e];
-            final gifs = [for (final e in items) if (e.isGif) e];
-            return DefaultTabController(
-              length: gifs.isEmpty ? 1 : 2,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (gifs.isNotEmpty)
-                    TabBar(
-                      tabs: [Tab(text: tr('Emotes')), Tab(text: tr('GIFs'))],
-                    ),
-                  Flexible(
-                    child: gifs.isEmpty
-                        ? _EmojiGrid(emojis)
-                        : TabBarView(
-                            children: [_EmojiGrid(emojis), _GifGrid(gifs)],
-                          ),
-                  ),
-                ],
-              ),
-            );
+            // one grid, in the panel's order: plain emoji and the animated ones (GIF / WebP / SVGA) sit together and all of them move
+            return _EmojiGrid(items);
           },
         ),
       ),
@@ -78,61 +61,89 @@ class _LiveEmojiSheet extends StatelessWidget {
   }
 }
 
-class _EmojiGrid extends StatelessWidget {
+/// How a plain emoji moves in the picker: a gentle bob, a sway and a little breathing, on a loop. [t] is the shared loop position (0..1) and [index] puts each tile
+/// a little out of step with its neighbours, so the grid ripples instead of pulsing in unison. Periodic: the value at 0 and at 1 is the same, so the loop has no jump.
+({double dy, double angle, double scale}) emojiMotion(double t, int index) {
+  final p = (t + (index * 0.137) % 1.0) * 2 * math.pi;
+  return (dy: -3.0 * (0.5 + 0.5 * math.sin(p)), angle: 0.12 * math.sin(p + math.pi / 2), scale: 1 + 0.07 * math.sin(p * 2));
+}
+
+class _EmojiGrid extends StatefulWidget {
   const _EmojiGrid(this.items);
   final List<LiveEmoji> items;
 
   @override
-  Widget build(BuildContext context) {
-    return GridView.count(
-      padding: const EdgeInsets.all(16),
-      crossAxisCount: 6,
-      shrinkWrap: true,
-      children: [
-        for (final e in items)
-          GestureDetector(
-            key: ValueKey('emoji-${e.id}'),
-            onTap: () => Navigator.pop(context, e),
-            child: Center(
-              child: Text(e.emoji ?? '', style: const TextStyle(fontSize: 26)),
-            ),
-          ),
-      ],
-    );
-  }
+  State<_EmojiGrid> createState() => _EmojiGridState();
 }
 
-class _GifGrid extends StatelessWidget {
-  const _GifGrid(this.items);
-  final List<LiveEmoji> items;
+class _EmojiGridState extends State<_EmojiGrid> with SingleTickerProviderStateMixin {
+  // ONE loop for the whole grid (not one per tile): every plain emoji reads its own phase from it
+  late final AnimationController _loop = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // "remove animations" in the phone's accessibility settings keeps the picker still
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _loop.stop();
+    } else if (!_loop.isAnimating) {
+      _loop.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _loop.dispose();
+    super.dispose();
+  }
+
+  Widget _glyph(LiveEmoji e, int i, {double size = 28}) {
+    final label = Text(e.emoji ?? e.label, style: TextStyle(fontSize: size, height: 1));
+    return AnimatedBuilder(
+      animation: _loop,
+      child: label,
+      builder: (context, child) {
+        final m = emojiMotion(_loop.value, i);
+        return Transform.translate(
+          offset: Offset(0, m.dy),
+          child: Transform.rotate(angle: m.angle, child: Transform.scale(scale: m.scale, child: child)),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
+    final items = widget.items;
+    return GridView.builder(
       padding: const EdgeInsets.all(16),
-      crossAxisCount: 4,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
       shrinkWrap: true,
-      children: [
-        for (final e in items)
-          GestureDetector(
-            key: ValueKey('gif-${e.id}'),
-            onTap: () => Navigator.pop(context, e),
-            child: RemoteMedia(
-              e.assetUrl!,
-              fit: BoxFit.contain,
-              // a still frame for SVGA; GIF / WebP animate on their own
-              animate: false,
-              fallback: Center(
-                child: Text(
-                  e.emoji ?? e.label,
-                  style: const TextStyle(fontSize: 22),
-                ),
-              ),
-            ),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final e = items[i];
+        final animated = e.isGif && e.assetUrl != null && e.assetUrl!.isNotEmpty;
+        return GestureDetector(
+          key: ValueKey(animated ? 'gif-${e.id}' : 'emoji-${e.id}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.pop(context, e),
+          child: Center(
+            child: animated
+                ? Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: RemoteMedia(
+                      e.assetUrl!,
+                      fit: BoxFit.contain,
+                      loop: true,
+                      // GIF / WebP / SVGA play right here; a video file would need a player per tile, so it keeps its first picture (the emoji) until it is sent
+                      animate: mediaKindFor(e.assetUrl!) != MediaKind.video,
+                      fallback: Center(child: _glyph(e, i, size: 24)),
+                    ),
+                  )
+                : _glyph(e, i),
           ),
-      ],
+        );
+      },
     );
   }
 }

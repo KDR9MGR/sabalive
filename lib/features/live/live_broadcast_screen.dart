@@ -31,6 +31,7 @@ import '../../data/social_repository.dart';
 import '../../router/app_nav.dart';
 import '../../services/agora_errors.dart';
 import '../../services/agora_service.dart';
+import '../../services/livekit_session.dart';
 import '../../services/local_music_service.dart';
 import '../../data/store_repository.dart';
 import '../../state/active_live_session_controller.dart';
@@ -54,6 +55,7 @@ import 'widgets/lucky_box_badge.dart';
 import 'widgets/music_sheet.dart';
 import 'widgets/live_minimized_bubble.dart';
 import 'widgets/seat_room.dart';
+import 'widgets/cp_seats.dart';
 import 'widgets/seat_snapshot.dart';
 import 'widgets/seat_speaking.dart';
 import 'widgets/speaking_waves.dart';
@@ -70,12 +72,14 @@ class LiveBroadcastScreen extends StatefulWidget {
   const LiveBroadcastScreen({
     super.key,
     required this.stream,
-    required this.token,
+    this.token,
     this.audioOnly = false,
     this.openPk = false,
   });
   final LiveStream stream;
-  final AgoraToken token;
+
+  /// The Agora token (null when the live is on MS cloud, which mints its own inside [LiveKitSession]).
+  final AgoraToken? token;
   final bool audioOnly;
 
   /// Go Live -> PK: open the PK invite sheet as soon as the room is up.
@@ -88,6 +92,10 @@ class LiveBroadcastScreen extends StatefulWidget {
 class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     with WidgetsBindingObserver {
   RtcEngine? _engine;
+
+  /// The connection when this live is on MS cloud (`widget.stream.rtcProvider`); null for an Agora live. Exactly one of [_engine] and [_lk] is ever set.
+  LiveKitSession? _lk;
+  bool get _onLiveKit => widget.stream.onLiveKit;
   int _viewers = 0;
   // The PK battle layer (audio lives, while PK is switched on). Null = no PK here.
   PkBattleController? _pk;
@@ -134,6 +142,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   // (a slim strip, not the full backdrop) but has no add/remove UI — only
   // audio rooms let the host resize the room.
   late int _seatCount = widget.stream.seatCount;
+
+  /// The two couple (CP) seats are on (seats 24 and 25, above the grid). The host switches them with [_toggleCpSeats].
+  bool _cpSeats = false;
+  bool _cpBusy = false;
   Set<int> _lockedSeats = {};
   final Map<int, AppUser> _seatOccupants = {};
   final Set<int> _mutedSeats = {};
@@ -218,7 +230,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     unawaited(_mod.start());
     _subscribeSeats();
     if (!widget.audioOnly) _subscribeSeatRequests();
-    _startPk();
+    // PK battles move people between Agora channels: an MS cloud live has none yet
+    if (!_onLiveKit) _startPk();
     if (widget.audioOnly) {
       // Audio rooms no longer give the host a seat of their own outside the
       // numbered grid — the host just occupies seat 1 like anyone else,
@@ -255,34 +268,105 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     });
   }
 
+
+  // ---- what the connection reports, whichever server it comes from (Agora's handler and the MS cloud adapter both call these)
+
+  void _onVolume(List<AudioVolumeInfo> speakers) {
+    if (_onLiveKit) _bindLiveKitSeats();
+    final next = _speaking.seatsFor(
+      speakers,
+      occupants: _seatOccupants,
+      hostId: widget.stream.host.id,
+      mySeat: [for (final e in _seatOccupants.entries) if (e.value.id == widget.stream.host.id) e.key].firstOrNull,
+      meMuted: _micMuted,
+    );
+    final hostNow = _speaking.hostTalking(
+      speakers,
+      iAmHost: true,
+      meMuted: _micMuted,
+    );
+    // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
+    if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
+    if (mounted && (!SeatSpeaking.same(next, _speakingSeats) || hostNow != _hostSpeaking)) {
+      setState(() {
+        _speakingSeats = next;
+        _hostSpeaking = hostNow;
+      });
+    }
+  }
+
+  /// On MS cloud everybody's uid is worked out from their account id, so a guest's seat is known without waiting for the seat row to carry it.
+  void _bindLiveKitSeats() {
+    for (final e in _seatOccupants.entries) {
+      if (e.value.id != widget.stream.host.id) _speaking.bindSeat(e.key, liveKitUidOf(e.value.id));
+    }
+    _speaking.hostUid = liveKitUidOf(widget.stream.host.id);
+  }
+
+  /// The live on MS cloud: connect as the host and publish the microphone (and the camera in a video live).
+  Future<void> _joinLiveKit() async {
+    try {
+      final session = await LiveKitSession.start(
+        roomName: widget.stream.id,
+        asBroadcaster: true,
+        audioOnly: widget.audioOnly,
+        hostIdentity: widget.stream.host.id,
+        events: LiveKitEvents(
+          // viewers tell the host from a guest on a seat by this uid, exactly as they do with an Agora uid
+          onJoined: (uid) {
+            supabase
+                .rpc('set_host_agora_uid', params: {'p_stream_id': widget.stream.id, 'p_uid': uid})
+                .catchError((e) {
+              debugPrint('set_host_agora_uid failed: $e');
+            });
+          },
+          onVolume: _onVolume,
+          onUserJoined: (uid) {
+            _bindLiveKitSeats();
+            _showBackSeat(uid);
+          },
+          onUserOffline: (uid) {
+            _bindLiveKitSeats();
+            _hideGoneSeat(uid);
+          },
+          // my own camera picture appeared or changed
+          onVideoChanged: () {
+            if (mounted) setState(() {});
+          },
+          onReconnecting: (r) {
+            if (mounted) setState(() => _reconnecting = r);
+          },
+          onFailed: (message) {
+            if (!mounted) return;
+            setState(() {
+              _connectionFailure = message;
+              _error = message;
+            });
+          },
+        ),
+      );
+      if (!mounted) {
+        unawaited(session.release());
+        return;
+      }
+      setState(() => _lk = session);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
+    }
+  }
+
   Future<void> _join() async {
+    if (_onLiveKit) return _joinLiveKit();
+    final token = widget.token;
+    if (token == null) {
+      if (mounted) setState(() => _error = 'This live has no connection token');
+      return;
+    }
     try {
       final engine = await AgoraService.instance.ensureEngine();
       engine.registerEventHandler(
         RtcEngineEventHandler(
-          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) {
-            final next = _speaking.seatsFor(
-              speakers,
-              occupants: _seatOccupants,
-              hostId: widget.stream.host.id,
-              mySeat: [for (final e in _seatOccupants.entries) if (e.value.id == widget.stream.host.id) e.key].firstOrNull,
-              meMuted: _micMuted,
-            );
-            final hostNow = _speaking.hostTalking(
-              speakers,
-              iAmHost: true,
-              meMuted: _micMuted,
-            );
-            // somebody is talking whose seat this phone has no Agora uid for yet: read the seats again
-            if (_speaking.needsSeatRefresh()) unawaited(_reconcileSeats());
-            if (mounted &&
-                (!SeatSpeaking.same(next, _speakingSeats) || hostNow != _hostSpeaking)) {
-              setState(() {
-                _speakingSeats = next;
-                _hostSpeaking = hostNow;
-              });
-            }
-          },
+          onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) => _onVolume(speakers),
           // A guest on a seat leaving (or dropping) frees their seat on this screen now, not when
           // the server sweeps it. Agora only reports people who were publishing.
           onUserOffline: (connection, remoteUid, reason) {
@@ -330,7 +414,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       );
       AgoraService.instance.registerAutoTokenRenewal(
         engine,
-        channelName: widget.token.channelName,
+        channelName: token.channelName,
         asBroadcaster: true,
       );
       if (widget.audioOnly) {
@@ -344,9 +428,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         reportVad: true,
       );
       await engine.joinChannel(
-        token: widget.token.token,
-        channelId: widget.token.channelName,
-        uid: widget.token.uid,
+        token: token.token,
+        channelId: token.channelName,
+        uid: token.uid,
         options: ChannelMediaOptions(
           channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
           clientRoleType: ClientRoleType.clientRoleBroadcaster,
@@ -389,11 +473,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   /// fire — so re-entering this screen with seats already locked would
   /// wrongly show them unlocked until then.
   Future<void> _loadSeatLockState() async {
-    final row = await supabase
-        .from('live_streams')
-        .select('locked_seats, seat_count, room_skin_item_id, pinned_notice, chat_cleared_at')
-        .eq('id', widget.stream.id)
-        .maybeSingle();
+    final row = await readStreamRow(widget.stream.id, 'locked_seats, seat_count, room_skin_item_id, pinned_notice, chat_cleared_at');
     if (row == null || !mounted) return;
     unawaited(_applySkin(row['room_skin_item_id'] as String?));
     final locked = row['locked_seats'] as List?;
@@ -402,6 +482,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     setState(() {
       if (locked != null) _lockedSeats = locked.cast<int>().toSet();
       if (seatCount != null) _seatCount = seatCount;
+      final cp = row['cp_seats'];
+      if (cp is bool) _cpSeats = cp;
     });
   }
 
@@ -437,6 +519,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
             final count = payload.newRecord['viewer_count'] as int?;
             final locked = payload.newRecord['locked_seats'] as List?;
             final seatCount = payload.newRecord['seat_count'] as int?;
+            final cp = payload.newRecord['cp_seats'];
             if (!mounted) return;
             // the host equipped / removed a room skin
             if (payload.newRecord.containsKey('room_skin_item_id')) {
@@ -452,6 +535,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                 _lockedSeats = locked.cast<int>().toSet();
               }
               if (seatCount != null) _seatCount = seatCount;
+              if (cp is bool) _cpSeats = cp;
             });
           },
         )
@@ -510,6 +594,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       }
       if (snap.locked != null) _lockedSeats = snap.locked!;
       if (snap.seatCount != null) _seatCount = snap.seatCount!;
+      if (snap.cpSeats != null) _cpSeats = snap.cpSeats!;
     });
     if (widget.audioOnly && snap.seatOf(widget.stream.host.id) == null) {
       unawaited(_sitHostDown(snap));
@@ -528,6 +613,17 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       var fresh = await fetchSeatSnapshot(widget.stream.id) ?? snap;
       final hostId = widget.stream.host.id;
       final count = snap.seatCount ?? _seatCount;
+      // with couple seats on, the host's place is the left one (seat 24): try it first
+      if (fresh.cpSeats ?? _cpSeats) {
+        if (fresh.seatOf(hostId) == null && !fresh.occupants.containsKey(kCpSeatLeft)) {
+          try {
+            await supabase.rpc(claimSeatRpc(kCpSeatLeft), params: {'p_stream_id': widget.stream.id, 'p_seat': kCpSeatLeft});
+            await supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id});
+          } catch (_) {
+            fresh = await fetchSeatSnapshot(widget.stream.id) ?? fresh;
+          }
+        }
+      }
       for (var seat = 1; seat <= count && fresh.seatOf(hostId) == null; seat++) {
         final locked = fresh.locked ?? _lockedSeats;
         if (fresh.occupants.containsKey(seat) || locked.contains(seat)) continue;
@@ -724,6 +820,19 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   Future<void> _autoClaimHostSeat() async {
     try {
+      // a room that already has couple seats (the host came back to it) keeps its host on the left one: seat 1 would pull them off it
+      if (await fetchCpSeatsOn(widget.stream.id)) {
+        if (mounted) {
+          setState(() {
+            _cpSeats = true;
+            _seatOccupants.remove(1);
+            _seatOccupants[kCpSeatLeft] = widget.stream.host;
+          });
+        }
+        await supabase.rpc(claimSeatRpc(kCpSeatLeft), params: {'p_stream_id': widget.stream.id, 'p_seat': kCpSeatLeft});
+        await supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id});
+        return;
+      }
       await supabase.rpc(
         'claim_seat',
         params: {'p_stream_id': widget.stream.id, 'p_seat': 1},
@@ -786,7 +895,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     }
   }
 
-  final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage);
+  late final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage, prewarmNotices: true)..roomHost = widget.stream.host;
   final _emotes = EmoteController();
   final _room = RoomChatState();
   String? _skinUrl;
@@ -904,6 +1013,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     _pk?.removeListener(_pkStageChanged);
     _pk?.dispose();
     AgoraService.instance.release();
+    _lk?.release();
     super.dispose();
   }
 
@@ -1040,7 +1150,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     }
     setState(() => _seatCount = next);
     try {
-      await supabase.rpc('set_seat_count', params: {'p_stream_id': widget.stream.id, 'p_count': next});
+      await supabase.rpc(setSeatCountRpc(cpSeats: _cpSeats), params: {'p_stream_id': widget.stream.id, 'p_count': next});
     } catch (e) {
       if (mounted) {
         setState(() => _seatCount = previous);
@@ -1071,6 +1181,13 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   }
 
   /// The two videos side by side: my camera, and the opponent host's once they have joined the shared channel.
+  /// The host's own camera picture on MS cloud (mirrored for the front camera, like a mirror), black until the camera starts.
+  Widget _liveKitPreview(LiveKitSession lk) {
+    final track = lk.localVideo;
+    if (track == null) return const ColoredBox(color: Colors.black);
+    return lk.video(track, mirror: lk.frontCamera);
+  }
+
   Widget _pkVideoStage() {
     final engine = _engine!;
     final pk = _pk!;
@@ -1104,6 +1221,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   /// Invite PK (tab 0) / Random PK (tab 1) in the Tools sheet.
   void _pkFromHere(int tab) {
+    if (_onLiveKit) {
+      _snack('PK battles are not available in this live yet');
+      return;
+    }
     final pk = _pk;
     if (pk != null && pk.inBattle) {
       _snack('A PK battle is already on'); // one battle at a time: a second invite would only be refused
@@ -1121,7 +1242,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   Future<void> _toggleMic() async {
     setState(() => _micMuted = !_micMuted);
     try {
-      await _engine?.muteLocalAudioStream(_micMuted);
+      final lk = _lk;
+      if (lk != null) {
+        await lk.setMicEnabled(!_micMuted);
+      } else {
+        await _engine?.muteLocalAudioStream(_micMuted);
+      }
     } catch (_) {}
     // Audio rooms: the host occupies a numbered seat like anyone else, so
     // their own mute needs to update that seat's is_muted too — otherwise
@@ -1157,7 +1283,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   Future<void> _toggleSpeaker() async {
     setState(() => _speakerOn = !_speakerOn);
     try {
-      await _engine?.setEnableSpeakerphone(_speakerOn);
+      final lk = _lk;
+      if (lk != null) {
+        await lk.setSpeaker(_speakerOn);
+      } else {
+        await _engine?.setEnableSpeakerphone(_speakerOn);
+      }
     } catch (_) {}
   }
 
@@ -1178,6 +1309,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
   }
 
   Future<void> _openBeautyPanel() async {
+    if (_onLiveKit) {
+      _snack('The beauty filter is not available in this live yet');
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.bgElevated,
@@ -1550,6 +1685,10 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   /// Songs from the phone, played into the live (see LocalMusicController).
   void _openMusic() {
+    if (_onLiveKit) {
+      _snack('Playing music is not available in this live yet');
+      return;
+    }
     final engine = _engine;
     if (engine == null) {
       _snack('Still connecting — try again in a moment');
@@ -1634,7 +1773,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     setState(() => _seatCount = next);
     try {
       await supabase.rpc(
-        'set_seat_count',
+        // while couple seats are on, the version that leaves seats 24 and 25 alone
+        setSeatCountRpc(cpSeats: _cpSeats),
         params: {'p_stream_id': widget.stream.id, 'p_count': next},
       );
     } catch (e) {
@@ -1644,6 +1784,38 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
         _snack(friendlyError(e));
       }
     }
+  }
+
+  /// The host switches the two couple (CP) seats on or off. On: the host moves to the left one in the same server step (so the room never has a moment without its host on a
+  /// seat); off: whoever sat on a couple seat is taken off it and the host goes back to an ordinary seat. The screen follows at once; the seat read right after makes it match the server.
+  Future<void> _toggleCpSeats() async {
+    if (_cpBusy) return;
+    final next = !_cpSeats;
+    final host = widget.stream.host;
+    setState(() {
+      _cpBusy = true;
+      _cpSeats = next;
+      _seatOccupants.removeWhere((seat, user) => user.id == host.id || (!next && isCpSeat(seat)));
+      _mutedSeats.removeAll(kCpSeats);
+      if (next) {
+        _seatOccupants[kCpSeatLeft] = host;
+      } else {
+        final free = _firstEmptySeat();
+        if (free != null) _seatOccupants[free] = host;
+      }
+    });
+    try {
+      await supabase.rpc('set_cp_seats', params: {'p_stream_id': widget.stream.id, 'p_on': next});
+      await supabase.rpc('heartbeat_seat', params: {'p_stream_id': widget.stream.id});
+    } catch (e) {
+      if (mounted) {
+        setState(() => _cpSeats = !next);
+        _snack(friendlyError(e));
+      }
+    } finally {
+      if (mounted) setState(() => _cpBusy = false);
+    }
+    if (mounted) unawaited(_reconcileSeats());
   }
 
   Future<void> _seatMenu(int seat) async {
@@ -1764,7 +1936,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     } else if (choice == 'sit') {
       try {
         await supabase.rpc(
-          'claim_seat',
+          claimSeatRpc(seat), // a couple seat has its own function
           params: {'p_stream_id': widget.stream.id, 'p_seat': seat},
         );
       } catch (e) {
@@ -2031,6 +2203,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                 speakingSeats: _speakingSeats,
                 diamonds: _diamonds.all,
                 emotes: _emotes,
+                cpSeats: _cpSeats,
+                onToggleCpSeats: _cpBusy ? null : _toggleCpSeats,
                 onSeatTap: _seatMenu,
                 header: _pk == null
                     ? null
@@ -2058,6 +2232,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                 onRemoveSeat: _seatCount <= kMinAudioSeats ? null : () => _changeSeatCount(-kSeatStep),
               ),
             )
+          else if (_lk != null)
+            _liveKitPreview(_lk!)
           else if (_engine != null && _pkStage)
             _pkVideoStage()
           else if (_engine != null)

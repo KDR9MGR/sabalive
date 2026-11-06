@@ -6,6 +6,7 @@ import '../core/widgets/over_live_route.dart';
 import '../data/messages_repository.dart';
 import '../data/models.dart';
 import '../data/social_repository.dart';
+import '../data/store_repository.dart' show StoreCategory;
 import '../features/common/agency_request_screen.dart';
 import '../features/games/games_screen.dart';
 import '../features/host/host_dashboard_screen.dart';
@@ -33,6 +34,9 @@ import '../features/profile/settings_screen.dart';
 import '../features/profile/support_chat_screen.dart';
 import '../features/profile/user_profile_screen.dart';
 import '../features/search/search_screen.dart';
+import '../features/vip/vip_product_screen.dart';
+import '../features/vip/vip_screen.dart';
+import '../data/vip_repository.dart' show VipProduct;
 import '../features/wallet/bag_screen.dart';
 import '../features/wallet/frames_screen.dart';
 import '../features/wallet/buy_coins_screen.dart';
@@ -299,8 +303,15 @@ class AppNav {
   static Future<void> badges(BuildContext context, String profileId) =>
       _push(context, BadgesScreen(profileId: profileId));
 
-  static Future<void> store(BuildContext context) =>
-      _push(context, const StoreScreen());
+  static Future<void> store(BuildContext context, {StoreCategory? category}) =>
+      _push(context, StoreScreen(initialCategory: category));
+
+  /// The VIP list (owner, 2026-11-06): the profile's gold VIP strip opens it.
+  static Future<void> vip(BuildContext context) => _push(context, const VipScreen());
+
+  /// One VIP product with its benefits and Buy button. Completes with true when the person bought it there.
+  static Future<bool?> vipProduct(BuildContext context, VipProduct product, {DateTime? endsAt}) =>
+      _push<bool>(context, VipProductScreen(product: product, endsAt: endsAt));
 
   static Future<void> frames(BuildContext context) =>
       _push(context, const FramesScreen());

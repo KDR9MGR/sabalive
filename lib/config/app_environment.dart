@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'rtc_config.dart';
 import 'supabase_config.dart';
 
 /// Which backend a build talks to.
@@ -22,8 +23,12 @@ class AppEnvironment {
   static bool get isStaging => !isProduction;
 
   /// Throws if [environment] and [url] do not belong together. Defaults check this build.
-  static void validate({String environment = name, String url = SupabaseConfig.url}) {
+  static void validate({String environment = name, String url = SupabaseConfig.url, RtcProvider newLivesProvider = RtcProvider.agora}) {
     final atProduction = url == SupabaseConfig.productionUrl;
+    // MS cloud rooms need the staging database's provider column and the livekit-token function: a production build must never start them (yet)
+    if (environment == 'production' && newLivesProvider != RtcProvider.agora) {
+      throw StateError('A production build cannot start MS cloud lives yet (RTC_PROVIDER=${newLivesProvider.dbValue}). Remove --dart-define=RTC_PROVIDER.');
+    }
     if (environment == 'production' && !atProduction) {
       throw StateError(
         'A production build must use the production backend ($url is not it). '

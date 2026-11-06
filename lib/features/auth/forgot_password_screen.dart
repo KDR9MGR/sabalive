@@ -3,12 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
-import '../../core/widgets/pills.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/auth_scaffold.dart';
 import '../../core/i18n/text.dart';
-import '../../config/feature_flags.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -18,7 +16,6 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  int _tab = 0; // 0 email, 1 mobile
   final _target = TextEditingController();
   bool _sent = false;
 
@@ -30,12 +27,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Future<void> _send() async {
     final messenger = ScaffoldMessenger.of(context);
-    if (_tab == 1) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Password reset by mobile number is coming soon — use email for now')),
-      );
-      return;
-    }
     try {
       await context.read<AuthController>().resetPassword(_target.text);
       if (mounted) setState(() => _sent = true);
@@ -52,7 +43,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       title: _sent ? 'Check Your Inbox' : 'Forgot Password?',
       subtitle: _sent
           ? "We've sent a password reset link to\n${_target.text.isEmpty ? 'your account' : _target.text}"
-          : "Enter your registered ${_tab == 0 ? 'email' : 'mobile number'} and we'll help you reset your password.",
+          : "Enter your registered email and we'll help you reset your password.",
       child: _sent
           ? Column(
               children: [
@@ -84,27 +75,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // resetting by mobile number only says "coming soon": the tab is hidden on iOS (the App Store refuses placeholder screens)
-                if (FeatureFlags.comingSoonVisible) ...[
-                  SegmentedTabs(
-                    tabs: const ['Email', 'Mobile'],
-                    index: _tab,
-                    onChanged: (i) => setState(() => _tab = i),
-                  ),
-                  const SizedBox(height: 18),
-                ],
                 TextField(
                   controller: _target,
-                  keyboardType: _tab == 0
-                      ? TextInputType.emailAddress
-                      : TextInputType.phone,
-                  decoration: InputDecoration(
-                    hintText: _tab == 0
-                        ? 'nisha.sharma@email.com'
-                        : '+91 98765 43210',
-                    prefixIcon: Icon(_tab == 0
-                        ? Icons.mail_outline_rounded
-                        : Icons.phone_outlined),
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    hintText: 'nisha.sharma@email.com',
+                    prefixIcon: Icon(Icons.mail_outline_rounded),
                   ),
                 ),
                 const SizedBox(height: 20),

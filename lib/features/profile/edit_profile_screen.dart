@@ -5,10 +5,12 @@ import '../../core/utils/avatar_picker.dart';
 import '../../core/utils/errors.dart';
 import '../../core/widgets/app_avatar.dart';
 import '../../core/widgets/gradient_button.dart';
+import '../../data/countries.dart';
 import '../../data/mock_data.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import '../../core/i18n/text.dart';
+import 'widgets/country_picker.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -47,6 +49,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       lastDate: DateTime(now.year - 13, now.month, now.day),
     );
     if (picked != null) setState(() => _dob = picked);
+  }
+
+  Future<void> _pickCountry() async {
+    final picked = await showCountrySheet(context, selected: _location.text.trim());
+    if (picked != null && mounted) setState(() => _location.text = picked);
   }
 
   Future<void> _save() async {
@@ -133,10 +140,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
           const SizedBox(height: 8),
           _label('Location'),
-          TextField(
-            controller: _location,
-            decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.location_on_outlined)),
+          // the same country list (with flags) as the "Complete your profile" step: a typed city has no flag, a chosen country does
+          InkWell(
+            key: const ValueKey('edit-country'),
+            onTap: _pickCountry,
+            borderRadius: BorderRadius.circular(10),
+            child: InputDecorator(
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.location_on_outlined), suffixIcon: Icon(Icons.arrow_drop_down_rounded)),
+              child: Row(
+                children: [
+                  if (flagOfCountry(_location.text) != null) ...[CountryFlag(flagOfCountry(_location.text), size: 20), const SizedBox(width: 8)],
+                  Expanded(
+                    child: Text(_location.text.trim().isEmpty ? 'Select your country' : _location.text,
+                        style: TextStyle(color: _location.text.trim().isEmpty ? AppColors.textMuted : AppColors.textPrimary)),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 20),
           _label('Gender'),

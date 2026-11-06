@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../config/supabase_client.dart';
 import '../core/utils/ids.dart';
+import 'vip_repository.dart';
 
 /// How a staff tag is drawn: a coloured [pill], a [picture] shown as it is (the name is inside the artwork), or a [plate] (a background picture the
 /// app writes the name on).
@@ -85,12 +86,16 @@ class ProfileBadge {
 /// What a profile shows under the name besides the Store items: the staff tags it was given and the badges it earned.
 @immutable
 class ProfileLabels {
-  const ProfileLabels({this.tags = const [], this.badges = const []});
+  const ProfileLabels({this.tags = const [], this.badges = const [], this.vip});
 
   final List<ProfileTag> tags;
   final List<ProfileBadge> badges;
 
-  bool get isEmpty => tags.isEmpty && badges.isEmpty;
+  /// The VIP badge of the person while a VIP is active (owner, 2026-11-06). Only [ProfileLabelsRepository.load] (ONE person: a profile page) fills it; a list of people
+  /// ([ProfileLabelsRepository.loadMany]) does not read it, so a ranking or a followers list costs no extra read.
+  final VipBadge? vip;
+
+  bool get isEmpty => tags.isEmpty && badges.isEmpty && vip == null;
 }
 
 /// Reads both lists for one profile, or for many at once ([loadMany], for a list of people). They are public (any signed-in person can see anyone's tags and
@@ -98,8 +103,11 @@ class ProfileLabels {
 class ProfileLabelsRepository {
   Future<ProfileLabels> load(String profileId) async {
     if (!isRealId(profileId)) return const ProfileLabels();
-    final many = await loadMany([profileId]);
-    return many[profileId] ?? const ProfileLabels();
+    // the VIP badge is one more small read, for a profile page only; it fails open to "no badge"
+    final results = await Future.wait<Object?>([loadMany([profileId]), VipRepository().badgeFor(profileId)]);
+    final labels = (results[0] as Map<String, ProfileLabels>)[profileId] ?? const ProfileLabels();
+    final vip = results[1] as VipBadge?;
+    return vip == null ? labels : ProfileLabels(tags: labels.tags, badges: labels.badges, vip: vip);
   }
 
   /// The labels of every profile in [ids] with TWO reads in all (one for tags, one for badges), however many people there are: a followers list or a ranking

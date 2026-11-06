@@ -8,6 +8,7 @@ import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../data/countries.dart';
 import '../../data/models.dart';
+import '../profile/widgets/country_picker.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 
@@ -156,13 +157,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   }
 
   Future<void> _pickCountry() async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (_) => _CountrySheet(selected: _country),
-    );
+    final picked = await showCountrySheet(context, selected: _country);
     if (picked != null && mounted) setState(() => _country = picked);
   }
 
@@ -236,8 +231,15 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                     child: InputDecorator(
                       decoration: const InputDecoration(
                           prefixIcon: Icon(Icons.public_rounded), suffixIcon: Icon(Icons.arrow_drop_down_rounded)),
-                      child: Text(_country ?? 'Select your country',
-                          style: TextStyle(color: _country == null ? AppColors.textMuted : AppColors.textPrimary)),
+                      child: Row(
+                        children: [
+                          if (flagOfCountry(_country) != null) ...[CountryFlag(flagOfCountry(_country), size: 20), const SizedBox(width: 8)],
+                          Expanded(
+                            child: Text(_country ?? 'Select your country',
+                                style: TextStyle(color: _country == null ? AppColors.textMuted : AppColors.textPrimary)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   if (_error != null) ...[
@@ -271,61 +273,4 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
         padding: const EdgeInsets.only(bottom: 6),
         child: Text(t, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
       );
-}
-
-/// The searchable country list; pops with the English name that was tapped.
-class _CountrySheet extends StatefulWidget {
-  const _CountrySheet({required this.selected});
-  final String? selected;
-
-  @override
-  State<_CountrySheet> createState() => _CountrySheetState();
-}
-
-class _CountrySheetState extends State<_CountrySheet> {
-  String _query = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final found = searchCountries(_query);
-    final height = MediaQuery.of(context).size.height * 0.8;
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: SizedBox(
-        height: height,
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.stroke, borderRadius: BorderRadius.circular(2))),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: TextField(
-                key: const ValueKey('country-search'),
-                autofocus: false,
-                onChanged: (v) => setState(() => _query = v),
-                decoration: InputDecoration(prefixIcon: const Icon(Icons.search_rounded), hintText: tr('Search country')),
-              ),
-            ),
-            Expanded(
-              child: found.isEmpty
-                  ? const Center(child: Text('No country found', style: TextStyle(color: AppColors.textMuted)))
-                  : ListView.builder(
-                      itemCount: found.length,
-                      itemBuilder: (context, i) {
-                        final c = found[i];
-                        return ListTile(
-                          key: ValueKey('country-$c'),
-                          dense: true,
-                          title: Text(c),
-                          trailing: c == widget.selected ? const Icon(Icons.check_rounded, color: AppColors.success) : null,
-                          onTap: () => Navigator.of(context).pop(c),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

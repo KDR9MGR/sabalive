@@ -9,7 +9,9 @@ import '../../../core/widgets/remote_media.dart';
 import '../../../data/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../state/remote_config_controller.dart';
+import 'cp_seats.dart';
 import 'emote_overlay.dart';
+import 'golden_seat.dart';
 import 'seat_speaking.dart';
 import 'speaking_waves.dart';
 import 'wave_colors.dart';
@@ -33,6 +35,10 @@ class SeatCircle extends StatelessWidget {
     this.emotes,
     this.onTap,
     this.showLabel = true,
+    this.hostBigger = true,
+    this.emptyLabel,
+    this.showFrame = true,
+    this.goldenSeat = false,
   });
 
   final int seat;
@@ -63,6 +69,19 @@ class SeatCircle extends StatelessWidget {
   final VoidCallback? onTap;
   final bool showLabel;
 
+  /// False: the host's picture is the same size as everybody's (the two couple seats sit side by side and must look alike).
+  final bool hostBigger;
+
+  /// What an empty seat's label says instead of "Seat N" (the couple seats say "CP").
+  final String? emptyLabel;
+
+  /// False: the occupant's avatar frame is NOT drawn (owner, 2026-11-06: someone on a couple seat sits without their frame; the banner behind the two seats is the decoration).
+  final bool showFrame;
+
+  /// True: an empty (not locked) seat is the owner's animated golden seat instead of the grey circle with a chair. The audio room's grid and the video live's seat column
+  /// ask for it; the PK arena and the couple seats keep the plain circle.
+  final bool goldenSeat;
+
   /// How much bigger the host's own seat is drawn than a guest's, so the host stands out in the room.
   static const double hostExtra = 10;
 
@@ -81,12 +100,24 @@ class SeatCircle extends StatelessWidget {
     return wanted > cap ? cap : wanted;
   }
 
+  /// The plain empty seat: a faint circle with a chair (or a padlock when the seat is locked).
+  Widget _emptyCircle(double plain) => Container(
+        width: plain,
+        height: plain,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.06),
+          border: Border.all(color: locked ? AppColors.gold.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.18)),
+        ),
+        child: Icon(locked ? Icons.lock_rounded : Icons.event_seat_rounded, color: locked ? AppColors.gold : Colors.white54, size: plain * 0.38),
+      );
+
   @override
   Widget build(BuildContext context) {
     // the host's seat is a little bigger than the others
-    final plain = isHost && occupant != null ? size + hostExtra : size;
+    final plain = isHost && hostBigger && occupant != null ? size + hostExtra : size;
     final frame = occupant?.frameUrl;
-    final framed = occupant != null && AppAvatar.showsFrame(plain * AppAvatar.frameScale, frame);
+    final framed = showFrame && occupant != null && AppAvatar.showsFrame(plain * AppAvatar.frameScale, frame);
     final footprint = footprintOf(plain: plain, framed: framed, slot: slot, isHost: isHost);
     // what the layout reserves for the seat's picture: the slot when there is one
     final reserve = slot ?? footprint;
@@ -146,23 +177,19 @@ class SeatCircle extends StatelessWidget {
                                 child: AppAvatar(name: occupant.name, imageUrl: occupant.avatarUrl, size: footprint - 4),
                               ),
                       )
+                    else if (goldenSeat && !locked)
+                      // the owner's golden throne: its ring is as wide as the seat's own picture (an occupied seat is the same size), and the picture around the ring is see-through, so it
+                      // is allowed to spill past the seat's box (the Stack does not clip). The OverflowBox keeps it centred in the seat whatever size the Stack
+                      // really got (the slot's tight size reaches it, not [footprint]).
+                      OverflowBox(
+                        minWidth: GoldenSeat.sideFor(plain),
+                        maxWidth: GoldenSeat.sideFor(plain),
+                        minHeight: GoldenSeat.sideFor(plain),
+                        maxHeight: GoldenSeat.sideFor(plain),
+                        child: GoldenSeat(ring: plain, fallback: _emptyCircle(plain)),
+                      )
                     else
-                      Container(
-                        width: plain,
-                        height: plain,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.06),
-                          border: Border.all(
-                              color: locked
-                                  ? AppColors.gold.withValues(alpha: 0.7)
-                                  : Colors.white.withValues(alpha: 0.18)),
-                        ),
-                        child: Icon(
-                            locked ? Icons.lock_rounded : Icons.event_seat_rounded,
-                            color: locked ? AppColors.gold : Colors.white54,
-                            size: plain * 0.38),
-                      ),
+                      _emptyCircle(plain),
                     if (occupant != null && emotes != null)
                       Positioned.fill(
                         child: Padding(
@@ -205,7 +232,7 @@ class SeatCircle extends StatelessWidget {
           if (showLabel) ...[
             const SizedBox(height: 4),
             SeatLabel(
-              name: occupant?.name ?? (locked ? 'Locked' : 'Seat $seat'),
+              name: occupant?.name ?? (locked ? 'Locked' : (emptyLabel ?? 'Seat $seat')),
               diamonds: occupant == null ? null : diamonds,
               width: reserve,
               bright: occupant != null,
@@ -222,6 +249,9 @@ const int kMinAudioSeats = 4;
 const int kMaxAudioSeats = 16;
 const int kSeatStep = 4;
 const int kSeatsPerRow = 4;
+
+/// The picture of every seat, in the audio room's grid and the video live's column, empty or taken (owner, 2026-11-06).
+const double kSeatPicture = 36;
 
 /// The seat count after the host taps Add (more) or Remove (fewer): always a full row of 4, so seats are added and
 /// removed four at a time (4, 8, 12, 16) whatever the room started with. A room an older app made with another count
@@ -252,11 +282,15 @@ class SeatGrid extends StatelessWidget {
     this.speakingSeats = const {},
     this.diamonds = const {},
     this.emotes,
+    this.cpSeats = false,
   });
 
   final int seatCount;
   final Map<int, AppUser> occupants;
   final String hostId;
+
+  /// The room has its two couple (CP) seats switched on: they are drawn above the rows (seats 24 and 25 of [occupants]).
+  final bool cpSeats;
   final Set<int> lockedSeats;
   final Set<int> mutedSeats;
   final Set<int> speakingSeats;
@@ -267,30 +301,42 @@ class SeatGrid extends StatelessWidget {
   final void Function(int seat) onSeatTap;
 
   static const double gap = 4;
-  static const double aspect = 0.8;
+
+  /// The empty space between one row's names and the next row's pictures (it was 18).
+  static const double rowGap = 4;
+
+  /// Between the couple seats' row and the first row of seats (it was 14).
+  static const double cpGap = 6;
 
   /// Under a seat's picture: the gap and one line for the name.
   static const double labelRoom = 20;
 
-  /// The square a seat's picture (and frame) gets, for a grid [width] wide.
-  static double slotFor(double width) {
-    final cell = (width - gap * (kSeatsPerRow - 1)) / kSeatsPerRow;
-    return math.min(math.min(cell, 56 * AppAvatar.frameScale), cell / aspect - labelRoom);
-  }
+  /// The size of a seat's picture, empty or taken (owner, 2026-11-06: "36 px empty or with a person, for both audio and video"; it was 56 here).
+  static const double seatSize = kSeatPicture;
+
+  /// The width of one cell of a grid [width] wide.
+  static double cellFor(double width) => (width - gap * (kSeatsPerRow - 1)) / kSeatsPerRow;
+
+  /// The square a seat's picture (and frame) gets, for a grid [width] wide: just room for the frame (1.6 x the picture).
+  static double slotFor(double width) => math.min(cellFor(width), seatSize * AppAvatar.frameScale);
+
+  /// Width / height of a cell: the seat's square, then its name.
+  static double aspectFor(double width) => cellFor(width) / (slotFor(width) + labelRoom);
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
       final slot = slotFor(box.maxWidth);
-      return GridView.count(
+      final grid = GridView.count(
         crossAxisCount: kSeatsPerRow,
         shrinkWrap: true,
         // the host's frame and the speaking rings may reach a little past a seat: don't cut them
         clipBehavior: Clip.none,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 18,
+        // rows sit close: the owner found 18 too far apart (2026-11-06); a seat's name is the only thing between one row's picture and the next
+        mainAxisSpacing: rowGap,
         crossAxisSpacing: gap,
-        childAspectRatio: aspect,
+        childAspectRatio: aspectFor(box.maxWidth),
         children: [
           for (var i = 1; i <= seatCount; i++)
             SeatCircle(
@@ -301,10 +347,30 @@ class SeatGrid extends StatelessWidget {
               speaking: speakingSeats.contains(i),
               diamonds: occupants[i] == null ? null : (diamonds[occupants[i]!.id] ?? 0),
               isHost: occupants[i]?.id == hostId,
+              size: seatSize,
               slot: slot,
               emotes: emotes,
+              goldenSeat: true,
               onTap: () => onSeatTap(i),
             ),
+        ],
+      );
+      if (!cpSeats) return grid;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CpSeatsRow(
+            occupants: occupants,
+            hostId: hostId,
+            lockedSeats: lockedSeats,
+            mutedSeats: mutedSeats,
+            speakingSeats: speakingSeats,
+            diamonds: diamonds,
+            emotes: emotes,
+            onSeatTap: onSeatTap,
+          ),
+          const SizedBox(height: cpGap),
+          grid,
         ],
       );
     });
@@ -334,8 +400,14 @@ class SeatRoom extends StatelessWidget {
     this.diamonds = const {},
     this.skinUrl,
     this.emotes,
+    this.cpSeats = false,
+    this.onToggleCpSeats,
   });
   final String hostId;
+
+  /// The couple (CP) seats are on; [onToggleCpSeats] (the host's screen only) switches them on or off and puts a button for it beside Add / Remove.
+  final bool cpSeats;
+  final VoidCallback? onToggleCpSeats;
 
   /// Emotes people are sending: one plays over its sender's seat.
   final EmoteController? emotes;
@@ -418,6 +490,7 @@ class SeatRoom extends StatelessWidget {
                   diamonds: diamonds,
                   hostId: hostId,
                   emotes: emotes,
+                  cpSeats: cpSeats,
                   onSeatTap: onSeatTap,
                 ),
                 const SizedBox(height: 16),
@@ -429,6 +502,8 @@ class SeatRoom extends StatelessWidget {
                   children: [
                     _seatBtn(Icons.remove_rounded, 'Remove 4', onRemoveSeat),
                     _seatBtn(Icons.add_rounded, 'Add 4', onAddSeat),
+                    if (onToggleCpSeats != null)
+                      _seatBtn(cpSeats ? Icons.heart_broken_rounded : Icons.favorite_rounded, cpSeats ? 'Remove CP seats' : 'Add CP seats', onToggleCpSeats),
                   ],
                 ),
               ],
@@ -585,10 +660,12 @@ class SeatColumn extends StatelessWidget {
               muted: mutedSeats.contains(seat),
               speaking: speakingSeats.contains(seat),
               isHost: occupant != null && occupant.id == hostId,
-              size: occupant == null ? 36 : 44,
+              // the same size empty or taken, as in the audio room (owner, 2026-11-06); an empty seat is the golden seat
+              size: kSeatPicture,
               // a frame is kept inside the column's width (96 less the padding)
-              slot: (occupant?.frameUrl ?? '').isEmpty ? null : 72,
+              slot: (occupant?.frameUrl ?? '').isEmpty ? null : kSeatPicture * AppAvatar.frameScale,
               emotes: emotes,
+              goldenSeat: true,
               showLabel: false,
               onTap: onSeatTap == null ? null : () => onSeatTap!(seat),
             ),

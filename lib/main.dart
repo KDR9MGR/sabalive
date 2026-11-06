@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'core/i18n/i18n.dart';
 import 'config/app_environment.dart';
+import 'config/rtc_config.dart';
 import 'config/supabase_config.dart';
 import 'services/crash_reporting.dart';
 import 'services/deep_link_service.dart';
@@ -49,7 +50,7 @@ void main() async {
   // once (see MaintenanceController); the client just passes the news along.
   final maintenance = MaintenanceController.instance;
   // refuses a build whose name and backend disagree (a staging build writing to production, or the reverse)
-  AppEnvironment.validate();
+  AppEnvironment.validate(newLivesProvider: RtcConfig.forNewLives);
   await Supabase.initialize(
     url: SupabaseConfig.url,
     publishableKey: SupabaseConfig.publishableKey,

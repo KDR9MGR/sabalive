@@ -36,8 +36,17 @@ String storePriceLabel(int priceCoins) => priceCoins == 0 ? 'Free' : '${withThou
 String storeGotMessage(String name, int priceCoins) => priceCoins == 0 ? '$name added to your Bag!' : '$name purchased!';
 
 
+/// The position of [category] among [storeTabs] (0 = the first tab when the Store does not sell it).
+int storeTabIndex(StoreCategory category) {
+  final i = storeTabs.indexWhere((t) => t.$1 == category);
+  return i < 0 ? 0 : i;
+}
+
 class StoreScreen extends StatefulWidget {
-  const StoreScreen({super.key});
+  /// [initialCategory] is the tab the Store opens on (the first one when it is null); the profile's VIP banner opens it on the VIP tab.
+  const StoreScreen({super.key, this.initialCategory});
+
+  final StoreCategory? initialCategory;
 
   @override
   State<StoreScreen> createState() => _StoreScreenState();
@@ -46,7 +55,7 @@ class StoreScreen extends StatefulWidget {
 class _StoreScreenState extends State<StoreScreen> {
   final _repo = StoreRepository();
   List<StoreItem>? _catalog;
-  int _tab = 0;
+  late int _tab = widget.initialCategory == null ? 0 : storeTabIndex(widget.initialCategory!);
   final _busyIds = <String>{};
   final _luckyRepo = LuckyIdsRepository();
   ({List<LuckyId> forSale, LuckyId? mine})? _lucky;

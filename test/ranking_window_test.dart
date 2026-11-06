@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sabalive/data/rankings_repository.dart' show RankPeriod;
+import 'package:sabalive/data/rankings_repository.dart' show RankBoard, RankPeriod, agencyRankingsFunction, rankingsFunction;
 import 'package:sabalive/features/rankings/ranking_window.dart';
 
 // The Rankings reset at 00:10 INDIA time (the database's boards do since migration 20261101120000; 20261101020000 had them at midnight). The instant 00:10
@@ -175,4 +175,42 @@ void main() {
       );
     },
   );
+
+  group('Lifetime (owner, 2026-11-06): every gift since day one, never resets', () {
+    test('it says what it covers and that it never resets', () {
+      final lifetime = w(RankPeriod.lifetime, earlyNov1);
+      expect(lifetime.coverage, 'All time, since day one');
+      expect(lifetime.resets, 'Never resets');
+    });
+
+    test('its key never changes, so the screen never fetches it again because of the clock', () {
+      expect(w(RankPeriod.lifetime, earlyNov1).key, 'lifetime');
+      for (final t in [DateTime.utc(2026, 10, 31, 18, 39), DateTime.utc(2026, 10, 31, 18, 40), DateTime.utc(2027, 1, 1), DateTime.utc(2030, 6, 15, 3)]) {
+        expect(w(RankPeriod.lifetime, t).key, 'lifetime');
+      }
+      expect(w(RankPeriod.lifetime, earlyNov1).key, isNot(w(RankPeriod.monthly, earlyNov1).key));
+    });
+
+    test('the tab comes after Monthly', () {
+      expect(RankPeriod.values, [RankPeriod.daily, RankPeriod.weekly, RankPeriod.monthly, RankPeriod.lifetime]);
+    });
+
+    test('each board reads its own database function', () {
+      expect(rankingsFunction(RankBoard.hosts, RankPeriod.lifetime), 'rankings_all_time');
+      expect(rankingsFunction(RankBoard.gifters, RankPeriod.lifetime), 'rankings_top_gifters_lifetime');
+      expect(agencyRankingsFunction(RankPeriod.lifetime), 'rankings_agencies_lifetime');
+      // the three old periods still read the functions they always did
+      expect(rankingsFunction(RankBoard.hosts, RankPeriod.monthly), 'rankings_monthly');
+      expect(rankingsFunction(RankBoard.gifters, RankPeriod.weekly), 'rankings_top_gifters_weekly');
+      expect(agencyRankingsFunction(RankPeriod.daily), 'rankings_agencies_daily');
+    });
+
+    test('every period of every board has a function (nothing falls through)', () {
+      for (final p in RankPeriod.values) {
+        expect(rankingsFunction(RankBoard.hosts, p), startsWith('rankings_'));
+        expect(rankingsFunction(RankBoard.gifters, p), startsWith('rankings_'));
+        expect(agencyRankingsFunction(p), startsWith('rankings_agencies_'));
+      }
+    });
+  });
 }

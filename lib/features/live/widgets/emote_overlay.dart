@@ -131,6 +131,9 @@ class _EmoteOverlayState extends State<EmoteOverlay> with SingleTickerProviderSt
     return 1 + 0.05 * math.sin((t - 0.18) * math.pi * 6);
   }
 
+  /// A plain emoji also sways a little while it holds (an uploaded animation moves on its own): none while it pops in, a few degrees each way after.
+  static double _sway(double t) => t < 0.18 ? 0 : 0.12 * math.sin((t - 0.18) * math.pi * 5);
+
   /// Fades in over the first 8% and out over the last 20% (about a second).
   static double _opacity(double t) {
     if (t < 0.08) return t / 0.08;
@@ -146,7 +149,7 @@ class _EmoteOverlayState extends State<EmoteOverlay> with SingleTickerProviderSt
         animation: _c,
         builder: (context, child) => Opacity(
           opacity: _opacity(_c.value).clamp(0.0, 1.0),
-          child: Transform.scale(scale: _scale(_c.value), child: child),
+          child: Transform.rotate(angle: e.assetUrl == null ? _sway(_c.value) : 0, child: Transform.scale(scale: _scale(_c.value), child: child)),
         ),
         child: LayoutBuilder(
           builder: (context, box) {

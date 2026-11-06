@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../config/feature_flags.dart';
 import '../../core/utils/errors.dart';
 import '../../core/widgets/gradient_button.dart';
-import '../../core/widgets/pills.dart';
 import '../../state/auth_controller.dart';
 import '../../theme/app_colors.dart';
 import 'auth_flow.dart';
@@ -19,7 +18,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  int _tab = 0; // 0 = Email/Phone, 1 = Username
   final _id = TextEditingController(text: '');
   final _password = TextEditingController(text: '');
   bool _obscure = true;
@@ -50,17 +48,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _loginWithOtp() {
-    final phone = _id.text.trim();
-    if (phone.isEmpty || phone.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter your phone number above first')),
-      );
-      return;
-    }
-    Navigator.pushNamed(context, AuthRoutes.otp, arguments: OtpArgs(phone: phone));
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
@@ -77,20 +64,15 @@ class _LoginScreenState extends State<LoginScreen> {
             _NoticeBanner(message: notice, onDismiss: auth.clearNotice),
             const SizedBox(height: 16),
           ],
-          SegmentedTabs(
-            tabs: const ['Email / Phone', 'Username'],
-            index: _tab,
-            onChanged: (i) => setState(() => _tab = i),
-          ),
-          const SizedBox(height: 20),
+          // email only (owner, 2026-11-06): no phone number, no username tab (it never had a lookup behind it), no login with a one-time code
           TextField(
+            key: const ValueKey('login-email'),
             controller: _id,
-            keyboardType:
-                _tab == 0 ? TextInputType.emailAddress : TextInputType.text,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
             decoration: InputDecoration(
-              hintText: _tab == 0 ? 'Email or phone number' : 'Username',
-              prefixIcon: Icon(
-                  _tab == 0 ? Icons.alternate_email_rounded : Icons.person_outline_rounded),
+              hintText: tr('Email'),
+              prefixIcon: const Icon(Icons.alternate_email_rounded),
             ),
           ),
           const SizedBox(height: 14),
@@ -136,12 +118,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 16),
           GradientButton(label: 'Login', loading: busy, onPressed: _login),
-          const SizedBox(height: 12),
-          OutlinePillButton(
-            label: 'Login with OTP',
-            icon: Icons.sms_outlined,
-            onPressed: _loginWithOtp,
-          ),
           if (FeatureFlags.socialLoginEnabled) ...[
             const SizedBox(height: 22),
             const OrDivider(),
