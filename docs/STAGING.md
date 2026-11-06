@@ -28,7 +28,12 @@ from the same migrations, with **fake data only**: no real users, chats or walle
 | Check the SUD games database side as real roles (switches, panel list, launch rules, coin rules; all rolled back) | `scripts/staging/verify_sud_games.sh` |
 | Check the monthly diamond reset as real roles (who may press, amounts per wallet, once-only, undo; all rolled back) | `scripts/staging/verify_diamond_reset.sh` |
 | Check Send to All with the sender (v3) and the reset_diamonds permission as real roles (all rolled back) | `scripts/staging/verify_quick_fixes.sh` |
+| Check the CP (couple) seats of an audio room as real roles (all rolled back) | `scripts/staging/verify_cp_seats.sh` |
+| Check the VIP products through the panel's and the app's real REST calls as the fake Master and a fake user (creates one 1-coin test product, buys it, deletes it) | `scripts/staging/verify_vip_products.sh` |
+| Deploy the LiveKit token function to staging / set its secrets from `~/sabalive-secrets/livekit-staging.env` / ask it what it needs | `scripts/staging/livekit_setup.sh --deploy` / `--secrets` / `--check` |
+| Check MS cloud rooms with real requests (a livekit room, the host's / a viewer's / a seat holder's token, the MS cloud server accepting them; creates and removes one test room) | `scripts/staging/verify_livekit_rooms.sh` |
 | Build a staging APK (orange STAGING ribbon) | `scripts/staging/build_apk.sh` |
+| Run the app on a connected phone against staging, with hot reload (a plain `flutter run` is PRODUCTION) | `scripts/staging/run_app.sh` |
 | Run the panel against staging | `cd ../sabaliveadmin && npm run dev:staging` (uses `.env.staging.local`, git-ignored) |
 | Back up staging | `SUPABASE_WORKDIR=~/.sabalive-staging-workdir SABALIVE_BACKUP_DIR=~/sabalive-backups/staging scripts/prod/backup.sh` |
 

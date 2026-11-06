@@ -25,8 +25,11 @@ flutter clean >/dev/null
 # build keeps production's App ID, but staging's agora-token has no credentials, so no live video can start.
 AGORA_ARG=""
 [ -n "${STAGING_AGORA_APP_ID:-}" ] && AGORA_ARG="--dart-define=AGORA_APP_ID=$STAGING_AGORA_APP_ID"
+# RTC_PROVIDER=livekit: the lives this staging build starts run on MS cloud (the hosted LiveKit server) instead of Agora; a live is on ONE provider and viewers read which from the
+# room, so a staging build still watches an Agora room. Set STAGING_RTC_PROVIDER=agora in the environment to build a staging APK that starts Agora lives.
+RTC_ARG="--dart-define=RTC_PROVIDER=${STAGING_RTC_PROVIDER:-livekit}"
 flutter build apk --release \
-  --dart-define=SABALIVE_ENV=staging \
+  --dart-define=SABALIVE_ENV=staging $RTC_ARG \
   --dart-define=SUPABASE_URL="$STAGING_URL" \
   --dart-define=SUPABASE_PUBLISHABLE_KEY="$STAGING_PUBLISHABLE_KEY" $AGORA_ARG
 

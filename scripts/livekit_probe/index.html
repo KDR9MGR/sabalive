@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- A tiny browser page to judge a hosted LiveKit server (LiveCore) BEFORE any app work: does it connect from your network, how does the voice sound,
+     what do delay and loss look like. Run:  node scripts/livekit_probe/mint_token.mjs  (twice, with two identities), then
+     cd scripts/livekit_probe && python3 -m http.server 8099  and open http://localhost:8099 in two tabs (or a laptop and a second laptop on the same Wi-Fi is NOT
+     enough for a phone: a phone needs https). Nothing here touches Supabase, the app or production. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LiveKit probe</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; background: #14101f; color: #eee; }
+  input, button { font: inherit; padding: 8px; border-radius: 8px; border: 1px solid #555; background: #221b36; color: #eee; }
+  input { width: 100%; box-sizing: border-box; margin: 4px 0 10px; }
+  button { cursor: pointer; margin-right: 8px; }
+  button:disabled { opacity: .4; cursor: default; }
+  pre { background: #0b0813; padding: 12px; border-radius: 8px; overflow: auto; min-height: 120px; }
+  .who { display: inline-block; margin: 4px 6px 4px 0; padding: 4px 10px; border-radius: 16px; background: #2d2547; }
+  .who.speaking { background: #1f8a4c; }
+</style>
+</head>
+<body>
+<h2>LiveKit probe (staging test only)</h2>
+<label>Server address (wss://...)<input id="url" placeholder="wss://your-host.livecore.cloud"></label>
+<label>Token (from mint_token.mjs)<input id="token" placeholder="eyJ..."></label>
+<button id="connect">Connect</button><button id="mic" disabled>Microphone on</button><button id="leave" disabled>Leave</button>
+<p id="state">Not connected.</p>
+<div id="people"></div>
+<h3>Numbers (every 2 s)</h3>
+<pre id="stats">-</pre>
+<div id="audio"></div>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.4/dist/livekit-client.umd.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let room, timer, t0;
+function people() {
+  if (!room) return;
+  const all = [room.localParticipant, ...room.remoteParticipants.values()];
+  $('people').innerHTML = all.map((p) => `<span class="who ${p.isSpeaking ? 'speaking' : ''}">${p.identity}${p === room.localParticipant ? ' (you)' : ''} · ${p.connectionQuality}</span>`).join('');
+}
+async function stats() {
+  const lines = [`connected for ${Math.round((Date.now() - t0) / 1000)} s`];
+  try {
+    for (const [name, pc] of [['sending', room.engine.pcManager.publisher?.pc], ['receiving', room.engine.pcManager.subscriber?.pc]]) {
+      if (!pc) continue;
+      const rep = await pc.getStats();
+      rep.forEach((r) => {
+        if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated && r.currentRoundTripTime != null) lines.push(`${name}: round trip ${(r.currentRoundTripTime * 1000).toFixed(0)} ms`);
+        if (r.type === 'inbound-rtp' && r.kind === 'audio') lines.push(`${name}: audio jitter ${(r.jitter * 1000).toFixed(1)} ms, packets lost ${r.packetsLost} of ${r.packetsReceived + r.packetsLost}`);
+        if (r.type === 'outbound-rtp' && r.kind === 'audio') lines.push(`${name}: audio sent ${r.bytesSent} bytes`);
+      });
+    }
+  } catch (e) { lines.push('(numbers not available: ' + e.message + ')'); }
+  $('stats').textContent = lines.join('\n');
+}
+$('connect').onclick = async () => {
+  const { Room, RoomEvent, Track } = LivekitClient;
+  room = new Room({ adaptiveStream: true, dynacast: true });
+  room.on(RoomEvent.TrackSubscribed, (track) => { if (track.kind === Track.Kind.Audio) { const el = track.attach(); $('audio').appendChild(el); } });
+  room.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((el) => el.remove()));
+  for (const ev of [RoomEvent.ParticipantConnected, RoomEvent.ParticipantDisconnected, RoomEvent.ActiveSpeakersChanged, RoomEvent.ConnectionQualityChanged]) room.on(ev, people);
+  room.on(RoomEvent.Disconnected, () => { $('state').textContent = 'Disconnected.'; clearInterval(timer); });
+  try {
+    $('state').textContent = 'Connecting...';
+    const started = performance.now();
+    await room.connect($('url').value.trim(), $('token').value.trim());
+    $('state').textContent = `Connected in ${(performance.now() - started).toFixed(0)} ms. Room: ${room.name}`;
+    t0 = Date.now(); people(); timer = setInterval(stats, 2000);
+    $('connect').disabled = true; $('mic').disabled = false; $('leave').disabled = false;
+  } catch (e) { $('state').textContent = 'Could not connect: ' + e.message; }
+};
+$('mic').onclick = async () => {
+  const on = !room.localParticipant.isMicrophoneEnabled;
+  try { await room.localParticipant.setMicrophoneEnabled(on); $('mic').textContent = on ? 'Microphone off' : 'Microphone on'; }
+  catch (e) { $('state').textContent = 'Microphone: ' + e.message; }
+};
+$('leave').onclick = () => { room.disconnect(); $('connect').disabled = false; $('mic').disabled = true; $('leave').disabled = true; };
+</script>
+</body>
+</html>

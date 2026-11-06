@@ -61,8 +61,8 @@ if [ "${1:-}" = "--verify-only" ]; then
 fi
 
 # --- build -------------------------------------------------------------------------------------------
-if [ -n "${SABALIVE_ENV:-}${SUPABASE_URL:-}${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
-  echo "Refusing: SABALIVE_ENV / SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY is set in your shell. A Play build must use none."; exit 2
+if [ -n "${SABALIVE_ENV:-}${SUPABASE_URL:-}${SUPABASE_PUBLISHABLE_KEY:-}${RTC_PROVIDER:-}" ]; then
+  echo "Refusing: SABALIVE_ENV / SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY / RTC_PROVIDER is set in your shell. A Play build must use none."; exit 2
 fi
 VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
 KIND=aab; [ "${1:-}" = "--apk" ] && KIND=apk
