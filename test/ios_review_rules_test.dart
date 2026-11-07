@@ -31,6 +31,14 @@ void main() {
   });
   tearDown(() => FeatureFlags.isIOSOverride = null);
 
+  test('VIP is "coming soon" (owner, 2026-11-07): the profile strip only says so, and on iOS (no coming-soon entries) it is not shown at all', () {
+    expect(FeatureFlags.vipComingSoon, isTrue);
+    FeatureFlags.isIOSOverride = false;
+    expect(FeatureFlags.vipStripVisible, isTrue);
+    FeatureFlags.isIOSOverride = true;
+    expect(FeatureFlags.vipStripVisible, isFalse);
+  });
+
   group('the rules', () {
     test('on iOS the placeholders, the Games entries and Buy Coins are hidden', () {
       FeatureFlags.isIOSOverride = true;

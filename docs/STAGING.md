@@ -34,6 +34,9 @@ from the same migrations, with **fake data only**: no real users, chats or walle
 | Check MS cloud rooms with real requests (a livekit room, the host's / a viewer's / a seat holder's token, the MS cloud server accepting them; creates and removes one test room) | `scripts/staging/verify_livekit_rooms.sh` |
 | Build a staging APK (orange STAGING ribbon) | `scripts/staging/build_apk.sh` |
 | Run the app on a connected phone against staging, with hot reload (a plain `flutter run` is PRODUCTION) | `scripts/staging/run_app.sh` |
+| Fire one real big game win on staging so the notification strip shows on a phone inside a live room (default 5,000 coins; 4999 = nothing) | `scripts/staging/fire_game_win_notice.sh [coins]` |
+| Fire one real big gift on staging (a throw-away room, the real `send_gift_v2`) so the strip shows on Home / in a room (default 5,000 coins; below = nothing) | `scripts/staging/fire_gift_notice.sh [coins]` |
+| Check the shared live hearts as real roles (a throw-away room: two people's hearts add up, the cap, an ended live) | `scripts/staging/verify_live_hearts.sh` |
 | Run the panel against staging | `cd ../sabaliveadmin && npm run dev:staging` (uses `.env.staging.local`, git-ignored) |
 | Back up staging | `SUPABASE_WORKDIR=~/.sabalive-staging-workdir SABALIVE_BACKUP_DIR=~/sabalive-backups/staging scripts/prod/backup.sh` |
 

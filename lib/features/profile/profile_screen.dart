@@ -156,9 +156,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-              // the gold VIP strip (back since 2026-11-05): it opens the VIP list (since 2026-11-06; before that the Store's Lucky ID tab)
-              ProfileVipBanner(onTap: () => AppNav.vip(context)),
-              const SizedBox(height: 16),
+              // the gold VIP strip (back since 2026-11-05): it opens the VIP list (since 2026-11-06; before that the Store's Lucky ID tab). Owner 2026-11-07: "make vip coming soon":
+              // for now it only says so (FeatureFlags.vipComingSoon), and iOS does not show it at all
+              if (FeatureFlags.vipStripVisible) ...[
+                ProfileVipBanner(onTap: () => FeatureFlags.vipComingSoon ? _soon(context, 'VIP') : AppNav.vip(context)),
+                const SizedBox(height: 16),
+              ],
               _walletStrip(context, wallet),
               const SizedBox(height: 20),
               _menuGrid(context, user),

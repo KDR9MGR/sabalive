@@ -50,7 +50,7 @@ void main() async {
   // once (see MaintenanceController); the client just passes the news along.
   final maintenance = MaintenanceController.instance;
   // refuses a build whose name and backend disagree (a staging build writing to production, or the reverse)
-  AppEnvironment.validate(newLivesProvider: RtcConfig.forNewLives);
+  AppEnvironment.validate(newLivesProvider: RtcConfig.fixedByBuild ?? RtcProvider.agora);
   await Supabase.initialize(
     url: SupabaseConfig.url,
     publishableKey: SupabaseConfig.publishableKey,

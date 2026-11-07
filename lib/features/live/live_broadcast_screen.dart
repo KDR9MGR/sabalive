@@ -8,6 +8,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../config/feature_flags.dart';
 import '../../data/pk_battles_repository.dart';
+import '../../data/live_hearts_repository.dart';
+import '../../data/notice_feed.dart';
 import '../../services/pk_channel_switcher.dart';
 import '../../services/crash_reporting.dart';
 import '../../state/pk_battle_controller.dart';
@@ -44,6 +46,7 @@ import 'widgets/chat_composer.dart';
 import 'widgets/room_admins_sheet.dart';
 import 'widgets/emote_overlay.dart';
 import 'widgets/room_effect.dart';
+import 'widgets/room_hearts.dart';
 import 'widgets/room_skin_sheet.dart';
 import 'widgets/user_actions_sheet.dart';
 import 'widgets/wave_colors.dart';
@@ -157,6 +160,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
       StreamDiamonds(widget.stream.id, onChanged: () {
         if (mounted) setState(() {});
       });
+  /// The sum of everybody's hearts in this live (viewers tap; the host sees the number and the hearts float for the host too).
+  late final RoomHearts _heartsCtl = RoomHearts(
+    streamId: widget.stream.id,
+    api: isRealId(widget.stream.id) ? const SupabaseLiveHeartsApi() : null,
+    meId: supabase.auth.currentUser?.id,
+  );
   RealtimeChannel? _seatsChannel;
 
   /// Bumped whenever a seat changes hands, so a profile lookup that finishes late cannot paint the
@@ -216,6 +225,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     WidgetsBinding.instance.addObserver(this);
     _session = context.read<ActiveLiveSessionController>()..backHandler = _end;
     if (widget.audioOnly) _diamonds.start();
+    unawaited(_heartsCtl.start());
     // Keeps the screen (and the Agora publish + heartbeat timers) from
     // being suspended by a display timeout mid-broadcast — that was
     // dropping the whole stream for every viewer, not just this device.
@@ -895,7 +905,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     }
   }
 
-  late final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage, prewarmNotices: true)..roomHost = widget.stream.host;
+  late final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage, prewarmNotices: true, noticeFeed: NoticeFeed.instance.stream);
   final _emotes = EmoteController();
   final _room = RoomChatState();
   String? _skinUrl;
@@ -995,6 +1005,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
     WidgetsBinding.instance.removeObserver(this);
     if (_session.backHandler == _end) _session.backHandler = null;
     _diamonds.dispose();
+    _heartsCtl.dispose();
     _music?.dispose();
     WakelockPlus.disable().catchError((_) {});
     _ticker?.cancel();
@@ -2268,6 +2279,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
           // gift animation, for everyone in the room
           Positioned.fill(child: RoomEffectLayer(controller: _effects)),
 
+          // the hearts viewers tap float up on the host's screen too
+          Positioned(right: 6, bottom: 200, width: 60, height: 320, child: RoomHeartsLayer(hearts: _heartsCtl)),
+
           // PK battle: invite / result dialogs and the 3-2-1
           if (_pk != null) Positioned.fill(child: PkBattleEvents(controller: _pk!)),
 
@@ -2318,6 +2332,12 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                               Icons.diamond_rounded,
                               compactCount(diamonds),
                               tint: AppColors.diamond,
+                            ),
+                            const SizedBox(width: 8),
+                            // everybody's hearts added together, live (the viewers' taps)
+                            ListenableBuilder(
+                              listenable: _heartsCtl,
+                              builder: (context, _) => _miniPill(Icons.favorite_rounded, compactCount(_heartsCtl.count), tint: AppColors.live),
                             ),
                           ],
                         ),
@@ -2565,14 +2585,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
 
   Widget _chatList() {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 190),
       padding: const EdgeInsets.only(left: 14, right: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_room.notice != null) PinnedNoticeBanner(_room.notice!),
           Flexible(
-            child: ListView.builder(
+            // three chat lines show at a time (owner, 2026-11-07); older ones are a scroll away
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: kLiveChatVisibleHeight),
+              child: ListView.builder(
               reverse: true,
               shrinkWrap: true,
               padding: EdgeInsets.zero,
@@ -2596,6 +2618,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen>
                   ),
                 );
               },
+            ),
             ),
           ),
         ],

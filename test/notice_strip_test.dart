@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/core/i18n/app_language.dart';
 import 'package:sabalive/core/i18n/i18n.dart';
 import 'package:sabalive/data/models.dart';
+import 'package:sabalive/data/notice_feed.dart';
 import 'package:sabalive/features/live/widgets/notice_strip.dart';
 import 'package:sabalive/features/live/widgets/room_effect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -134,18 +135,36 @@ void main() {
     });
   });
 
-  group('the bundled file', () {
-    testWidgets('is the 750 x 300 strip with the five slots we fill', (t) async {
-      await t.runAsync(() async {
-        final m = await NoticeArt.movie();
-        expect(m.params.viewBoxWidth, NoticeArt.width);
-        expect(m.params.viewBoxHeight, NoticeArt.height);
-        expect(m.params.frames, 85);
-        for (final key in [NoticeArt.leftAvatar, NoticeArt.rightAvatar, NoticeArt.leftName, NoticeArt.rightName, NoticeArt.middle]) {
-          expect(m.sprites.any((s) => s.imageKey == key), isTrue, reason: key);
-        }
-        expect(m.autorelease, isFalse, reason: 'a shared movie is never freed by a player');
+  group('the bundled files', () {
+    for (final kind in NoticeKind.values) {
+      testWidgets('the ${kind.name} strip is a 750 x 300 file of 85 frames with the five slots we fill', (t) async {
+        await t.runAsync(() async {
+          final m = await NoticeArt.movie(kind: kind);
+          expect(m.params.viewBoxWidth, NoticeArt.width);
+          expect(m.params.viewBoxHeight, NoticeArt.height);
+          expect(m.params.frames, 85);
+          for (final key in [NoticeArt.leftAvatar, NoticeArt.rightAvatar, NoticeArt.leftName, NoticeArt.rightName, NoticeArt.middle]) {
+            expect(m.sprites.any((s) => s.imageKey == key), isTrue, reason: key);
+          }
+          expect(m.autorelease, isFalse, reason: 'a shared movie is never freed by a player');
+        });
       });
+    }
+
+    test('a gift plays full_venue_one (gift_strip.svga), a game win keeps the other file (game_win_strip.svga); each is read once and kept apart', () async {
+      final asked = <String>[];
+      Future<MovieEntity> fake(String path) async {
+        asked.add(path);
+        return MovieEntity();
+      }
+
+      final g1 = await NoticeArt.movie(kind: NoticeKind.gift, loader: fake);
+      final g2 = await NoticeArt.movie(kind: NoticeKind.gift, loader: fake);
+      final w1 = await NoticeArt.movie(kind: NoticeKind.gameWin, loader: fake);
+      expect(asked, ['assets/notice/gift_strip.svga', 'assets/notice/game_win_strip.svga']);
+      expect(identical(g1, g2), isTrue);
+      expect(identical(g1, w1), isFalse);
+      expect(NoticeArt.assetFor(NoticeKind.gift), isNot(NoticeArt.assetFor(NoticeKind.gameWin)));
     });
   });
 
@@ -298,12 +317,22 @@ void main() {
     });
   });
 
-  group('from the room\'s gifts', () {
-    Gift g(int price) => Gift('gift-$price', 'Rose', '🌹', price);
-    AppUser me() => AppUser(id: 'me', name: 'Me Myself', username: '@me');
-    AppUser bo() => AppUser(id: 'bo', name: 'Bo', username: '@bo');
+  group('from the server\'s feed', () {
+    GiftNotice giftNotice({String sender = 'Ann', String? receiver = 'Bo', bool toAll = false, String emoji = '🌹', String? icon, int qty = 1, int coins = 5000}) => GiftNotice(
+          id: 'g1',
+          senderName: sender,
+          senderAvatarUrl: 'https://x/a.png',
+          receiverName: receiver,
+          receiverAvatarUrl: receiver == null ? null : 'https://x/b.png',
+          toAll: toAll,
+          giftName: 'Rose',
+          giftEmoji: emoji,
+          giftIconUrl: icon,
+          quantity: qty,
+          coins: coins,
+        );
 
-    RoomEffectController room({int min = 1000, bool on = true}) => RoomEffectController(noticeMinCoins: min, noticesOn: () => on, prefetch: (_) {});
+    RoomEffectController room({bool on = true, Stream<FeedNotice>? feed}) => RoomEffectController(noticesOn: () => on, noticeFeed: feed, prefetch: (_) {});
 
     Future<void> settle() async {
       for (var i = 0; i < 5; i++) {
@@ -311,74 +340,101 @@ void main() {
       }
     }
 
-    test('a small gift shows its own effect only; no strip', () async {
-      final r = room();
-      r.enqueue(RoomEffect.gift(gift: g(10), senderName: 'Me', sender: me(), receiver: bo(), count: 5));
-      await settle();
-      expect(r.notices.current, isNull);
-      r.dispose();
-    });
-
-    test('a gift that cost enough gets a strip naming the sender and the receiver, with the quantity', () async {
-      final r = room();
-      r.enqueue(RoomEffect.gift(gift: g(500), senderName: 'You', senderId: 'me', sender: me(), receiver: bo(), count: 3));
+    test('a big gift announced by the server is a strip naming the sender and the receiver, with the quantity', () async {
+      final feed = StreamController<FeedNotice>.broadcast();
+      final r = room(feed: feed.stream);
+      feed.add(giftNotice(qty: 3, icon: 'https://x/rose.png'));
       await settle();
       final n = r.notices.current!;
-      expect((n.kind, n.senderName, n.receiverName, n.count, n.showReceiverAvatar, n.iconEmoji), (NoticeKind.gift, 'Me Myself', 'Bo', 3, true, '🌹'));
+      expect((n.kind, n.senderName, n.senderAvatarUrl, n.receiverName, n.receiverAvatarUrl, n.count, n.showReceiverAvatar, n.iconEmoji, n.iconUrl),
+          (NoticeKind.gift, 'Ann', 'https://x/a.png', 'Bo', 'https://x/b.png', 3, true, '🌹', 'https://x/rose.png'));
       r.dispose();
+      await feed.close();
     });
 
-    test('the threshold is on what the whole send cost: price x quantity x people for a gift to everyone', () async {
-      final r = room(min: 1000);
-      r.enqueue(RoomEffect.gift(gift: g(100), senderName: 'Me', sender: me(), count: 2, toAll: true, recipientCount: 4)); // 800
-      await settle();
-      expect(r.notices.current, isNull);
-      r.enqueue(RoomEffect.gift(gift: g(100), senderName: 'Me', sender: me(), count: 3, toAll: true, recipientCount: 4)); // 1200
+    test('a gift to everyone names Everyone and has no single receiver picture', () async {
+      final feed = StreamController<FeedNotice>.broadcast();
+      final r = room(feed: feed.stream);
+      feed.add(giftNotice(receiver: null, toAll: true));
       await settle();
       final n = r.notices.current!;
-      expect((n.receiverName, n.showReceiverAvatar), ('Everyone', false), reason: 'a gift to everyone names Everyone and has no single receiver avatar');
+      expect((n.receiverName, n.showReceiverAvatar, n.receiverAvatarUrl), ('Everyone', false, null));
       r.dispose();
+      await feed.close();
     });
 
-    test('with no receiver given, the room\'s host is the receiver', () async {
-      final r = room()..roomHost = bo();
-      r.enqueue(RoomEffect.gift(gift: g(2000), senderName: 'Ann', sender: me()));
+    test('a gift whose receiver the server could not name leaves the right-hand picture out', () async {
+      final feed = StreamController<FeedNotice>.broadcast();
+      final r = room(feed: feed.stream);
+      feed.add(giftNotice(receiver: null));
       await settle();
-      expect(r.notices.current?.receiverName, 'Bo');
+      expect((r.notices.current!.receiverName, r.notices.current!.showReceiverAvatar), (null, false));
       r.dispose();
+      await feed.close();
     });
 
     test('the panel switch turns strips off', () async {
-      final r = room(on: false);
-      r.enqueue(RoomEffect.gift(gift: g(5000), senderName: 'Me', sender: me(), receiver: bo()));
+      final feed = StreamController<FeedNotice>.broadcast();
+      final r = room(on: false, feed: feed.stream);
+      feed.add(giftNotice());
       await settle();
       expect(r.notices.current, isNull);
       r.dispose();
+      await feed.close();
     });
 
-    test('a gift row from somebody else gets a strip too', () async {
+    test('a gift\'s OWN effect in the room no longer makes a strip: strips come only from the server\'s feed (one strip per big gift, on Home and in every room)', () async {
       final r = room();
-      final played = r.onChatRow(
-        {'id': 1, 'kind': 'gift', 'gift_id': 'gift-5000', 'sender_id': 'ann', 'gift_count': 1, 'gift_receiver_ids': ['bo']},
-        meId: 'me',
-        senderName: 'Ann',
-        giftById: (id) => g(5000),
-      );
-      await settle();
-      expect(played, isTrue);
-      expect(r.notices.current?.senderName, 'Ann', reason: 'a profile that cannot be read still shows by the name the screen had');
-      r.dispose();
-    });
-
-    test('my own row coming back over Realtime does not make a second strip', () async {
-      final r = room();
-      r.enqueue(RoomEffect.gift(gift: g(5000), senderName: 'You', senderId: 'me', sender: me(), receiver: bo()));
-      await settle();
-      r.notices.finish(r.notices.playId);
-      r.onChatRow({'id': 9, 'kind': 'gift', 'gift_id': 'gift-5000', 'sender_id': 'me'}, meId: 'me', senderName: 'Me', giftById: (id) => g(5000));
+      r.enqueue(RoomEffect.gift(gift: Gift('gift-5000', 'Rose', '🌹', 5000), senderName: 'Me', sender: AppUser(id: 'me', name: 'Me', username: '@me'), receiver: AppUser(id: 'bo', name: 'Bo', username: '@bo')));
       await settle();
       expect(r.notices.current, isNull);
+      expect(r.current, isNotNull, reason: 'the gift effect itself still plays');
       r.dispose();
+    });
+
+    test('the same gift announced twice while one waits is one strip with a bigger count', () async {
+      final feed = StreamController<FeedNotice>.broadcast();
+      final r = room(feed: feed.stream);
+      for (var i = 0; i < 3; i++) {
+        feed.add(giftNotice());
+      }
+      await settle();
+      expect(r.notices.current!.count, 1);
+      expect(r.notices.waiting, 1);
+      expect(r.notices.waiting == 1 && r.notices.current != null, isTrue);
+      r.dispose();
+      await feed.close();
+    });
+  });
+
+  group('the strip\'s height', () {
+    testWidgets('the middle of the strip is the same distance below the safe area on every screen width: the height of the couple seats', (t) async {
+      for (final width in [320.0, 360.0, 411.0, 480.0]) {   // a phone; a tablet's canvas is taller than the line is deep, so it just starts at the top
+        t.view.physicalSize = Size(width, 900);
+        t.view.devicePixelRatio = 1;
+        final c = NoticeStripController();
+        await t.pumpWidget(MaterialApp(home: Scaffold(body: Stack(children: [NoticeStripLayer(controller: c, loader: (_) async => null)]))));
+        c.add(const NoticeStripItem(kind: NoticeKind.gameWin, senderName: 'W', iconEmoji: '🪙'));
+        await t.pump();
+        // the canvas starts at (centre - canvas height / 2), so the strip, which is in the middle of the canvas, is centred on the line (the movie itself does not decode under the
+        // test's fake clock, so the player is empty here and its top is what can be measured)
+        expect(t.getTopLeft(find.byType(NoticeStripPlayer)).dy + NoticeStripLayer.canvasHeight(width) / 2, closeTo(kNoticeStripCentre, 0.01), reason: 'width $width');
+        c.dispose();
+        await t.pumpWidget(const SizedBox.shrink());
+      }
+      addTearDown(t.view.reset);
+    });
+
+    testWidgets('a strip is NOT in the middle of the screen any more (it sat over the seats before): it starts near the top', (t) async {
+      t.view.physicalSize = const Size(411, 900);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final c = NoticeStripController();
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: Stack(children: [NoticeStripLayer(controller: c, loader: (_) async => null)]))));
+      c.add(const NoticeStripItem(kind: NoticeKind.gift, senderName: 'A', iconEmoji: '🌹'));
+      await t.pump();
+      expect(t.getRect(find.byType(NoticeStripPlayer)).bottom, lessThan(450));
+      c.dispose();
     });
   });
 }

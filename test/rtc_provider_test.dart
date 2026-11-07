@@ -153,4 +153,27 @@ void main() {
       }
     });
   });
+
+  group('the live provider is a server switch (owner, 2026-11-07), Agora until it is turned on', () {
+    test('a build that fixes the provider (staging) wins over the switch, either way', () {
+      expect(RtcConfig.resolve(fixedByBuild: 'livekit', serverSwitchOn: false), RtcProvider.livekit);
+      expect(RtcConfig.resolve(fixedByBuild: 'agora', serverSwitchOn: true), RtcProvider.agora);
+    });
+
+    test('a Play build (nothing fixed) follows the switch: on = MS cloud, off = Agora', () {
+      expect(RtcConfig.resolve(fixedByBuild: '', serverSwitchOn: true), RtcProvider.livekit);
+      expect(RtcConfig.resolve(fixedByBuild: '', serverSwitchOn: false), RtcProvider.agora);
+    });
+
+    test('this build fixes nothing and the switch has never been touched, so new lives are on Agora', () {
+      expect(RtcConfig.fixedByBuild, isNull);
+      expect(RtcConfig.serverSwitch, 'rtc_livekit_new_lives');
+      expect(RtcConfig.forNewLives, RtcProvider.agora);
+    });
+
+    test('a production build may not fix the provider at build time, but a plain one passes (the switch is not a build-time thing)', () {
+      expect(() => AppEnvironment.validate(newLivesProvider: RtcProvider.livekit), throwsStateError);
+      AppEnvironment.validate(newLivesProvider: RtcConfig.fixedByBuild ?? RtcProvider.agora);
+    });
+  });
 }

@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/features/live/widgets/chat_composer.dart';
 import 'package:sabalive/features/live/widgets/mentions.dart';
+import 'package:sabalive/theme/app_colors.dart';
+import 'package:sabalive/theme/app_theme.dart';
 
 AppUser _u(String id, String name) => AppUser(id: id, name: name, username: '@$id');
 
@@ -91,6 +93,8 @@ void main() {
   testWidgets('the send button and the keyboard send both send', (t) async {
     await t.pumpWidget(host());
     await t.enterText(find.byType(TextField), 'hello');
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 200));
     await t.tap(find.byIcon(Icons.send_rounded));
     await t.pump();
     expect(sent, 1);
@@ -106,6 +110,8 @@ void main() {
     await t.enterText(find.byType(TextField), 'hello');
     await t.pump();
     expect(focus.hasFocus, isTrue, reason: 'typing keeps the keyboard up');
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 200));
     await t.tap(find.byIcon(Icons.send_rounded));
     await t.pump();
     expect(sent, 1);
@@ -121,22 +127,106 @@ void main() {
     expect(focus.hasFocus, isFalse);
   });
 
-  testWidgets('send on an empty box does not close the keyboard', (t) async {
+  testWidgets('an empty box (or only spaces) has no Send button, so there is nothing to tap and the keyboard stays', (t) async {
     await t.pumpWidget(host());
     await t.showKeyboard(find.byType(TextField));
     await t.pump();
     expect(focus.hasFocus, isTrue);
-    await t.tap(find.byIcon(Icons.send_rounded));
+    expect(find.byIcon(Icons.send_rounded), findsNothing, reason: 'nothing typed: no Send button (owner, 2026-11-07)');
+    await t.enterText(find.byType(TextField), '   ');
     await t.pump();
-    expect(focus.hasFocus, isTrue, reason: 'nothing was sent, so the keyboard stays');
+    await t.pump(const Duration(milliseconds: 200));
+    expect(find.byIcon(Icons.send_rounded), findsNothing, reason: 'spaces are not a message');
+    expect(focus.hasFocus, isTrue, reason: 'with nothing to send the keyboard simply stays');
   });
 
-  testWidgets('a person whose chat the host turned off cannot type or send, and is told why', (t) async {
+  testWidgets('the Send button appears as soon as something is typed and goes again when it is cleared', (t) async {
+    await t.pumpWidget(host());
+    expect(find.byIcon(Icons.send_rounded), findsNothing);
+    await t.enterText(find.byType(TextField), 'h');
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 200));
+    expect(find.byIcon(Icons.send_rounded), findsOneWidget);
+    await t.enterText(find.byType(TextField), '');
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump();
+    expect(find.byIcon(Icons.send_rounded), findsNothing);
+  });
+
+  testWidgets('one tap on Send sends ONCE even though the button answers through two doors (a tap and a finger lifted on it)', (t) async {
+    await t.pumpWidget(host());
+    await t.enterText(find.byType(TextField), 'hello');
+    await t.pump();
+    await t.tap(find.byIcon(Icons.send_rounded));
+    await t.pump();
+    expect(sent, 1);
+  });
+
+  testWidgets('a finger that slides off the button before lifting does not send', (t) async {
+    await t.pumpWidget(host());
+    await t.enterText(find.byType(TextField), 'hello');
+    await t.pump();
+    final g = await t.startGesture(t.getCenter(find.byIcon(Icons.send_rounded)));
+    await g.moveBy(const Offset(-120, -120));
+    await g.up();
+    await t.pump();
+    expect(sent, 0);
+  });
+
+  testWidgets('a gesture on a parent (a double tap, a drag) cannot take the touch away from Send', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onDoubleTap: () {},
+          onVerticalDragUpdate: (_) {},
+          onLongPress: () {},
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: LiveChatComposer(controller: controller, focusNode: focus, onSend: () => sent++, people: () => [], leading: const []),
+          ),
+        ),
+      ),
+    ));
+    await t.enterText(find.byType(TextField), 'hello');
+    await t.pump();
+    final g = await t.startGesture(t.getCenter(find.byIcon(Icons.send_rounded)));
+    await t.pump(const Duration(milliseconds: 120));
+    await g.moveBy(const Offset(2, 3));
+    await g.up();
+    await t.pump(const Duration(milliseconds: 400));
+    expect(sent, 1);
+  });
+
+  testWidgets('the Send button is a 48 x 44 target and says "Send" to screen readers', (t) async {
+    await t.pumpWidget(host());
+    await t.enterText(find.byType(TextField), 'hello');
+    await t.pump();
+    final box = t.getSize(find.byKey(const ValueKey('live-chat-send')));
+    expect((box.width, box.height), (48, 44));
+    expect(find.bySemanticsLabel('Send'), findsOneWidget);
+  });
+
+  testWidgets('the field is one clean pill: no border, no second filled box inside it, even under the app\'s own theme', (t) async {
+    await t.pumpWidget(MaterialApp(
+      theme: AppTheme.dark(primary: AppColors.primary, secondary: const Color(0xFFEC4899)),
+      home: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: LiveChatComposer(controller: controller, focusNode: focus, onSend: () => sent++, people: () => [], leading: const []))),
+    ));
+    final d = t.widget<TextField>(find.byType(TextField)).decoration!;
+    expect(d.filled, isFalse, reason: 'the theme fills every TextField; that drew a second box inside the pill');
+    expect(d.enabledBorder, InputBorder.none);
+    expect(d.focusedBorder, InputBorder.none);
+    expect(d.disabledBorder, InputBorder.none);
+    final pill = t.widget<Container>(find.ancestor(of: find.byType(TextField), matching: find.byType(Container)).first);
+    expect((pill.decoration as BoxDecoration).border, isNull, reason: 'the pill has no border line');
+  });
+
+  testWidgets('a person whose chat the host turned off cannot type, has no Send button, and is told why', (t) async {
     await t.pumpWidget(host(chatOff: true));
     expect(find.text('The host turned your chat off'), findsOneWidget);
     expect(t.widget<TextField>(find.byType(TextField)).enabled, isFalse);
-    await t.tap(find.byIcon(Icons.send_rounded));
-    await t.pump();
+    expect(find.byIcon(Icons.send_rounded), findsNothing);
     expect(sent, 0);
   });
 

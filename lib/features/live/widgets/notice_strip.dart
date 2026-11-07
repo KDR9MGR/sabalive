@@ -5,7 +5,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_svga/flutter_svga.dart';
 
+import '../../../core/i18n/text.dart' show tr;
 import '../../../core/media/disk_cached_image.dart';
+import '../../../core/utils/formatters.dart' show withThousands;
+import '../../../data/notice_feed.dart';
 import '../../../core/widgets/remote_media.dart';
 
 /// What a notification strip announces.
@@ -28,6 +31,34 @@ class NoticeStripItem {
     this.count = 1,
     this.badge,
   });
+
+  /// The strip for what the server announced: a big gift (sender, gift with "xN", receiver or Everyone) or a big game win (winner, a coin with "+5,000", the game).
+  factory NoticeStripItem.fromFeed(FeedNotice n) {
+    if (n is GiftNotice) {
+      return NoticeStripItem(
+        kind: NoticeKind.gift,
+        senderName: n.senderName,
+        senderAvatarUrl: n.senderAvatarUrl,
+        receiverName: n.toAll ? tr('Everyone') : n.receiverName,
+        receiverAvatarUrl: n.toAll ? null : n.receiverAvatarUrl,
+        showReceiverAvatar: !n.toAll && n.receiverName != null,
+        iconEmoji: n.giftEmoji,
+        iconUrl: n.giftIconUrl,
+        count: n.quantity,
+      );
+    }
+    final w = n as GameWinNotice;
+    return NoticeStripItem(
+      kind: NoticeKind.gameWin,
+      senderName: w.winnerName,
+      senderAvatarUrl: w.winnerAvatarUrl,
+      receiverName: w.gameName,
+      receiverAvatarUrl: w.gameImageUrl,
+      showReceiverAvatar: w.gameImageUrl != null,
+      iconEmoji: '🪙',
+      badge: '+${withThousands(w.coins)}',
+    );
+  }
 
   final NoticeKind kind;
   final String senderName;
@@ -136,12 +167,17 @@ class NoticeStripController extends ChangeNotifier {
 
 typedef NoticeImageLoader = Future<ui.Image?> Function(String url);
 
-/// The bundled strip (`assets/notice/gift_strip.svga`, the owner's "full venue" file: 750 x 300, 30 fps, 85 frames) and how its five replaceable parts are filled.
+/// The bundled strips and how their five replaceable parts are filled. There are two files with the SAME layout (750 x 300, 30 fps, 85 frames, the same five slots), the owner's "full venue"
+/// art: `gift_strip.svga` for a big gift (`full_venue_one.svga`, 2026-11-07) and `game_win_strip.svga` for a big game win (`full_venue_tow.svga`, 2026-11-05).
 ///
 /// The file slides in from the right, holds about a second and a half, and slides out to the left on its own; the slots it names are `avator` (left avatar), `name1`
 /// (left name), `gift` (middle picture), `avator2` (right avatar) and `name2` (right name).
 abstract final class NoticeArt {
   static const asset = 'assets/notice/gift_strip.svga';
+  static const gameWinAsset = 'assets/notice/game_win_strip.svga';
+
+  /// The file a strip of this kind plays.
+  static String assetFor(NoticeKind kind) => kind == NoticeKind.gameWin ? gameWinAsset : asset;
   static const double width = 750;
   static const double height = 300;
   static const leftAvatar = 'avator';
@@ -156,23 +192,33 @@ abstract final class NoticeArt {
   static const double nameHeight = 40;
   static const double middleSize = 100;
 
-  static Future<MovieEntity>? _movie;
+  static final Map<NoticeKind, Future<MovieEntity>> _movies = {};
 
-  /// The decoded file, read once per run and kept (a shared movie: `autorelease` off, never disposed).
-  static Future<MovieEntity> movie({SvgaLoader? loader}) {
-    return _movie ??= (loader ?? _decodeAsset)(asset).then((m) {
+  /// The decoded file for strips of [kind], read once per run and kept (a shared movie: `autorelease` off, never disposed).
+  static Future<MovieEntity> movie({NoticeKind kind = NoticeKind.gift, SvgaLoader? loader}) {
+    return _movies[kind] ??= (loader ?? _decodeAsset)(assetFor(kind)).then((m) {
       m.autorelease = false;
       return m;
     }, onError: (Object e) {
-      _movie = null; // try again next time
+      _movies.remove(kind); // try again next time
       throw e;
     });
+  }
+
+  /// Reads both files a little apart (each is a few hundred KB to inflate on the UI thread), while the screen is calm; called a few seconds after a room or Home opens so the first strip does not stutter.
+  static Future<void> prewarm() async {
+    for (final kind in NoticeKind.values) {
+      try {
+        await movie(kind: kind);
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
   }
 
   static Future<MovieEntity> _decodeAsset(String path) => SVGAParser.shared.decodeFromAssets(path);
 
   @visibleForTesting
-  static void forget() => _movie = null;
+  static void forget() => _movies.clear();
 
   /// Puts the people, names and the picture of [item] into the movie's slots. Returns the pictures made for it: give them back to [undress] when the strip ends.
   /// A picture that cannot be fetched is replaced by a plain one (a coloured disc with the first letter, or the emoji), so the strip never waits on the network
@@ -358,15 +404,19 @@ abstract final class NoticeArt {
 
 /// Draws the strip [controller] is playing, over the top of the room, taking no touches.
 class NoticeStripLayer extends StatelessWidget {
-  const NoticeStripLayer({super.key, required this.controller, this.topOffset = 24, this.loader});
+  const NoticeStripLayer({super.key, required this.controller, this.centreBelowSafeTop = kNoticeStripCentre, this.loader});
 
   final NoticeStripController controller;
 
-  /// How far below the safe area the (transparent) animation canvas starts; the strip itself is in the middle of the canvas.
-  final double topOffset;
+  /// How far below the safe area's top the MIDDLE of the strip sits (owner, 2026-11-07: "at the height of the CP seats", the same on Home and in every room). The canvas is
+  /// taller than the strip and the strip is in the middle of it, so the canvas starts [canvasHeight] / 2 above this line.
+  final double centreBelowSafeTop;
 
   @visibleForTesting
   final NoticeImageLoader? loader;
+
+  /// The height of the animation canvas on a screen [screenWidth] wide (the canvas is drawn [kNoticeCanvasScale] times the screen's width, see [NoticeStripPlayer]).
+  static double canvasHeight(double screenWidth) => screenWidth * kNoticeCanvasScale * NoticeArt.height / NoticeArt.width;
 
   @override
   Widget build(BuildContext context) {
@@ -376,11 +426,12 @@ class NoticeStripLayer extends StatelessWidget {
         final item = controller.current;
         if (item == null) return const SizedBox.shrink();
         final id = controller.playId;
+        final top = MediaQuery.paddingOf(context).top + centreBelowSafeTop - canvasHeight(MediaQuery.sizeOf(context).width) / 2;
         return IgnorePointer(
           child: Align(
             alignment: Alignment.topCenter,
             child: Padding(
-              padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + topOffset),
+              padding: EdgeInsets.only(top: top < 0 ? 0 : top),
               child: NoticeStripPlayer(
                 key: ValueKey(id),
                 item: item,
@@ -395,6 +446,14 @@ class NoticeStripLayer extends StatelessWidget {
     );
   }
 }
+
+/// How far below the safe area's top the middle of a notification strip sits: the height of the couple (CP) seats in an audio room (the owner's screenshot, 2026-11-07),
+/// used for every strip on Home and in every room so they all appear at one height.
+const double kNoticeStripCentre = 137;
+
+/// The canvas is drawn this many times the screen's width: the strip fills about 73% of the file's width, so the see-through sides reach past the screen and the strip
+/// spans nearly the whole screen, as in the reference video.
+const double kNoticeCanvasScale = 1.31;
 
 /// Plays one strip: dresses the file with [item], plays it once at [speed] and calls [onFinished] (also when the file or a picture cannot be used, so the lane never stalls).
 class NoticeStripPlayer extends StatefulWidget {
@@ -426,7 +485,7 @@ class _NoticeStripPlayerState extends State<NoticeStripPlayer> with SingleTicker
 
   Future<void> _run() async {
     try {
-      final movie = await NoticeArt.movie();
+      final movie = await NoticeArt.movie(kind: widget.item.kind);
       final made = await NoticeArt.dress(movie, widget.item, loadImage: widget.loader);
       if (!mounted) {
         NoticeArt.undress(movie, made);
@@ -464,15 +523,21 @@ class _NoticeStripPlayerState extends State<NoticeStripPlayer> with SingleTicker
   @override
   Widget build(BuildContext context) {
     if (!_ready) return const SizedBox.shrink();
-    // The strip fills about 73% of the file's width and sits in the middle, so the canvas is drawn wider than the screen (its see-through sides reach past it) and the strip
-    // itself spans nearly the whole screen, as in the reference video.
+    // The canvas is wider than the screen (see kNoticeCanvasScale) and has the strip in its middle. It gets a box of its OWN height: an OverflowBox with no height of its own took
+    // the whole space it was given, so the canvas sat in the middle of the room, over the seats, instead of at the top (owner's screenshot, 2026-11-07).
     final screen = MediaQuery.sizeOf(context).width;
-    final w = screen * 1.31;
-    return OverflowBox(
-      maxWidth: w,
-      minWidth: w,
-      maxHeight: w * NoticeArt.height / NoticeArt.width,
-      child: SizedBox(width: w, height: w * NoticeArt.height / NoticeArt.width, child: SVGAImage(_ctl, fit: BoxFit.fill)),
+    final w = screen * kNoticeCanvasScale;
+    final h = NoticeStripLayer.canvasHeight(screen);
+    return SizedBox(
+      width: screen,
+      height: h,
+      child: OverflowBox(
+        maxWidth: w,
+        minWidth: w,
+        maxHeight: h,
+        minHeight: h,
+        child: SizedBox(width: w, height: h, child: SVGAImage(_ctl, fit: BoxFit.fill)),
+      ),
     );
   }
 }

@@ -93,6 +93,20 @@ class SessionController extends ChangeNotifier {
 
   bool isLiked(String streamId) => _likedStreams.contains(streamId);
 
+  /// Marks the stream as liked by this person (the "who liked" row behind like_count) if it is not already; never un-likes. The heart button in a live room uses this: every tap is a heart
+  /// for everybody (RoomHearts), and the person's own like is recorded once.
+  Future<void> ensureLiked(String streamId) async {
+    if (_likedStreams.contains(streamId)) return;
+    _likedStreams.add(streamId);
+    notifyListeners();
+    try {
+      await _repo.likeStream(streamId);
+    } catch (_) {
+      _likedStreams.remove(streamId);
+      notifyListeners();
+    }
+  }
+
   Future<void> toggleLike(String streamId) async {
     final wasLiked = _likedStreams.contains(streamId);
     if (wasLiked) {

@@ -9,9 +9,9 @@ import '../../../core/media/effect_sound.dart';
 import '../../../core/widgets/remote_media.dart';
 import 'join_banner.dart';
 import 'notice_strip.dart';
-import '../../../data/profile_cache.dart';
 import '../../../state/remote_config_controller.dart';
 import '../../../data/models.dart';
+import '../../../data/notice_feed.dart';
 import '../../../data/store_repository.dart';
 import '../../../core/i18n/text.dart';
 
@@ -28,10 +28,6 @@ const double kDefaultEffectSpeed = 0.75;
 /// Does the person who SENDS a gift hear its sound on their own phone? Yes, unless their microphone is open (the host, or someone on a seat): then the speaker would play it
 /// back into the room as an echo. (Until 2026-10-28 the sender never heard it, so a viewer who sent an MP4 gift with sound heard nothing at all.)
 bool senderHearsOwnGift({required bool micOpen}) => !micOpen;
-
-/// A gift that cost at least this many coins in total (price x quantity x people) is announced on the notification strip. The owner has not given a number yet: this is a
-/// starting point, one constant to change.
-const int kGiftNoticeMinCoins = 1000;
 
 class RoomEffect {
   RoomEffect._({
@@ -193,9 +189,9 @@ class RoomEffectController extends ChangeNotifier {
     void Function(String url)? prefetch,
     JoinBannerController? banners,
     NoticeStripController? notices,
-    this.noticeMinCoins = kGiftNoticeMinCoins,
     bool Function()? noticesOn,
     bool prewarmNotices = false,
+    Stream<FeedNotice>? noticeFeed,
     this.levelImageFor,
   })  : _prefetch = prefetch ?? _defaultPrefetch,
         banners = banners ?? JoinBannerController(),
@@ -204,24 +200,30 @@ class RoomEffectController extends ChangeNotifier {
     // Reading the strip file (550 KB, about 60 pictures) happens on the UI thread: do it a few seconds after the room opens, while it is calm, so the first big gift does not
     // stutter. Once per app run (the movie is kept).
     if (prewarmNotices) {
-      _prewarm = Timer(const Duration(seconds: 6), () => unawaited(NoticeArt.movie().then<void>((_) {}, onError: (Object _) {})));
+      _prewarm = Timer(const Duration(seconds: 6), () => unawaited(NoticeArt.prewarm()));
     }
+    // A big gift or a big game win anywhere on the platform (5,000 coins or more, decided by the server) gets a strip in every room that is open.
+    _feed = noticeFeed?.listen(_onFeed, onError: (Object _) {});
+  }
+
+  StreamSubscription<FeedNotice>? _feed;
+
+  /// One announcement from the server on the strip. The same panel switch (`gift_notice_strip`) turns every strip off; the size that is announced is the server's, so nothing
+  /// is filtered here. A gift's OWN effect in the room is a separate thing and plays as it always did.
+  void _onFeed(FeedNotice n) {
+    if (_disposed || n.coins <= 0 || !_noticesOn()) return;
+    notices.add(NoticeStripItem.fromFeed(n));
   }
 
   Timer? _prewarm;
 
-  /// The notification strips (a gift above [noticeMinCoins]; later a big game win): a lane of their own, drawn by [RoomEffectLayer].
+  /// The notification strips (a big gift, a big game win): a lane of their own, drawn by [RoomEffectLayer].
   final NoticeStripController notices;
 
-  /// A gift whose whole send cost at least this many coins gets a strip. Everything smaller shows only its own effect.
-  final int noticeMinCoins;
   final bool Function() _noticesOn;
 
   /// The server switch (panel -> Application Config -> feature flags: `gift_notice_strip`); on unless the panel says otherwise.
   static bool _noticesFromConfig() => RemoteConfigController.instance.flag('gift_notice_strip');
-
-  /// Who the room belongs to: the receiver on a strip for a gift whose receiver the row does not say (an older row, a gift to the host).
-  AppUser? roomHost;
 
   /// The level join banners: a lane of their own beside the gift / entry effect queue.
   final JoinBannerController banners;
@@ -286,7 +288,6 @@ class RoomEffectController extends ChangeNotifier {
 
   void enqueue(RoomEffect effect) {
     if (_disposed) return;
-    if (effect.kind == RoomEffectKind.gift) _noticeFor(effect);
     if (_queue.isNotEmpty && _queue.last._sameAs(effect)) {
       _queue.last.count += effect.count;
       return;
@@ -337,47 +338,6 @@ class RoomEffectController extends ChangeNotifier {
       ),
     );
     return true;
-  }
-
-  /// Builds the strip for [effect] when it is big enough: who sent it, the gift, and who got it (one person, everyone, or the room's host when the row does not say).
-  /// The people are read from the shared profile cache when the screen did not pass them; a person who cannot be read still appears by name, with a coloured initial.
-  void _noticeFor(RoomEffect effect) {
-    if (effect.coins < noticeMinCoins || !_noticesOn()) return;
-    unawaited(_addNotice(effect));
-  }
-
-  Future<AppUser?> _person(AppUser? known, String? id) async {
-    if (known != null) return known;
-    if (id == null) return null;
-    try {
-      final row = await ProfileCache.instance.get(id);
-      return row == null ? null : AppUser.fromRow(row);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _addNotice(RoomEffect e) async {
-    final (sender, receiver) = await (
-      _person(e.sender, e.senderId),
-      e.toAll ? Future<AppUser?>.value(null) : _person(e.receiver ?? (e.receiverId == null ? roomHost : null), e.receiverId),
-    ).wait;
-    if (_disposed) return;
-    final senderName = sender?.name ?? (e.senderName == 'You' ? tr('You') : e.senderName);
-    final receiverName = e.toAll ? tr('Everyone') : receiver?.name;
-    notices.add(
-      NoticeStripItem(
-        kind: NoticeKind.gift,
-        senderName: senderName,
-        senderAvatarUrl: sender?.avatarUrl,
-        receiverName: receiverName,
-        receiverAvatarUrl: receiver?.avatarUrl,
-        showReceiverAvatar: !e.toAll && receiver != null,
-        iconEmoji: e.emoji,
-        iconUrl: e.mediaUrl,
-        count: e.count,
-      ),
-    );
   }
 
   /// Plays this user's own entry effect / vehicle at once, from what they have equipped, without waiting
@@ -553,6 +513,7 @@ class RoomEffectController extends ChangeNotifier {
     _disposed = true;
     _guard?.cancel();
     _prewarm?.cancel();
+    _feed?.cancel();
     banners.dispose();
     notices.dispose();
     super.dispose();

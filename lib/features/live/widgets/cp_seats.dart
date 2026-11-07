@@ -133,6 +133,8 @@ class CpSeatsRow extends StatelessWidget {
         // a person on a couple seat sits WITHOUT their avatar frame (owner, 2026-11-06): the banner is the decoration
         showFrame: false,
         emptyLabel: 'CP',
+        // an empty couple seat is the golden throne like every other seat (owner, 2026-11-07)
+        goldenSeat: true,
         size: seatSize,
         slot: seatSlot,
         emotes: emotes,

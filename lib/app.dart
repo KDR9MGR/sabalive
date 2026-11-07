@@ -12,6 +12,7 @@ import 'core/widgets/permissions_prompt_host.dart';
 import 'features/auth/auth_flow.dart';
 import 'features/auth/profile_completion_screen.dart';
 import 'features/live/live_access_exit.dart';
+import 'features/live/widgets/home_notice_layer.dart';
 import 'features/live/widgets/live_back_guard.dart';
 import 'features/maintenance/maintenance_banner.dart';
 import 'features/release/update_required_gate.dart';
@@ -104,7 +105,7 @@ class SabaLiveApp extends StatelessWidget {
               child: _LiveBanWatcher(
                 child: _MaintenanceOverlay(
                   child: Stack(
-                    children: [?child, const _ActiveLiveSessionOverlay()],
+                    children: [?child, const _HomeNotices(), const _ActiveLiveSessionOverlay()],
                   ),
                 ),
               ),
@@ -274,6 +275,19 @@ class _LiveBanWatcherState extends State<_LiveBanWatcher> {
 /// build() decides internally whether that's its full UI or just the
 /// small floating bubble, exactly as it already did when this was a
 /// pushed route — only WHERE it's mounted changed, not that logic.
+/// The big-gift / big-game-win strips on Home, above every page and below a full-screen live (which draws its own). Only while signed in and no full-screen live is up.
+class _HomeNotices extends StatelessWidget {
+  const _HomeNotices();
+
+  @override
+  Widget build(BuildContext context) {
+    final signedIn = context.watch<AuthController>().status == AuthStatus.authenticated;
+    final session = context.watch<ActiveLiveSessionController>();
+    final fullScreenLive = session.isActive && !session.isMinimized;
+    return HomeNoticeLayer(active: signedIn && !fullScreenLive);
+  }
+}
+
 class _ActiveLiveSessionOverlay extends StatelessWidget {
   const _ActiveLiveSessionOverlay();
 

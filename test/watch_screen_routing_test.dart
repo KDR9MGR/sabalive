@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sabalive/config/supabase_config.dart';
+import 'package:sabalive/data/notice_feed.dart';
 import 'package:sabalive/data/models.dart';
 import 'package:sabalive/features/live/watch_audio_room_screen.dart';
 import 'package:sabalive/features/live/watch_live_screen.dart';
@@ -23,6 +26,8 @@ import 'package:sabalive/theme/app_theme.dart';
 void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    // the rooms listen for big game wins over Realtime: not in this test (a real channel leaves a timer behind)
+    NoticeFeed.debugSource = () => const Stream<FeedNotice>.empty();
     await Supabase.initialize(
       url: SupabaseConfig.url,
       publishableKey: SupabaseConfig.publishableKey,

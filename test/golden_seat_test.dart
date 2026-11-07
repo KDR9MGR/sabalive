@@ -201,6 +201,18 @@ void main() {
     });
   });
 
+  group('the couple seats are golden too', () {
+    testWidgets('an EMPTY couple seat is the golden seat like every other (owner, 2026-11-07); a taken one shows its person', (t) async {
+      await grid(t, cp: true);
+      for (final seat in [24, 25]) {
+        expect(find.descendant(of: find.byKey(ValueKey('cp-seat-$seat')), matching: find.byType(GoldenSeat)), findsOneWidget, reason: 'seat $seat');
+      }
+      await grid(t, cp: true, occupants: {24: user('host', 'Host')});
+      expect(find.descendant(of: find.byKey(const ValueKey('cp-seat-24')), matching: find.byType(GoldenSeat)), findsNothing, reason: 'a person is on it');
+      expect(find.descendant(of: find.byKey(const ValueKey('cp-seat-25')), matching: find.byType(GoldenSeat)), findsOneWidget);
+    });
+  });
+
   group('nobody on a couple seat wears an avatar frame', () {
     testWidgets('on a couple seat the person is drawn WITHOUT their frame', (t) async {
       await grid(t, cp: true, occupants: {24: user('host', 'Host', frame: 'https://x/frame.svga'), 25: user('g', 'Guest', frame: 'https://x/frame2.png')});

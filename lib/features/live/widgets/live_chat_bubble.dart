@@ -7,6 +7,12 @@ import '../../../theme/app_colors.dart';
 import '../../../core/i18n/text.dart';
 import 'mentions.dart';
 
+/// How many chat lines the live rooms show at a time (owner, 2026-11-07: "3 chats a time should show"), and how tall one single-line chat is with its spacing (a bubble is about 29 dp
+/// and the list gives each 3 dp above and below). A longer message is taller and so leaves room for fewer lines; older ones are a scroll away.
+const int kLiveChatVisibleLines = 3;
+const double kLiveChatLineExtent = 35;
+const double kLiveChatVisibleHeight = kLiveChatVisibleLines * kLiveChatLineExtent;
+
 /// One line of live-room chat. Shared by the host's screen and the video /
 /// audio viewer screens so they all look the same.
 ///

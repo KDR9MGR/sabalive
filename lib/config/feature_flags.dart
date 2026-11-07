@@ -78,6 +78,11 @@ class FeatureFlags {
   /// Funny voice, Invite someone, the Games tab, Video PK; password reset by mobile number was one of them until it was removed everywhere on 2026-11-06). Android is unchanged. When one of them is really built, show it on iOS too by removing its check.
   static bool get comingSoonVisible => !isIOS;
 
+  /// VIP products (owner, 2026-11-07: "make vip coming soon"): while this is true the profile's gold VIP strip only says "VIP is coming soon" and the VIP screens cannot be reached
+  /// (they stay in the code, built and tested). On iOS the strip is hidden altogether, like every other coming-soon entry (App Store review). Set it to false to open the VIP list again.
+  static const bool vipComingSoon = true;
+  static bool get vipStripVisible => !vipComingSoon || comingSoonVisible;
+
   /// The Games tab and its entries. iOS has no games yet (the game panel is the Android WebView), so there it would only say "coming soon": hidden.
   static bool get gamesEntryVisible => !isIOS;
 

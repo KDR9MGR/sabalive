@@ -77,6 +77,7 @@ void main() {
     await t.pump();
     await t.enterText(find.byType(TextField), 'hello');
     await t.pump();
+    await t.pump(const Duration(milliseconds: 200));
     expect(focus.hasFocus, isTrue);
     final restingTop = 800 - 34 - 40 - 42.0; // where the bar sits with no keyboard
     expect(t.getRect(find.byIcon(Icons.send_rounded)).top, lessThan(restingTop - 100), reason: 'the bar really is lifted');

@@ -25,9 +25,9 @@ class AppEnvironment {
   /// Throws if [environment] and [url] do not belong together. Defaults check this build.
   static void validate({String environment = name, String url = SupabaseConfig.url, RtcProvider newLivesProvider = RtcProvider.agora}) {
     final atProduction = url == SupabaseConfig.productionUrl;
-    // MS cloud rooms need the staging database's provider column and the livekit-token function: a production build must never start them (yet)
+    // A production build must not FIX the provider at build time (RTC_PROVIDER): on production the server switch (RtcConfig.serverSwitch, Release controls) decides, and it is off until the owner turns it on
     if (environment == 'production' && newLivesProvider != RtcProvider.agora) {
-      throw StateError('A production build cannot start MS cloud lives yet (RTC_PROVIDER=${newLivesProvider.dbValue}). Remove --dart-define=RTC_PROVIDER.');
+      throw StateError('A production build cannot fix the live provider at build time (RTC_PROVIDER=${newLivesProvider.dbValue}). Remove --dart-define=RTC_PROVIDER; the server switch ${RtcConfig.serverSwitch} decides.');
     }
     if (environment == 'production' && !atProduction) {
       throw StateError(

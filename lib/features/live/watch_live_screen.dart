@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart' hide Text;
@@ -22,6 +21,8 @@ import '../../core/widgets/keyboard_lift.dart';
 import '../../core/widgets/pills.dart';
 import '../../config/feature_flags.dart';
 import '../../data/mock_data.dart';
+import '../../data/live_hearts_repository.dart';
+import '../../data/notice_feed.dart';
 import '../../data/live_emojis_repository.dart';
 import '../../data/level_banner_images.dart';
 import '../../data/models.dart';
@@ -50,6 +51,7 @@ import 'widgets/live_scrim.dart';
 import 'widgets/entry_catch_up.dart';
 import 'widgets/emote_overlay.dart';
 import 'widgets/room_effect.dart';
+import 'widgets/room_hearts.dart';
 import 'live_access_exit.dart';
 import 'widgets/chat_composer.dart';
 import 'widgets/gift_sheet.dart';
@@ -100,11 +102,13 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
   final List<LiveChatLine> _chat = [];
   final _msgController = TextEditingController();
   final _room = RoomChatState();
-  final _rand = math.Random();
-  final List<_Heart> _hearts = [];
-  late final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage, prewarmNotices: true)..roomHost = widget.stream.host;
+  late final RoomHearts _heartsCtl = RoomHearts(
+    streamId: widget.stream.id,
+    api: _isReal ? const SupabaseLiveHeartsApi() : null,
+    meId: supabase.auth.currentUser?.id,
+  );
+  late final _effects = RoomEffectController(levelImageFor: LevelBannerImages.instance.charmImage, prewarmNotices: true, noticeFeed: NoticeFeed.instance.stream);
   final _emotes = EmoteController();
-  int _likes = 0;
 
   RtcEngine? _engine;
 
@@ -288,7 +292,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     CrashReporting.log('opened video live (watching) ${widget.stream.id}');
     WidgetsBinding.instance.addObserver(this);
     _session = context.read<ActiveLiveSessionController>()..backHandler = _showCloseDialog;
-    _likes = widget.stream.likes;
+    unawaited(_heartsCtl.start());
     _hostAgoraUid = widget.stream.hostAgoraUid;
     if (_isReal) {
       // Keeps the screen from sleeping mid-stream — a screen timeout was
@@ -1149,23 +1153,15 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         ));
       fireAndForget(supabase.rpc('release_seat', params: {'p_stream_id': widget.stream.id}));
     }
+    _heartsCtl.dispose();
     super.dispose();
   }
 
+  /// A tap on the heart: a heart floats at once and the number moves at once; the taps go to the server in a batch and everybody in the room sees the hearts and the sum (RoomHearts).
   void _like() {
     if (_ghost) return;
-    setState(() {
-      _likes++;
-      _hearts.add(
-        _Heart(
-          key: UniqueKey(),
-          left: 8 + _rand.nextDouble() * 24,
-          hue: _rand.nextDouble(),
-          onDone: (k) => setState(() => _hearts.removeWhere((h) => h.key == k)),
-        ),
-      );
-    });
-    context.read<SessionController>().toggleLike(widget.stream.id);
+    _heartsCtl.tap();
+    context.read<SessionController>().ensureLiked(widget.stream.id); // the person's own like (who liked) stays, once; tapping again never un-likes
   }
 
   Future<void> _send() async {
@@ -1493,7 +1489,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
             bottom: 140,
             width: 60,
             height: 320,
-            child: Stack(children: _hearts),
+            child: RoomHeartsLayer(hearts: _heartsCtl),
           ),
           // gift animation, for everyone in the room
           Positioned.fill(child: RoomEffectLayer(controller: _effects)),
@@ -1705,7 +1701,6 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
 
   Widget _chatColumn() {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 220),
       padding: const EdgeInsets.only(left: 14, right: 6),
       // shrinkWrap — see the same note in watch_audio_room_screen.dart: an
       // un-shrinkwrapped Scrollable claims its whole box for hit-testing
@@ -1716,7 +1711,10 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
         children: [
           if (_room.notice != null) PinnedNoticeBanner(_room.notice!),
           Flexible(
-            child: ListView.builder(
+            // three chat lines show at a time (owner, 2026-11-07); older ones are a scroll away
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: kLiveChatVisibleHeight),
+              child: ListView.builder(
             reverse: true,
             shrinkWrap: true,
             padding: EdgeInsets.zero,
@@ -1731,6 +1729,7 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
                 ),
               );
             },
+            ),
             ),
           ),
         ],
@@ -1777,11 +1776,14 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          item(
-            Icons.favorite_rounded,
-            compactCount(_likes),
-            _like,
-            color: AppColors.live,
+          ListenableBuilder(
+            listenable: _heartsCtl,
+            builder: (context, _) => item(
+              Icons.favorite_rounded,
+              compactCount(_heartsCtl.count),
+              _like,
+              color: AppColors.live,
+            ),
           ),
           if (_mySeat != null)
             item(
@@ -1888,68 +1890,5 @@ class _WatchLiveScreenState extends State<WatchLiveScreen>
     }
     _msgController.text = picked.emoji ?? '';
     await _send();
-  }
-}
-
-class _Heart extends StatefulWidget {
-  const _Heart({
-    required super.key,
-    required this.left,
-    required this.hue,
-    required this.onDone,
-  });
-
-  final double left;
-  final double hue;
-  final void Function(Key) onDone;
-
-  @override
-  State<_Heart> createState() => _HeartState();
-}
-
-class _HeartState extends State<_Heart> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1800),
-  )..forward();
-
-  @override
-  void initState() {
-    super.initState();
-    _c.addStatusListener((s) {
-      if (s == AnimationStatus.completed) widget.onDone(widget.key!);
-    });
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        final v = _c.value;
-        final sway = math.sin(v * math.pi * 3) * 14;
-        return Positioned(
-          left: widget.left + sway,
-          bottom: v * 300,
-          child: Opacity(
-            opacity: (1 - v).clamp(0.0, 1.0),
-            child: Transform.scale(
-              scale: 0.6 + v * 0.8,
-              child: Icon(
-                Icons.favorite_rounded,
-                color: HSVColor.fromAHSV(1, widget.hue * 360, 0.7, 1).toColor(),
-                size: 26,
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 }
