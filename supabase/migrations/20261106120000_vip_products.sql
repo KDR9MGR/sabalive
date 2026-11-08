@@ -237,6 +237,10 @@ declare
   v_expires timestamptz;
 begin
   if v_me is null then raise exception 'Must be signed in to purchase'; end if;
+  -- the owner's switch (panel: Release Settings -> VIP products): off by default, so VIP can be "coming soon" in the app and closed here too
+  if not coalesce((select feature_flags -> 'vip_enabled' = 'true'::jsonb from public.app_config where id), false) then
+    raise exception 'VIP is coming soon';
+  end if;
   if coalesce((select pr.is_ghost from public.profiles pr where pr.id = v_me), false) then
     raise exception 'This account cannot buy';
   end if;
