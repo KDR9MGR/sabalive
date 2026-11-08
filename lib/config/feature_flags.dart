@@ -78,18 +78,10 @@ class FeatureFlags {
   /// Funny voice, Invite someone, the Games tab, Video PK; password reset by mobile number was one of them until it was removed everywhere on 2026-11-06). Android is unchanged. When one of them is really built, show it on iOS too by removing its check.
   static bool get comingSoonVisible => !isIOS;
 
-  /// VIP products (owner, 2026-11-07: "make vip coming soon"): while this is true the profile's gold VIP strip only says "VIP is coming soon" and the VIP screens cannot be reached
-  /// (they stay in the code, built and tested). On iOS the strip is hidden altogether, like every other coming-soon entry (App Store review). Set it to false to open the VIP list again.
-  ///
-  /// SERVER SWITCH (owner, 2026-11-08: "block it from backend"): VIP is OFF unless the server says so (`app_config.feature_flags.vip_enabled`, panel: Application Config -> Release Settings ->
-  /// "VIP products"), so a build can ship with VIP still "coming soon" and the owner opens it with no release. Fails CLOSED: no answer = coming soon. The database refuses purchases
-  /// while it is off too (`purchase_vip_product`, migration 20261108105000).
-  static bool get vipComingSoon => !vipEnabledFor(RemoteConfigController.instance);
-  static bool vipEnabledFor(RemoteConfigController config) => vipEnabledOverride ?? config.flag('vip_enabled', defaultValue: false);
-
-  /// For tests: force the VIP switch on or off. Null = the server's answer.
-  @visibleForTesting
-  static bool? vipEnabledOverride;
+  /// VIP products. Owner, 2026-11-07: "make vip coming soon"; 2026-11-08: a server switch (`vip_enabled`); 2026-11-09: "take off coming soon ... should work even if the panel switch is off",
+  /// so VIP is simply OPEN: no switch, no "coming soon". The profile's gold VIP strip opens the VIP list (on iOS too). Set it to true to put "coming soon" back (the VIP screens then
+  /// cannot be reached, and on iOS the strip is hidden like every other coming-soon entry).
+  static const bool vipComingSoon = false;
   static bool get vipStripVisible => !vipComingSoon || comingSoonVisible;
 
   /// The Games tab and its entries. iOS has no games yet (the game panel is the Android WebView), so there it would only say "coming soon": hidden.

@@ -90,24 +90,10 @@ insert into r(check_name, ok) select '3c several custom benefits are allowed, an
 reset role;
 delete from public.vip_products where name = 'Many';
 
--- ---------------------------------------------------------------- 3b. the owner's switch (app_config.feature_flags.vip_enabled, off by default)
+-- ---------------------------------------------------------------- 3c. VIP does not depend on the panel switch (owner, 2026-11-09): switch OFF for everything below
 select set_config('request.jwt.claim.sub', 'e2000000-0000-0000-0000-0000000000e2', false);   -- only a Super Admin may change release controls
-update public.app_config set feature_flags = coalesce(feature_flags, '{}'::jsonb) - 'vip_enabled';   -- (a later migration turns it on: start from off)
-set role authenticated;
-select set_config('request.jwt.claim.sub', 'a1000000-0000-0000-0000-000000000001', false);
-do $$
-begin
-  begin
-    perform public.purchase_vip_product((select v::uuid from ctx where k = 'vip1'));
-    insert into r(check_name, ok) values ('3b with the vip_enabled switch off a purchase is refused', false);
-  exception when others then
-    insert into r(check_name, ok) values ('3b with the vip_enabled switch off a purchase is refused ("VIP is coming soon")', sqlerrm = 'VIP is coming soon');
-  end;
-end $$;
-reset role;
-select set_config('request.jwt.claim.sub', 'e2000000-0000-0000-0000-0000000000e2', false);   -- only a Super Admin may change release controls
-update public.app_config set feature_flags = coalesce(feature_flags, '{}'::jsonb) || '{"vip_enabled": true}'::jsonb;
-insert into r(check_name, ok) select '3b the switch is now on', coalesce((select feature_flags -> 'vip_enabled' = 'true'::jsonb from public.app_config where id), false);
+update public.app_config set feature_flags = coalesce(feature_flags, '{}'::jsonb) || '{"vip_enabled": false}'::jsonb;
+insert into r(check_name, ok) select '3c the vip_enabled switch is OFF, and every purchase below must work all the same', coalesce((select feature_flags -> 'vip_enabled' = 'false'::jsonb from public.app_config where id), false);
 
 -- ---------------------------------------------------------------- 4. buying
 set role authenticated;
@@ -125,9 +111,22 @@ insert into r(check_name, ok) select '4b the VIP runs for 30 days from now, and 
 insert into r(check_name, ok) select '4c the linked entry effect was given until the VIP ends and PUT ON (nothing was on in that category)',
   (select (expires_at, equipped) from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '52000000-0000-0000-0000-000000000002')
     = ((select expires_at from public.user_vip where profile_id = 'a1000000-0000-0000-0000-000000000001'), true);
-insert into r(check_name, ok) select '4d the linked frame was given but NOT put on: the buyer already wears Other Frame, which stays on',
-  (select equipped from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '51000000-0000-0000-0000-000000000001') = false
-  and (select equipped from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '53000000-0000-0000-0000-000000000003') = true;
+insert into r(check_name, ok) select '4d the linked frame was given AND put on at once; Other Frame came off but is still in the Bag',
+  (select equipped from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '51000000-0000-0000-0000-000000000001') = true
+  and (select equipped from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '53000000-0000-0000-0000-000000000003') = false
+  and exists (select 1 from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '53000000-0000-0000-0000-000000000003' and expires_at > now())
+  and (select count(*) from public.user_items u join public.store_items si on si.id = u.item_id where u.profile_id = 'a1000000-0000-0000-0000-000000000001' and u.equipped and si.category = 'frame') = 1;
+-- the buyer can take the VIP's frame off and put it on again from the Bag (set_item_equipped)
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1000000-0000-0000-0000-000000000001', false);
+select public.set_item_equipped('51000000-0000-0000-0000-000000000001', false);
+create temp table off_state as select (select equipped from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '51000000-0000-0000-0000-000000000001') as e;
+grant all on off_state to authenticated;
+select public.set_item_equipped('51000000-0000-0000-0000-000000000001', true);
+reset role;
+insert into r(check_name, ok) select '4e the buyer takes the VIP frame off and puts it on again from the Bag',
+  (select e from off_state) = false
+  and (select equipped from public.user_items where profile_id = 'a1000000-0000-0000-0000-000000000001' and item_id = '51000000-0000-0000-0000-000000000001') = true;
 
 -- buying again while it runs ADDS the days
 set role authenticated;
