@@ -90,6 +90,25 @@ insert into r(check_name, ok) select '3c several custom benefits are allowed, an
 reset role;
 delete from public.vip_products where name = 'Many';
 
+-- ---------------------------------------------------------------- 3b. the owner's switch (app_config.feature_flags.vip_enabled, off by default)
+select set_config('request.jwt.claim.sub', 'e2000000-0000-0000-0000-0000000000e2', false);   -- only a Super Admin may change release controls
+update public.app_config set feature_flags = coalesce(feature_flags, '{}'::jsonb) - 'vip_enabled';   -- (a later migration turns it on: start from off)
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'a1000000-0000-0000-0000-000000000001', false);
+do $$
+begin
+  begin
+    perform public.purchase_vip_product((select v::uuid from ctx where k = 'vip1'));
+    insert into r(check_name, ok) values ('3b with the vip_enabled switch off a purchase is refused', false);
+  exception when others then
+    insert into r(check_name, ok) values ('3b with the vip_enabled switch off a purchase is refused ("VIP is coming soon")', sqlerrm = 'VIP is coming soon');
+  end;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub', 'e2000000-0000-0000-0000-0000000000e2', false);   -- only a Super Admin may change release controls
+update public.app_config set feature_flags = coalesce(feature_flags, '{}'::jsonb) || '{"vip_enabled": true}'::jsonb;
+insert into r(check_name, ok) select '3b the switch is now on', coalesce((select feature_flags -> 'vip_enabled' = 'true'::jsonb from public.app_config where id), false);
+
 -- ---------------------------------------------------------------- 4. buying
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'a1000000-0000-0000-0000-000000000001', false);
