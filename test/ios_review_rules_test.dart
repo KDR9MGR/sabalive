@@ -29,14 +29,22 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await I18n.set(languageByCode('en'));
   });
-  tearDown(() => FeatureFlags.isIOSOverride = null);
+  tearDown(() {
+    FeatureFlags.isIOSOverride = null;
+    FeatureFlags.vipEnabledOverride = null;
+  });
 
-  test('VIP is "coming soon" (owner, 2026-11-07): the profile strip only says so, and on iOS (no coming-soon entries) it is not shown at all', () {
-    expect(FeatureFlags.vipComingSoon, isTrue);
+  test('VIP follows the server switch vip_enabled and fails closed: off (or no answer) is "coming soon" and hidden on iOS, on opens it', () {
+    FeatureFlags.isIOSOverride = false;
+    expect(FeatureFlags.vipComingSoon, isTrue, reason: 'no answer from the server = off');
+    expect(FeatureFlags.vipStripVisible, isTrue, reason: 'Android shows the strip, it says coming soon');
+    FeatureFlags.isIOSOverride = true;
+    expect(FeatureFlags.vipStripVisible, isFalse, reason: 'iOS hides every coming-soon entry');
+    FeatureFlags.vipEnabledOverride = true;
+    expect(FeatureFlags.vipComingSoon, isFalse);
+    expect(FeatureFlags.vipStripVisible, isTrue);
     FeatureFlags.isIOSOverride = false;
     expect(FeatureFlags.vipStripVisible, isTrue);
-    FeatureFlags.isIOSOverride = true;
-    expect(FeatureFlags.vipStripVisible, isFalse);
   });
 
   group('the rules', () {
