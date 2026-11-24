@@ -33,12 +33,12 @@ database checks that too, not only the page.
 
 ## Automatic monthly reset (migration `20261026130000`)
 The page's first card: a **toggle** (OFF by default), two **checkboxes** (Gifting diamonds, Reward diamonds; both ticked by default) and **Run on day** (1-28, default 1). Saved with a button; turning it ON asks once more,
-naming the date and what will be taken. The card says when the next run is and what it will reset ("Next automatic run: 1 Nov 2026, 00:05 India time. It will reset October 2026: gifting diamonds and reward diamonds")
+naming the date and what will be taken. The card says when the next run is and what it will reset ("Next automatic run: 1 Nov 2026, 05:00 India time. It will reset October 2026: gifting diamonds and reward diamonds")
 and what the last run did.
-- A pg_cron job `diamond-reset-auto` calls `run_diamond_reset_auto()` every day at 18:35 UTC = 00:05 India time. The function does nothing unless the switch is on AND today (India time) is the chosen day.
+- A pg_cron job `diamond-reset-auto` calls `run_diamond_reset_auto()` every day at 23:30 UTC = 05:00 India time (since migration `20261124110000`; it was 18:35 UTC = 00:05 before). The function does nothing unless the switch is on AND today (India time) is the chosen day.
   On that day it resets the PREVIOUS month for each ticked kind: the same rule, ledger rows, audit row, once-per-month slot and Undo as the buttons (both go through `_diamond_reset_run_one`).
   A kind already reset (by hand or earlier) is skipped; a kind that is ticked later is picked up by the next daily call on that day. A month that has not ended is never touched.
-- If the job misses the day (database down at 00:05) it does NOT catch up: it simply tries again next month, and the card's "Last automatic run" shows it. Press the manual button for that month.
+- If the job misses the day (database down at 05:00) it does NOT catch up: it simply tries again next month, and the card's "Last automatic run" shows it. Press the manual button for that month.
 - Runs of the job have no person (`run_by` null, `auto` true; the history shows "Automatic"); the audit rows are `diamonds.reset_auto` (critical, no actor). One kind failing does not undo the other: the failure
   is written to the audit log (`diamonds.reset_auto_failed`) and to the card's note. Switching it on / off is audited (`diamonds.reset_auto_settings`).
 - Because hosts get no warning, choose a day that leaves them time to withdraw (the card says so). Switching it off stops it at once (the job then returns "off").

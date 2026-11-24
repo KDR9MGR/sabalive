@@ -243,7 +243,7 @@ Master / Super Admin (never a lower role, even with Run payroll) clear a FINISHE
 `admin_diamond_reset_preview` / `admin_reset_diamonds(month, 'gift'|'reward'|'both', typed month)` / `admin_undo_diamond_reset` (migration `20261026120000`); the amounts come from ONE function (`_diamond_reset_plan`): the
 month's credits, capped by the balance minus positive credits that arrived after the month (withdrawals use the oldest diamonds first). Each (month, kind) once; each wallet gets one negative `grant_reversal` ledger row
 (`reference_table = 'diamond_reset_runs'`), which the Salary reports do not count, so only the wallet balance changes. Hosts get the standard "reclaimed by an admin" notification. **Automatic version** (migration `20261026130000`): `diamond_reset_settings` (switch OFF by default, gifting / reward checkboxes, run day 1-28) set with
-`admin_set_diamond_reset_auto`; the pg_cron job `diamond-reset-auto` (18:35 UTC = 00:05 India time daily) calls `run_diamond_reset_auto()`, which acts only on the chosen day and resets the PREVIOUS month through the same `_diamond_reset_run_one` the
+`admin_set_diamond_reset_auto`; the pg_cron job `diamond-reset-auto` (23:30 UTC = 05:00 India time daily since 2026-11-24, migration `20261124110000`; it was 18:35 UTC = 00:05 before) calls `run_diamond_reset_auto()`, which acts only on the chosen day and resets the PREVIOUS month through the same `_diamond_reset_run_one` the
 buttons use (runs have `auto = true`, no person; no catch-up if a day is missed). Check: `scripts/staging/verify_diamond_reset.sh`.
 
 ## Quick-fix batch of 2026-10-26 (owner's list of nine; migration `20261026140000`)

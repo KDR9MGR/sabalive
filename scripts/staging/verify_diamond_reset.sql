@@ -235,7 +235,7 @@ insert into res(step, ok, info) values ('18 the job and the shared function are 
   and not has_function_privilege('authenticated', 'public._diamond_reset_run_one(text,text,uuid,boolean)', 'execute')
   and not has_function_privilege('anon', 'public.admin_set_diamond_reset_auto(boolean,boolean,boolean,integer)', 'execute'), null);
 insert into res(step, ok, info)
-  select '19 the daily job is scheduled (00:05 India time = 18:35 UTC)', exists (select 1 from cron.job where jobname = 'diamond-reset-auto' and schedule = '35 18 * * *'), null;
+  select '19 the daily job is scheduled (05:00 India time = 23:30 UTC)', exists (select 1 from cron.job where jobname = 'diamond-reset-auto' and schedule = '30 23 * * *'), null;
 
 select n, step, ok, info from res order by n;
 
